@@ -1,0 +1,32 @@
+selectServers:
+SELECT id, url, last_connected_at
+FROM servers
+ORDER BY last_connected_at DESC, id ASC;
+
+selectServerById:
+SELECT id, url, last_connected_at
+FROM servers
+WHERE id = ?;
+
+selectServerByUrl:
+SELECT id, url, last_connected_at
+FROM servers
+WHERE url = ?;
+
+insertServer:
+INSERT INTO servers(
+  id,
+  url,
+  last_connected_at
+)
+VALUES (?, ?, ?);
+
+updateServer:
+UPDATE servers
+SET url = ?,
+    last_connected_at = ?
+WHERE id = ?;
+
+deleteServer:
+DELETE FROM servers
+WHERE id = ?;

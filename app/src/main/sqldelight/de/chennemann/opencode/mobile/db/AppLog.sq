@@ -1,0 +1,80 @@
+
+
+insertAppLog:
+INSERT INTO app_log(
+  created_at,
+  level,
+  logical_unit,
+  tag,
+  event,
+  project_id,
+  project_name,
+  session_id,
+  session_title,
+  message,
+  context_json,
+  throwable,
+  redacted
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+
+listAppLog:
+SELECT id, created_at, level, logical_unit, tag, event, project_id, project_name, session_id, session_title, message, context_json, throwable, redacted
+FROM app_log
+WHERE (:logical_unit IS NULL OR logical_unit = :logical_unit)
+  AND (:level IS NULL OR level = :level)
+  AND (:event IS NULL OR event = :event)
+  AND (:project_id IS NULL OR project_id = :project_id)
+  AND (:session_id IS NULL OR session_id = :session_id)
+  AND (:from_at IS NULL OR created_at >= :from_at)
+  AND (:until_at IS NULL OR created_at <= :until_at)
+  AND (
+    :search IS NULL
+    OR message LIKE '%' || :search || '%'
+    OR event LIKE '%' || :search || '%'
+    OR tag LIKE '%' || :search || '%'
+    OR project_name LIKE '%' || :search || '%'
+    OR session_title LIKE '%' || :search || '%'
+  )
+ORDER BY created_at DESC, id DESC
+LIMIT :limit;
+
+listAppLogProjectFacet:
+SELECT project_id, max(project_name) AS project_name
+FROM app_log
+WHERE project_id IS NOT NULL
+GROUP BY project_id
+ORDER BY max(project_name) COLLATE NOCASE ASC, project_id ASC;
+
+listAppLogSessionFacet:
+SELECT session_id, max(session_title) AS session_title
+FROM app_log
+WHERE session_id IS NOT NULL
+GROUP BY session_id
+ORDER BY max(session_title) COLLATE NOCASE ASC, session_id ASC;
+
+listAppLogEventFacet:
+SELECT event
+FROM app_log
+GROUP BY event
+ORDER BY event COLLATE NOCASE ASC;
+
+countAppLog:
+SELECT count(*)
+FROM app_log;
+
+deleteAppLogBefore:
+DELETE FROM app_log
+WHERE created_at < ?;
+
+deleteAppLogOverflow:
+DELETE FROM app_log
+WHERE id IN (
+  SELECT id
+  FROM app_log
+  ORDER BY created_at DESC, id DESC
+  LIMIT -1 OFFSET ?
+);
+
+deleteAppLogAll:
+DELETE FROM app_log;

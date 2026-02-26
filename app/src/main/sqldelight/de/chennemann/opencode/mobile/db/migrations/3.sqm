@@ -1,0 +1,5 @@
+ALTER TABLE message_cache
+ADD COLUMN created_at INTEGER;
+
+ALTER TABLE message_cache
+ADD COLUMN completed_at INTEGER;

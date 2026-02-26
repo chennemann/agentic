@@ -1,0 +1,16 @@
+CREATE TABLE app_log (
+  id INTEGER NOT NULL PRIMARY KEY AUTOINCREMENT,
+  created_at INTEGER NOT NULL,
+  level TEXT NOT NULL,
+  logical_unit TEXT NOT NULL,
+  tag TEXT NOT NULL,
+  event TEXT NOT NULL,
+  message TEXT NOT NULL,
+  context_json TEXT NOT NULL,
+  throwable TEXT,
+  redacted INTEGER NOT NULL
+);
+
+CREATE INDEX app_log_created_at_idx ON app_log(created_at DESC, id DESC);
+CREATE INDEX app_log_logical_unit_idx ON app_log(logical_unit, created_at DESC, id DESC);
+CREATE INDEX app_log_level_idx ON app_log(level, created_at DESC, id DESC);

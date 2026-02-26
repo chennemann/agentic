@@ -1,0 +1,65 @@
+CREATE TABLE message (
+  id TEXT NOT NULL PRIMARY KEY,
+  server_url TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  remote_id TEXT NOT NULL,
+  step_index INTEGER NOT NULL CHECK (step_index >= 0),
+  role TEXT NOT NULL CHECK (role IN ('user', 'assistant')),
+  sort_key TEXT NOT NULL,
+  text TEXT NOT NULL,
+  created_at INTEGER,
+  completed_at INTEGER NOT NULL,
+  UNIQUE (server_url, session_id, remote_id, step_index)
+);
+
+CREATE INDEX message_session_sort_idx
+ON message(server_url, session_id, sort_key ASC, step_index ASC);
+
+CREATE INDEX message_session_remote_idx
+ON message(server_url, session_id, remote_id, step_index);
+
+CREATE TABLE message_tool_call (
+  id TEXT NOT NULL PRIMARY KEY,
+  message_id TEXT NOT NULL,
+  tool_name TEXT NOT NULL,
+  title TEXT NOT NULL,
+  subtitle TEXT,
+  status TEXT NOT NULL DEFAULT 'unknown',
+  target TEXT,
+  output_preview TEXT,
+  error_message TEXT,
+  session_id TEXT,
+  started_at INTEGER,
+  completed_at INTEGER,
+  FOREIGN KEY (message_id) REFERENCES message(id) ON DELETE CASCADE
+);
+
+CREATE INDEX message_tool_call_message_idx
+ON message_tool_call(message_id);
+
+INSERT INTO message(
+  id,
+  server_url,
+  session_id,
+  remote_id,
+  step_index,
+  role,
+  sort_key,
+  text,
+  created_at,
+  completed_at
+)
+SELECT
+  server_url || '::' || session_id || '::' || message_id || ':0' AS id,
+  server_url,
+  session_id,
+  message_id AS remote_id,
+  0 AS step_index,
+  role,
+  sort_key,
+  text,
+  created_at,
+  COALESCE(completed_at, created_at, updated_at) AS completed_at
+FROM message_cache
+WHERE trim(text) <> ''
+  AND (role = 'user' OR completed_at IS NOT NULL);

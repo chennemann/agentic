@@ -1,0 +1,37 @@
+selectSessions:
+SELECT id, project_id, title, path, pinned
+FROM sessions
+ORDER BY pinned DESC, title COLLATE NOCASE ASC, id ASC;
+
+selectSessionById:
+SELECT id, project_id, title, path, pinned
+FROM sessions
+WHERE id = ?;
+
+selectSessionsByProject:
+SELECT id, project_id, title, path, pinned
+FROM sessions
+WHERE project_id = ?
+ORDER BY pinned DESC, title COLLATE NOCASE ASC, id ASC;
+
+insertSession:
+INSERT INTO sessions(
+  id,
+  project_id,
+  title,
+  path,
+  pinned
+)
+VALUES (?, ?, ?, ?, ?);
+
+updateSession:
+UPDATE sessions
+SET project_id = ?,
+    title = ?,
+    path = ?,
+    pinned = ?
+WHERE id = ?;
+
+deleteSession:
+DELETE FROM sessions
+WHERE id = ?;

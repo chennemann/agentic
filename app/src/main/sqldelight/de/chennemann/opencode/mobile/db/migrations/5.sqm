@@ -1,0 +1,8 @@
+ALTER TABLE app_log ADD COLUMN project_id TEXT;
+ALTER TABLE app_log ADD COLUMN project_name TEXT;
+ALTER TABLE app_log ADD COLUMN session_id TEXT;
+ALTER TABLE app_log ADD COLUMN session_title TEXT;
+
+CREATE INDEX app_log_event_idx ON app_log(event, created_at DESC, id DESC);
+CREATE INDEX app_log_project_idx ON app_log(project_id, created_at DESC, id DESC);
+CREATE INDEX app_log_session_idx ON app_log(session_id, created_at DESC, id DESC);

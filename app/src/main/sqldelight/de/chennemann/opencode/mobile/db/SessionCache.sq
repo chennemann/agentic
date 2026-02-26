@@ -1,0 +1,82 @@
+
+upsertSessionCache:
+INSERT INTO session_cache(
+  server_url,
+  session_id,
+  project_id,
+  directory,
+  title,
+  version,
+  last_opened_at,
+  updated_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(server_url, session_id) DO UPDATE SET
+  project_id = excluded.project_id,
+  directory = excluded.directory,
+  title = excluded.title,
+  version = excluded.version,
+  last_opened_at = excluded.last_opened_at,
+  updated_at = excluded.updated_at;
+
+upsertSessionCacheSnapshot:
+INSERT INTO session_cache(
+  server_url,
+  session_id,
+  project_id,
+  directory,
+  title,
+  version,
+  last_opened_at,
+  updated_at
+)
+VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+ON CONFLICT(server_url, session_id) DO UPDATE SET
+  project_id = excluded.project_id,
+  directory = excluded.directory,
+  title = excluded.title,
+  version = excluded.version,
+  updated_at = excluded.updated_at;
+
+selectRecentSessionCache:
+SELECT server_url, session_id, project_id, directory, title, version, last_opened_at, updated_at
+FROM session_cache
+ORDER BY last_opened_at DESC
+LIMIT 1;
+
+selectSessionCache:
+SELECT server_url, session_id, project_id, directory, title, version, last_opened_at, updated_at
+FROM session_cache
+WHERE server_url = ? AND session_id = ?;
+
+listProjectSessionCache:
+SELECT server_url, session_id, project_id, directory, title, version, last_opened_at, updated_at
+FROM session_cache
+WHERE server_url = ? AND project_id = ?
+ORDER BY updated_at DESC, session_id DESC;
+
+listProjectSessionCacheLimited:
+SELECT server_url, session_id, project_id, directory, title, version, last_opened_at, updated_at
+FROM session_cache
+WHERE server_url = ? AND project_id = ?
+ORDER BY updated_at DESC, session_id DESC
+LIMIT ?;
+
+listLocalSessionByProject:
+SELECT
+  session_id AS id,
+  COALESCE(project_id, :project_key) AS project_id,
+  directory AS workspace,
+  title,
+  pinned,
+  parent_id,
+  updated_at,
+  last_read_at,
+  archived_at
+FROM session_cache
+WHERE COALESCE(project_id, :project_key) = :project_key
+ORDER BY pinned DESC, updated_at DESC, session_id DESC;
+
+deleteSessionCache:
+DELETE FROM session_cache
+WHERE server_url = ? AND session_id = ?;

@@ -1,0 +1,47 @@
+listMessage:
+SELECT id, server_url, session_id, remote_id, step_index, role, sort_key, text, created_at, completed_at
+FROM message
+WHERE server_url = ? AND session_id = ?
+ORDER BY sort_key ASC, step_index ASC;
+
+selectMessageById:
+SELECT id, server_url, session_id, remote_id, step_index, role, sort_key, text, created_at, completed_at
+FROM message
+WHERE id = ?;
+
+upsertMessage:
+INSERT INTO message(
+  id,
+  server_url,
+  session_id,
+  remote_id,
+  step_index,
+  role,
+  sort_key,
+  text,
+  created_at,
+  completed_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  server_url = excluded.server_url,
+  session_id = excluded.session_id,
+  remote_id = excluded.remote_id,
+  step_index = excluded.step_index,
+  role = excluded.role,
+  sort_key = excluded.sort_key,
+  text = excluded.text,
+  created_at = excluded.created_at,
+  completed_at = excluded.completed_at;
+
+deleteMessageById:
+DELETE FROM message
+WHERE id = ?;
+
+deleteMessageByRemote:
+DELETE FROM message
+WHERE server_url = ? AND session_id = ? AND remote_id = ?;
+
+deleteMessageBySession:
+DELETE FROM message
+WHERE server_url = ? AND session_id = ?;

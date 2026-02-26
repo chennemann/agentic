@@ -1,0 +1,37 @@
+selectProjects:
+SELECT id, server_id, name, path, pinned
+FROM projects
+ORDER BY pinned DESC, name COLLATE NOCASE ASC, id ASC;
+
+selectProjectById:
+SELECT id, server_id, name, path, pinned
+FROM projects
+WHERE id = ?;
+
+selectProjectsByServer:
+SELECT id, server_id, name, path, pinned
+FROM projects
+WHERE server_id = ?
+ORDER BY pinned DESC, name COLLATE NOCASE ASC, id ASC;
+
+insertProject:
+INSERT INTO projects(
+  id,
+  server_id,
+  name,
+  path,
+  pinned
+)
+VALUES (?, ?, ?, ?, ?);
+
+updateProject:
+UPDATE projects
+SET server_id = ?,
+    name = ?,
+    path = ?,
+    pinned = ?
+WHERE id = ?;
+
+deleteProject:
+DELETE FROM projects
+WHERE id = ?;

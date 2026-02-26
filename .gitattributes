@@ -1,0 +1,145 @@
+# Common settings that generally should always be used with your language specific settings
+
+# Auto detect text files and perform LF normalization
+*          text=auto
+
+#
+# The above will handle all files NOT found below
+#
+
+# Documents
+*.bibtex   text diff=bibtex
+*.doc      diff=astextplain
+*.DOC      diff=astextplain
+*.docx     diff=astextplain
+*.DOCX     diff=astextplain
+*.dot      diff=astextplain
+*.DOT      diff=astextplain
+*.pdf      diff=astextplain
+*.PDF      diff=astextplain
+*.rtf      diff=astextplain
+*.RTF      diff=astextplain
+*.md       text eol=lf diff=markdown
+*.mdx      text eol=lf diff=markdown
+*.tex      text eol=lf diff=tex
+*.adoc     text eol=lf
+*.textile  text eol=lf
+*.mustache text eol=lf
+*.csv      text eol=crlf
+*.tab      text eol=lf
+*.tsv      text eol=lf
+*.txt      text eol=lf
+*.sql      text eol=lf
+*.epub     diff=astextplain
+
+# Graphics
+*.png      binary
+*.jpg      binary
+*.jpeg     binary
+*.gif      binary
+*.tif      binary
+*.tiff     binary
+*.ico      binary
+# SVG treated as text by default.
+*.svg      text eol=lf
+# If you want to treat it as binary,
+# use the following line instead.
+# *.svg    binary
+*.eps      binary
+
+# Scripts
+*.bash     text eol=lf
+*.fish     text eol=lf
+*.ksh      text eol=lf
+*.sh       text eol=lf
+*.zsh      text eol=lf
+# These are explicitly windows files and should use crlf
+*.bat      text eol=crlf
+*.cmd      text eol=crlf
+*.ps1      text eol=crlf
+
+# Serialisation
+*.json     text eol=lf
+*.toml     text eol=lf
+*.xml      text eol=lf
+*.yaml     text eol=lf
+*.yml      text eol=lf
+
+# Archives
+*.7z       binary
+*.bz       binary
+*.bz2      binary
+*.bzip2    binary
+*.gz       binary
+*.lz       binary
+*.lzma     binary
+*.rar      binary
+*.tar      binary
+*.taz      binary
+*.tbz      binary
+*.tbz2     binary
+*.tgz      binary
+*.tlz      binary
+*.txz      binary
+*.xz       binary
+*.Z        binary
+*.zip      binary
+*.zst      binary
+
+# Text files where line endings should be preserved
+*.patch    -text
+
+#
+# Exclude files from exporting
+#
+
+.gitattributes export-ignore eol=lf
+.gitignore     export-ignore eol=lf
+.gitkeep       export-ignore eol=lf
+
+# Java sources
+*.java          text eol=lf diff=java
+*.kt            text eol=lf diff=kotlin
+*.groovy        text eol=lf diff=java
+*.scala         text eol=lf diff=java
+*.gradle        text eol=lf diff=java
+*.gradle.kts    text eol=lf diff=kotlin
+
+# These files are text and should be normalized (Convert crlf => lf)
+*.css           text eol=lf diff=css
+*.scss          text eol=lf diff=css
+*.sass          text eol=lf
+*.df            text eol=lf
+*.htm           text eol=lf diff=html
+*.html          text eol=lf diff=html
+*.js            text eol=lf
+*.mjs           text eol=lf
+*.cjs           text eol=lf
+*.jsp           text eol=lf
+*.jspf          text eol=lf
+*.jspx          text eol=lf
+*.properties    text eol=lf
+*.tld           text eol=lf
+*.tag           text eol=lf
+*.tagx          text eol=lf
+*.xml           text eol=lf
+
+# These files are binary and should be left untouched
+# (binary is a macro for -text -diff)
+*.class         binary
+*.dll           binary
+*.ear           binary
+*.jar           binary
+*.so            binary
+*.war           binary
+*.jks           binary
+
+# Common build-tool wrapper scripts ('.cmd' versions are handled by 'Common.gitattributes')
+mvnw            text eol=lf
+gradlew         text eol=lf
+
+# These are explicitly windows files and should use crlf
+*.bat           text eol=crlf
+
+# Apply override to all files in the directory
+*.md linguist-detectable

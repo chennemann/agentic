@@ -1,0 +1,77 @@
+listMessageToolCallByMessage:
+SELECT id, message_id, tool_name, title, subtitle, status, target, output_preview, error_message, session_id, started_at, completed_at
+FROM message_tool_call
+WHERE message_id = ?
+ORDER BY COALESCE(started_at, completed_at, 0) ASC, id ASC;
+
+listMessageToolCallBySession:
+SELECT
+  tc.id,
+  tc.message_id,
+  tc.tool_name,
+  tc.title,
+  tc.subtitle,
+  tc.status,
+  tc.target,
+  tc.output_preview,
+  tc.error_message,
+  tc.session_id,
+  tc.started_at,
+  tc.completed_at
+FROM message_tool_call AS tc
+INNER JOIN message AS m ON m.id = tc.message_id
+WHERE m.server_url = ? AND m.session_id = ?
+ORDER BY m.sort_key ASC, m.step_index ASC, COALESCE(tc.started_at, tc.completed_at, 0) ASC, tc.id ASC;
+
+upsertMessageToolCall:
+INSERT INTO message_tool_call(
+  id,
+  message_id,
+  tool_name,
+  title,
+  subtitle,
+  status,
+  target,
+  output_preview,
+  error_message,
+  session_id,
+  started_at,
+  completed_at
+)
+VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+ON CONFLICT(id) DO UPDATE SET
+  message_id = excluded.message_id,
+  tool_name = excluded.tool_name,
+  title = excluded.title,
+  subtitle = excluded.subtitle,
+  status = excluded.status,
+  target = excluded.target,
+  output_preview = excluded.output_preview,
+  error_message = excluded.error_message,
+  session_id = excluded.session_id,
+  started_at = excluded.started_at,
+  completed_at = excluded.completed_at;
+
+deleteMessageToolCallById:
+DELETE FROM message_tool_call
+WHERE id = ?;
+
+deleteMessageToolCallByMessage:
+DELETE FROM message_tool_call
+WHERE message_id = ?;
+
+deleteMessageToolCallByRemote:
+DELETE FROM message_tool_call
+WHERE message_id IN (
+  SELECT id
+  FROM message
+  WHERE server_url = ? AND session_id = ? AND remote_id = ?
+);
+
+deleteMessageToolCallBySession:
+DELETE FROM message_tool_call
+WHERE message_id IN (
+  SELECT id
+  FROM message
+  WHERE server_url = ? AND session_id = ?
+);

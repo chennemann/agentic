@@ -1,0 +1,22 @@
+CREATE TABLE session_cache (
+  server_url TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  project_id TEXT,
+  directory TEXT NOT NULL,
+  title TEXT NOT NULL,
+  version TEXT NOT NULL,
+  last_opened_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (server_url, session_id)
+);
+
+CREATE TABLE message_cache (
+  server_url TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  role TEXT NOT NULL,
+  text TEXT NOT NULL,
+  sort_key TEXT NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (server_url, session_id, message_id)
+);
