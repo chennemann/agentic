@@ -6,18 +6,22 @@ import de.chennemann.opencode.mobile.di.DispatcherProvider
 import de.chennemann.opencode.mobile.domain.session.ProjectState
 import de.chennemann.opencode.mobile.domain.session.ServerState
 import de.chennemann.opencode.mobile.domain.session.SessionServiceApi
+import de.chennemann.opencode.mobile.domain.v2.projects.LocalProjectInfo
+import de.chennemann.opencode.mobile.domain.v2.projects.ProjectService as ProjectServiceV2
 import de.chennemann.opencode.mobile.navigation.LogsRoute
 import de.chennemann.opencode.mobile.navigation.NavEvent
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 
 class ManageViewModel(
     private val service: SessionServiceApi,
+    private val projectService: ProjectServiceV2,
     private val dispatchers: DispatcherProvider,
 ) : ViewModel() {
     private val lane = dispatchers.default.limitedParallelism(1)
@@ -25,15 +29,14 @@ class ManageViewModel(
 
     val nav = navFlow.asSharedFlow()
 
-    val state: StateFlow<ManageUiState> = service.state
-        .map { global ->
-            val projects = global.projects.map(::displayProject)
+    val state: StateFlow<ManageUiState> = combine(service.state, projectService.observeProjects()) { global, projects ->
+            val displayed = projects.map(::displayProject)
             ManageUiState(
                 url = global.url,
                 discovered = global.discovered,
                 status = global.status,
                 loadingProjects = global.loadingProjects,
-                projects = projects,
+                projects = displayed,
                 selectedProject = global.selectedProject,
                 message = global.message,
             )
@@ -74,7 +77,9 @@ class ManageViewModel(
             }
 
             is ManageEvent.ProjectFavoriteToggled -> {
-                service.toggleProjectFavorite(event.worktree)
+                viewModelScope.launch(lane) {
+                    projectService.togglePinnedById(event.projectId)
+                }
             }
 
             is ManageEvent.ProjectRemoved -> {
@@ -91,8 +96,14 @@ class ManageViewModel(
         }
     }
 
-    private fun displayProject(project: ProjectState): ProjectState {
-        return project.copy(name = folderName(project.worktree))
+    private fun displayProject(project: LocalProjectInfo): ProjectState {
+        return ProjectState(
+            id = project.id,
+            worktree = project.path,
+            name = folderName(project.path),
+            sandboxes = emptyList(),
+            favorite = project.pinned,
+        )
     }
 
     private fun folderName(path: String): String {

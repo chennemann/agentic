@@ -21,7 +21,7 @@ sealed interface ManageEvent {
 
     data class ProjectSelected(val worktree: String) : ManageEvent
 
-    data class ProjectFavoriteToggled(val worktree: String) : ManageEvent
+    data class ProjectFavoriteToggled(val projectId: String) : ManageEvent
 
     data class ProjectRemoved(val worktree: String) : ManageEvent
 

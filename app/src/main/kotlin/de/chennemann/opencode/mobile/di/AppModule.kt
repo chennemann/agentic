@@ -37,11 +37,13 @@ import de.chennemann.opencode.mobile.domain.session.SessionStreamCoordinator
 import de.chennemann.opencode.mobile.domain.session.StreamGateway
 import de.chennemann.opencode.mobile.domain.v2.DefaultSynchronizationService
 import de.chennemann.opencode.mobile.domain.v2.projects.ProjectRepository
+import de.chennemann.opencode.mobile.domain.v2.projects.DefaultProjectService
 import de.chennemann.opencode.mobile.domain.v2.session.SessionRepository
 import de.chennemann.opencode.mobile.domain.v2.session.DefaultSessionService
 import de.chennemann.opencode.mobile.domain.v2.servers.DefaultServerService
 import de.chennemann.opencode.mobile.domain.v2.message.MessageRepository as MessageRepositoryV2
 import de.chennemann.opencode.mobile.domain.v2.message.MessageService as MessageServiceV2
+import de.chennemann.opencode.mobile.domain.v2.projects.ProjectService as ProjectServiceV2
 import de.chennemann.opencode.mobile.domain.v2.session.SessionService as SessionServiceV2
 import de.chennemann.opencode.mobile.domain.v2.servers.ServerRepository as ServerRepositoryV2
 import de.chennemann.opencode.mobile.domain.v2.servers.ServerService as ServerServiceV2
@@ -107,6 +109,7 @@ val appModule = module {
     single<MessageRepositoryV2> { SqlDelightMessageRepository(get(), get()) }
     single<SynchronizationServiceV2> { DefaultSynchronizationService(get(), get(), get(), get()) }
     single<ServerServiceV2> { DefaultServerService(get(), get(), get()) }
+    single<ProjectServiceV2> { DefaultProjectService(get()) }
     single<SessionServiceV2> { DefaultSessionService(get()) }
     single<MessageServiceV2> { DefaultMessageService(get()) }
     single<ConnectionGateway> { get<ServerRepository>() }
@@ -129,6 +132,6 @@ val appModule = module {
     single<SessionServiceApi> { get<SessionService>() }
     viewModel { ConversationViewModel(get(), get()) }
     viewModel { (projectKey: String) -> SessionSelectionViewModel(projectKey, get(), get(), get()) }
-    viewModel { ManageViewModel(get(), get()) }
+    viewModel { ManageViewModel(get(), get(), get()) }
     viewModel { LogsViewModel(get(), get()) }
 }

@@ -209,7 +209,7 @@ private fun ProjectListCard(state: ManageUiState, onEvent: (ManageEvent) -> Unit
                                 selected = workspaceId(state.selectedProject.orEmpty()) == workspaceId(project.worktree),
                                 compact = true,
                                 modifier = Modifier.weight(1f),
-                                onFavoriteToggle = { onEvent(ManageEvent.ProjectFavoriteToggled(project.worktree)) },
+                                onFavoriteToggle = { onEvent(ManageEvent.ProjectFavoriteToggled(project.id)) },
                                 onSelect = { onEvent(ManageEvent.ProjectSelected(project.worktree)) },
                             )
                         }
@@ -272,7 +272,7 @@ private fun ProjectListCard(state: ManageUiState, onEvent: (ManageEvent) -> Unit
                     selected = workspaceId(state.selectedProject.orEmpty()) == workspaceId(it.worktree),
                     compact = false,
                     modifier = Modifier.fillMaxWidth(),
-                    onFavoriteToggle = { onEvent(ManageEvent.ProjectFavoriteToggled(it.worktree)) },
+                    onFavoriteToggle = { onEvent(ManageEvent.ProjectFavoriteToggled(it.id)) },
                     onSelect = { onEvent(ManageEvent.ProjectSelected(it.worktree)) },
                 )
             }
