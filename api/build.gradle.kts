@@ -5,7 +5,7 @@ plugins {
 }
 
 kotlin {
-    jvmToolchain(11)
+    jvmToolchain(25)
     sourceSets {
         main {
             kotlin.srcDir(layout.buildDirectory.dir("generated/openapi/src/main/kotlin"))

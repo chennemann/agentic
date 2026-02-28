@@ -17,8 +17,8 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_25
+        targetCompatibility = JavaVersion.VERSION_25
     }
 
     buildFeatures {
@@ -33,7 +33,7 @@ android {
 }
 
 kotlin {
-    jvmToolchain(11)
+    jvmToolchain(25)
 }
 
 dependencies {
