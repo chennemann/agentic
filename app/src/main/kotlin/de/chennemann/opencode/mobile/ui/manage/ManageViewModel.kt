@@ -9,12 +9,11 @@ import de.chennemann.opencode.mobile.domain.session.SessionServiceApi
 import de.chennemann.opencode.mobile.navigation.LogsRoute
 import de.chennemann.opencode.mobile.navigation.NavEvent
 import kotlinx.coroutines.flow.MutableSharedFlow
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
 class ManageViewModel(
@@ -22,38 +21,23 @@ class ManageViewModel(
     private val dispatchers: DispatcherProvider,
 ) : ViewModel() {
     private val lane = dispatchers.default.limitedParallelism(1)
-
-    private data class LocalState(
-        val projectPath: String,
-        val projectQuery: String,
-    )
-
-    private val local = MutableStateFlow(
-        LocalState(
-            projectPath = service.state.value.selectedProject.orEmpty(),
-            projectQuery = "",
-        )
-    )
     private val navFlow = MutableSharedFlow<NavEvent>(extraBufferCapacity = 1)
 
     val nav = navFlow.asSharedFlow()
 
-    val state: StateFlow<ManageUiState> = combine(service.state, local) { global, local ->
-        val listed = global.projects.map(::displayProject)
-        val projects = filterProjects(listed, local.projectQuery)
-        ManageUiState(
-            url = global.url,
-            discovered = global.discovered,
-            status = global.status,
-            projectPath = local.projectPath,
-            projectQuery = local.projectQuery,
-            loadingProjects = global.loadingProjects,
-            favoriteProjects = projects.filter { it.favorite },
-            otherProjects = projects.filterNot { it.favorite },
-            selectedProject = global.selectedProject,
-            message = global.message,
-        )
-    }
+    val state: StateFlow<ManageUiState> = service.state
+        .map { global ->
+            val projects = global.projects.map(::displayProject)
+            ManageUiState(
+                url = global.url,
+                discovered = global.discovered,
+                status = global.status,
+                loadingProjects = global.loadingProjects,
+                projects = projects,
+                selectedProject = global.selectedProject,
+                message = global.message,
+            )
+        }
         .flowOn(lane)
         .stateIn(
         scope = viewModelScope,
@@ -62,11 +46,8 @@ class ManageViewModel(
             url = service.state.value.url,
             discovered = service.state.value.discovered,
             status = ServerState.Idle,
-            projectPath = service.state.value.selectedProject.orEmpty(),
-            projectQuery = "",
             loadingProjects = false,
-            favoriteProjects = emptyList(),
-            otherProjects = emptyList(),
+            projects = emptyList(),
             selectedProject = null,
             message = null,
         ),
@@ -82,27 +63,13 @@ class ManageViewModel(
                 service.updateUrl(event.url)
                 service.refresh()
             }
-            is ManageEvent.ProjectPathChanged -> {
-                local.value = local.value.copy(projectPath = event.value)
-            }
-
-            is ManageEvent.ProjectQueryChanged -> {
-                local.value = local.value.copy(projectQuery = event.value)
-            }
-
-            ManageEvent.LoadProjectRequested -> {
-                val worktree = local.value.projectPath.trim()
+            is ManageEvent.LoadProjectRequested -> {
+                val worktree = event.worktree.trim()
                 if (worktree.isBlank()) return
                 service.selectProject(worktree)
-                local.value = local.value.copy(
-                    projectPath = worktree,
-                )
             }
 
             is ManageEvent.ProjectSelected -> {
-                local.value = local.value.copy(
-                    projectPath = event.worktree,
-                )
                 service.selectProject(event.worktree)
             }
 
@@ -121,14 +88,6 @@ class ManageViewModel(
             ManageEvent.BackRequested -> {
                 navFlow.tryEmit(NavEvent.NavigateBack)
             }
-        }
-    }
-
-    private fun filterProjects(projects: List<ProjectState>, query: String): List<ProjectState> {
-        val value = query.trim().lowercase()
-        if (value.isBlank()) return projects
-        return projects.filter {
-            it.name.lowercase().contains(value) || it.worktree.lowercase().contains(value)
         }
     }
 

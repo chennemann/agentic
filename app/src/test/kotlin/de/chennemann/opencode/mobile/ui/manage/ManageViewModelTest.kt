@@ -53,8 +53,8 @@ class ManageViewModelTest {
 
         val value = viewModel.state.value
         assertEquals(1, service.startCalls)
-        assertEquals(listOf("main"), value.favoriteProjects.map { it.name })
-        assertEquals(listOf("other"), value.otherProjects.map { it.name })
+        assertEquals(listOf("main", "other"), value.projects.map { it.name })
+        assertEquals(listOf(true, false), value.projects.map { it.favorite })
         assertEquals("/repo/main", value.selectedProject)
         collect.cancel()
     }
@@ -83,32 +83,30 @@ class ManageViewModelTest {
     }
 
     @Test
-    fun filtersProjectsByQueryFromNameAndPath() = runTest(TestCoroutineScheduler()) {
+    fun loadsProjectFromRequestedPath() = runTest(TestCoroutineScheduler()) {
         val main = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
         val viewModel = ManageViewModel(service, lanes(main, worker))
-        val collect = backgroundScope.launch(worker) { viewModel.state.collect {} }
-        service.state.value = state(
-            projects = listOf(
-                ProjectState(id = "p1", worktree = "/repo/alpha", name = "Alpha", favorite = true),
-                ProjectState(id = "p2", worktree = "/workspaces/beta", name = "Beta", favorite = false),
-            ),
-            selectedProject = "/repo/alpha",
-        )
+        viewModel.onEvent(ManageEvent.LoadProjectRequested(" /repo/alpha "))
         advanceUntilIdle()
 
-        viewModel.onEvent(ManageEvent.ProjectQueryChanged("  ALPha  "))
-        advanceUntilIdle()
-        assertEquals(listOf("alpha"), viewModel.state.value.favoriteProjects.map { it.name })
-        assertEquals(emptyList<ProjectState>(), viewModel.state.value.otherProjects)
+        assertEquals(listOf("/repo/alpha"), service.selectRequests)
+    }
 
-        viewModel.onEvent(ManageEvent.ProjectQueryChanged("WORKSPACES"))
+    @Test
+    fun ignoresBlankLoadProjectRequest() = runTest(TestCoroutineScheduler()) {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val worker = StandardTestDispatcher(testScheduler)
+        val service = StubSessionService()
+        val viewModel = ManageViewModel(service, lanes(main, worker))
+
+        viewModel.onEvent(ManageEvent.LoadProjectRequested("   "))
         advanceUntilIdle()
-        assertEquals(emptyList<ProjectState>(), viewModel.state.value.favoriteProjects)
-        assertEquals(listOf("beta"), viewModel.state.value.otherProjects.map { it.name })
-        collect.cancel()
+
+        assertEquals(emptyList<String>(), service.selectRequests)
     }
 
     @Test
@@ -221,6 +219,7 @@ private class StubSessionService : SessionServiceApi {
     )
     var startCalls = 0
     var refreshCalls = 0
+    val selectRequests = mutableListOf<String>()
     val removeRequests = mutableListOf<String>()
     val urls = mutableListOf<String>()
 
@@ -238,7 +237,9 @@ private class StubSessionService : SessionServiceApi {
         refreshCalls += 1
     }
 
-    override fun selectProject(worktree: String) = Unit
+    override fun selectProject(worktree: String) {
+        selectRequests += worktree
+    }
 
     override fun toggleProjectFavorite(worktree: String) = Unit
 

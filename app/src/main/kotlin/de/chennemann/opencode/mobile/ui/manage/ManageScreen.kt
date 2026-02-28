@@ -98,30 +98,20 @@ fun ManageScreen(state: ManageUiState, onEvent: (ManageEvent) -> Unit) {
 
 @Composable
 private fun ProjectListCard(state: ManageUiState, onEvent: (ManageEvent) -> Unit) {
-    var filterOpen by remember { mutableStateOf(state.projectQuery.isNotBlank()) }
+    var filterOpen by remember { mutableStateOf(false) }
     var pathOpen by remember { mutableStateOf(false) }
     var projectsExpanded by remember { mutableStateOf(false) }
-    var query by remember { mutableStateOf(TextFieldValue(state.projectQuery)) }
-    var path by remember { mutableStateOf(TextFieldValue(state.projectPath)) }
+    var query by remember { mutableStateOf(TextFieldValue("")) }
+    var path by remember { mutableStateOf(TextFieldValue(state.selectedProject.orEmpty())) }
+    val projects = filterProjects(state.projects, query.text)
+    val favoriteProjects = projects.filter { it.favorite }
 
-    LaunchedEffect(state.projectQuery) {
-        if (state.projectQuery.isBlank()) return@LaunchedEffect
-        filterOpen = true
-    }
-
-    LaunchedEffect(state.projectQuery) {
-        if (state.projectQuery == query.text) return@LaunchedEffect
-        query = TextFieldValue(
-            text = state.projectQuery,
-            selection = TextRange(state.projectQuery.length),
-        )
-    }
-
-    LaunchedEffect(state.projectPath) {
-        if (state.projectPath == path.text) return@LaunchedEffect
+    LaunchedEffect(state.selectedProject) {
+        val selected = state.selectedProject.orEmpty()
+        if (selected == path.text) return@LaunchedEffect
         path = TextFieldValue(
-            text = state.projectPath,
-            selection = TextRange(state.projectPath.length),
+            text = selected,
+            selection = TextRange(selected.length),
         )
     }
 
@@ -170,7 +160,6 @@ private fun ProjectListCard(state: ManageUiState, onEvent: (ManageEvent) -> Unit
                     value = query,
                     onValueChange = {
                         query = it
-                        onEvent(ManageEvent.ProjectQueryChanged(it.text))
                     },
                     label = { Text("Search projects") },
                     singleLine = true,
@@ -184,7 +173,6 @@ private fun ProjectListCard(state: ManageUiState, onEvent: (ManageEvent) -> Unit
                         value = path,
                         onValueChange = {
                             path = it
-                            onEvent(ManageEvent.ProjectPathChanged(it.text))
                         },
                         label = { Text("Open project path") },
                         singleLine = true,
@@ -192,10 +180,7 @@ private fun ProjectListCard(state: ManageUiState, onEvent: (ManageEvent) -> Unit
                     )
                     Button(
                         onClick = {
-                            if (state.projectPath != path.text) {
-                                onEvent(ManageEvent.ProjectPathChanged(path.text))
-                            }
-                            onEvent(ManageEvent.LoadProjectRequested)
+                            onEvent(ManageEvent.LoadProjectRequested(path.text))
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
@@ -204,7 +189,7 @@ private fun ProjectListCard(state: ManageUiState, onEvent: (ManageEvent) -> Unit
                 }
             }
 
-            if (state.favoriteProjects.isEmpty() && state.otherProjects.isEmpty()) {
+            if (projects.isEmpty()) {
                 Text(
                     text = if (state.loadingProjects) "Loading projects..." else "No projects found",
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -212,8 +197,8 @@ private fun ProjectListCard(state: ManageUiState, onEvent: (ManageEvent) -> Unit
                 return@Column
             }
 
-            if (state.favoriteProjects.isNotEmpty()) {
-                state.favoriteProjects.chunked(2).forEach { row ->
+            if (favoriteProjects.isNotEmpty()) {
+                favoriteProjects.chunked(2).forEach { row ->
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -236,23 +221,10 @@ private fun ProjectListCard(state: ManageUiState, onEvent: (ManageEvent) -> Unit
             }
 
             val removable = state.selectedProject?.takeIf { selected ->
-                (state.favoriteProjects + state.otherProjects)
-                    .any { workspaceId(it.worktree) == workspaceId(selected) }
+                projects.any { workspaceId(it.worktree) == workspaceId(selected) }
             }
 
-            if (state.otherProjects.isEmpty()) {
-                if (removable != null) {
-                    OutlinedButton(
-                        onClick = { onEvent(ManageEvent.ProjectRemoved(removable)) },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("Remove selected project")
-                    }
-                }
-                return@Column
-            }
-
-            val count = state.otherProjects.size
+            val count = projects.size
             val suffix = if (count == 1) "project" else "projects"
             Row(
                 modifier = Modifier
@@ -275,9 +247,9 @@ private fun ProjectListCard(state: ManageUiState, onEvent: (ManageEvent) -> Unit
                 Icon(
                     imageVector = if (projectsExpanded) Icons.ChevronUp else Icons.ChevronDown,
                     contentDescription = if (projectsExpanded) {
-                        "Collapse other projects"
+                        "Collapse projects"
                     } else {
-                        "Expand other projects"
+                        "Expand projects"
                     },
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -294,7 +266,7 @@ private fun ProjectListCard(state: ManageUiState, onEvent: (ManageEvent) -> Unit
                 return@Column
             }
 
-            state.otherProjects.forEach {
+            projects.forEach {
                 ProjectCard(
                     project = it,
                     selected = workspaceId(state.selectedProject.orEmpty()) == workspaceId(it.worktree),
@@ -383,4 +355,12 @@ private fun workspaceId(path: String): String {
     val value = path.trimEnd('/', '\\')
     if (value.isBlank()) return path
     return value
+}
+
+private fun filterProjects(projects: List<ProjectState>, query: String): List<ProjectState> {
+    val value = query.trim().lowercase()
+    if (value.isBlank()) return projects
+    return projects.filter {
+        it.name.lowercase().contains(value) || it.worktree.lowercase().contains(value)
+    }
 }

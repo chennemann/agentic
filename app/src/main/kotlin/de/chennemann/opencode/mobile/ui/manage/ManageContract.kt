@@ -7,11 +7,8 @@ data class ManageUiState(
     val url: String,
     val discovered: String?,
     val status: ServerState,
-    val projectPath: String,
-    val projectQuery: String,
     val loadingProjects: Boolean,
-    val favoriteProjects: List<ProjectState>,
-    val otherProjects: List<ProjectState>,
+    val projects: List<ProjectState>,
     val selectedProject: String?,
     val message: String?,
 )
@@ -20,11 +17,7 @@ sealed interface ManageEvent {
 
     data class Connect(val url: String) : ManageEvent
 
-    data class ProjectPathChanged(val value: String) : ManageEvent
-
-    data class ProjectQueryChanged(val value: String) : ManageEvent
-
-    data object LoadProjectRequested : ManageEvent
+    data class LoadProjectRequested(val worktree: String) : ManageEvent
 
     data class ProjectSelected(val worktree: String) : ManageEvent
 
