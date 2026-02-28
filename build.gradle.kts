@@ -18,7 +18,7 @@ tasks.register("createBaselineTag") {
 
     doLast {
         val tagsOutput = ByteArrayOutputStream()
-        exec {
+        project.exec {
             commandLine("git", "tag", "--list", "v*")
             standardOutput = tagsOutput
         }
@@ -35,7 +35,7 @@ tasks.register("createBaselineTag") {
         val tagName = "v$nextMajor"
 
         val existingTag = ByteArrayOutputStream()
-        exec {
+        project.exec {
             commandLine("git", "tag", "--list", tagName)
             standardOutput = existingTag
         }
@@ -44,7 +44,7 @@ tasks.register("createBaselineTag") {
             throw GradleException("Tag $tagName already exists.")
         }
 
-        exec {
+        project.exec {
             commandLine("git", "tag", "-a", tagName, "-m", "Baseline $tagName")
         }
 
