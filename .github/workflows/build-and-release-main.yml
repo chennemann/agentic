@@ -72,17 +72,13 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           set -euo pipefail
 
-          keystore_b64="${KEYSTORE_BASE64:-${ANDROID_KEYSTORE_BASE64:-}}"
-          keystore_password="${KEYSTORE_PASSWORD:-${ANDROID_KEYSTORE_PASSWORD:-}}"
-          key_alias="${KEY_ALIAS:-${ANDROID_KEY_ALIAS:-}}"
-          key_password="${KEY_PASSWORD:-${ANDROID_KEY_PASSWORD:-}}"
+          keystore_b64="${KEYSTORE_BASE64}"
+          keystore_password="${KEYSTORE_PASSWORD}"
+          key_alias="${KEY_ALIAS}"
+          key_password="${KEY_PASSWORD}"
 
           if [ -z "${keystore_b64}" ] || [ -z "${keystore_password}" ] || [ -z "${key_alias}" ] || [ -z "${key_password}" ]; then
             echo "Missing Android signing secrets. Configure KEYSTORE_BASE64, KEYSTORE_PASSWORD, KEY_ALIAS, KEY_PASSWORD." >&2
@@ -92,16 +88,30 @@ jobs:
           keystore_path="${RUNNER_TEMP}/release.keystore"
           echo "${keystore_b64}" | base64 --decode > "${keystore_path}"
 
+          # Fail fast if the keystore, alias, or passwords are invalid.
+          keytool -list \
+            -keystore "${keystore_path}" \
+            -storepass "${keystore_password}" \
+            -alias "${key_alias}" >/dev/null
+          keytool -importkeystore \
+            -srckeystore "${keystore_path}" \
+            -srcstorepass "${keystore_password}" \
+            -srcalias "${key_alias}" \
+            -srckeypass "${key_password}" \
+            -destkeystore "${RUNNER_TEMP}/signing-check.jks" \
+            -deststorepass "${keystore_password}" \
+            -destkeypass "${key_password}" \
+            -destalias "${key_alias}" \
+            -noprompt >/dev/null
+          rm -f "${RUNNER_TEMP}/signing-check.jks"
+
           echo "ANDROID_SIGNING_KEYSTORE_PATH=${keystore_path}" >> "${GITHUB_ENV}"
           echo "ANDROID_SIGNING_KEYSTORE_PASSWORD=${keystore_password}" >> "${GITHUB_ENV}"
           echo "ANDROID_SIGNING_KEY_ALIAS=${key_alias}" >> "${GITHUB_ENV}"
           echo "ANDROID_SIGNING_KEY_PASSWORD=${key_password}" >> "${GITHUB_ENV}"
 
-      - name: Build project
-        run: ./gradlew build -PappVersionName=${{ steps.version.outputs.version }} -PappVersionCode=${{ steps.version.outputs.total_commits }}
-
       - name: Build signed release APK
-        run: ./gradlew assembleRelease -PappVersionName=${{ steps.version.outputs.version }} -PappVersionCode=${{ steps.version.outputs.total_commits }}
+        run: ./gradlew --build-cache --parallel --configuration-cache :app:assembleRelease -PappVersionName=${{ steps.version.outputs.version }} -PappVersionCode=${{ steps.version.outputs.total_commits }}
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
