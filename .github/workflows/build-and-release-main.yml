@@ -88,22 +88,34 @@ jobs:
           keystore_path="${RUNNER_TEMP}/release.keystore"
           echo "${keystore_b64}" | base64 --decode > "${keystore_path}"
 
-          # Fail fast if the keystore, alias, or passwords are invalid.
+          # Fail fast if the keystore or alias is invalid.
           keytool -list \
             -keystore "${keystore_path}" \
             -storepass "${keystore_password}" \
             -alias "${key_alias}" >/dev/null
-          keytool -importkeystore \
-            -srckeystore "${keystore_path}" \
-            -srcstorepass "${keystore_password}" \
-            -srcalias "${key_alias}" \
-            -srckeypass "${key_password}" \
-            -destkeystore "${RUNNER_TEMP}/signing-check.jks" \
-            -deststorepass "${keystore_password}" \
-            -destkeypass "${key_password}" \
-            -destalias "${key_alias}" \
-            -noprompt >/dev/null
-          rm -f "${RUNNER_TEMP}/signing-check.jks"
+
+          # Validate the private key password; for PKCS12 stores it is often the store password.
+          certreq_file="${RUNNER_TEMP}/signing-check.csr"
+          if ! keytool -certreq \
+            -keystore "${keystore_path}" \
+            -storepass "${keystore_password}" \
+            -alias "${key_alias}" \
+            -keypass "${key_password}" \
+            -file "${certreq_file}" >/dev/null 2>&1; then
+            if [ "${key_password}" != "${keystore_password}" ] && keytool -certreq \
+              -keystore "${keystore_path}" \
+              -storepass "${keystore_password}" \
+              -alias "${key_alias}" \
+              -keypass "${keystore_password}" \
+              -file "${certreq_file}" >/dev/null 2>&1; then
+              echo "KEY_PASSWORD did not unlock alias ${key_alias}; falling back to KEYSTORE_PASSWORD."
+              key_password="${keystore_password}"
+            else
+              echo "Invalid key password for alias ${key_alias}. Check KEY_PASSWORD (or set it equal to KEYSTORE_PASSWORD for PKCS12)." >&2
+              exit 1
+            fi
+          fi
+          rm -f "${certreq_file}"
 
           echo "ANDROID_SIGNING_KEYSTORE_PATH=${keystore_path}" >> "${GITHUB_ENV}"
           echo "ANDROID_SIGNING_KEYSTORE_PASSWORD=${keystore_password}" >> "${GITHUB_ENV}"
