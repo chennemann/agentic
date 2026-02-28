@@ -35,12 +35,6 @@ jobs:
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 
-      - name: Build project
-        run: ./gradlew build
-
-      - name: Build debug APK
-        run: ./gradlew assembleDebug
-
       - name: Compute release version
         id: version
         shell: bash
@@ -49,6 +43,7 @@ jobs:
 
           git fetch --tags --force
           baseline_tag="$(git describe --tags --abbrev=0 --match "v[0-9]*" --exclude "v*.*" 2>/dev/null || true)"
+          total_commits="$(git rev-list --count HEAD)"
 
           if [ -z "${baseline_tag}" ]; then
             commits_since="$(git rev-list --count HEAD)"
@@ -67,7 +62,37 @@ jobs:
 
           echo "baseline_tag=${baseline_tag}" >> "${GITHUB_OUTPUT}"
           echo "commits_since=${commits_since}" >> "${GITHUB_OUTPUT}"
+          echo "total_commits=${total_commits}" >> "${GITHUB_OUTPUT}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Prepare release signing
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${ANDROID_KEYSTORE_BASE64}" ] || [ -z "${ANDROID_KEYSTORE_PASSWORD}" ] || [ -z "${ANDROID_KEY_ALIAS}" ] || [ -z "${ANDROID_KEY_PASSWORD}" ]; then
+            echo "Missing Android signing secrets. Configure ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS, ANDROID_KEY_PASSWORD." >&2
+            exit 1
+          fi
+
+          keystore_path="${RUNNER_TEMP}/release.keystore"
+          echo "${ANDROID_KEYSTORE_BASE64}" | base64 --decode > "${keystore_path}"
+
+          echo "ANDROID_SIGNING_KEYSTORE_PATH=${keystore_path}" >> "${GITHUB_ENV}"
+          echo "ANDROID_SIGNING_KEYSTORE_PASSWORD=${ANDROID_KEYSTORE_PASSWORD}" >> "${GITHUB_ENV}"
+          echo "ANDROID_SIGNING_KEY_ALIAS=${ANDROID_KEY_ALIAS}" >> "${GITHUB_ENV}"
+          echo "ANDROID_SIGNING_KEY_PASSWORD=${ANDROID_KEY_PASSWORD}" >> "${GITHUB_ENV}"
+
+      - name: Build project
+        run: ./gradlew build -PappVersionName=${{ steps.version.outputs.version }} -PappVersionCode=${{ steps.version.outputs.total_commits }}
+
+      - name: Build signed release APK
+        run: ./gradlew assembleRelease -PappVersionName=${{ steps.version.outputs.version }} -PappVersionCode=${{ steps.version.outputs.total_commits }}
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
@@ -80,6 +105,7 @@ jobs:
             Auto-generated from push to main.
             Baseline tag: ${{ steps.version.outputs.baseline_tag || 'none' }}
             Commits since baseline: ${{ steps.version.outputs.commits_since }}
+            Total commits: ${{ steps.version.outputs.total_commits }}
           files: |
-            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
           fail_on_unmatched_files: false

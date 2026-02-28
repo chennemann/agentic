@@ -6,6 +6,21 @@ plugins {
     alias(libs.plugins.sqldelight)
 }
 
+val appVersionName = (findProperty("appVersionName") as String?) ?: "0.0.0"
+val appVersionCode = ((findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 1).coerceAtLeast(1)
+val updateRepoOwner = (findProperty("updateRepoOwner") as String?) ?: "chennemann"
+val updateRepoName = (findProperty("updateRepoName") as String?) ?: "agentic"
+val signingKeystorePath = System.getenv("ANDROID_SIGNING_KEYSTORE_PATH")
+val signingKeystorePassword = System.getenv("ANDROID_SIGNING_KEYSTORE_PASSWORD")
+val signingKeyAlias = System.getenv("ANDROID_SIGNING_KEY_ALIAS")
+val signingKeyPassword = System.getenv("ANDROID_SIGNING_KEY_PASSWORD")
+val hasReleaseSigning = listOf(
+    signingKeystorePath,
+    signingKeystorePassword,
+    signingKeyAlias,
+    signingKeyPassword,
+).all { !it.isNullOrBlank() }
+
 android {
     namespace = "de.chennemann.opencode.mobile"
     compileSdk = 36
@@ -14,11 +29,24 @@ android {
         applicationId = "de.chennemann.opencode.mobile"
         minSdk = 36
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = appVersionCode
+        versionName = appVersionName
+        buildConfigField("String", "UPDATE_REPO_OWNER", "\"$updateRepoOwner\"")
+        buildConfigField("String", "UPDATE_REPO_NAME", "\"$updateRepoName\"")
     }
 
     testBuildType = "uitest"
+
+    if (hasReleaseSigning) {
+        signingConfigs {
+            create("release") {
+                storeFile = file(checkNotNull(signingKeystorePath))
+                storePassword = checkNotNull(signingKeystorePassword)
+                keyAlias = checkNotNull(signingKeyAlias)
+                keyPassword = checkNotNull(signingKeyPassword)
+            }
+        }
+    }
 
     buildTypes {
         create("uitest") {
@@ -33,6 +61,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
+            if (hasReleaseSigning) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {
@@ -41,6 +72,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -70,6 +102,8 @@ dependencies {
     implementation(libs.ktor.client.okhttp)
     implementation(libs.androidx.navigation3.runtime)
     implementation(libs.androidx.navigation3.ui)
+    implementation(libs.kmp.app.updater.core)
+    implementation(libs.kmp.app.updater.compose.ui)
     implementation(libs.sqldelight.android.driver)
     implementation(libs.sqldelight.coroutines.extensions)
     testImplementation(libs.junit.jupiter.api)

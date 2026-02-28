@@ -20,6 +20,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -27,10 +28,15 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.pavi2410.appupdater.AppUpdater
+import com.pavi2410.appupdater.github
+import com.pavi2410.appupdater.ui.UpdateCard
+import de.chennemann.opencode.mobile.BuildConfig
 import de.chennemann.opencode.mobile.domain.session.ProjectState
 import de.chennemann.opencode.mobile.icons.Icons
 import de.chennemann.opencode.mobile.icons.Add
@@ -56,6 +62,9 @@ fun ManageScreen(state: ManageUiState, onEvent: (ManageEvent) -> Unit) {
         }
         item("server") {
             ServerCard(state.url, state.discovered, state.status, state.message, onEvent)
+        }
+        item("updates") {
+            UpdateSectionCard()
         }
         item("projects") {
             ProjectListCard(state, onEvent)
@@ -92,6 +101,39 @@ fun ManageScreen(state: ManageUiState, onEvent: (ManageEvent) -> Unit) {
                     Text("Back")
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun UpdateSectionCard() {
+    val context = LocalContext.current
+    val updater = remember(context.applicationContext) {
+        AppUpdater.github(
+            context = context.applicationContext,
+            owner = BuildConfig.UPDATE_REPO_OWNER,
+            repo = BuildConfig.UPDATE_REPO_NAME,
+        )
+    }
+
+    DisposableEffect(updater) {
+        onDispose {
+            updater.close()
+        }
+    }
+
+    Card {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text("App Updates", style = MaterialTheme.typography.titleMedium)
+            Text(
+                text = "Checks releases from ${BuildConfig.UPDATE_REPO_OWNER}/${BuildConfig.UPDATE_REPO_NAME}.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            UpdateCard(updater = updater)
         }
     }
 }

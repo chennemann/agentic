@@ -19,6 +19,7 @@ coroutines = "1.10.1"
 ktlint = "14.0.1"
 navigation3 = "1.0.0"
 sqldelight = "2.2.1"
+kmpAppUpdater = "0.1.0"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -56,6 +57,8 @@ androidx-navigation3-ui = { group = "androidx.navigation3", name = "navigation3-
 sqldelight-android-driver = { group = "app.cash.sqldelight", name = "android-driver", version.ref = "sqldelight" }
 sqldelight-sqlite-driver = { group = "app.cash.sqldelight", name = "sqlite-driver", version.ref = "sqldelight" }
 sqldelight-coroutines-extensions = { group = "app.cash.sqldelight", name = "coroutines-extensions", version.ref = "sqldelight" }
+kmp-app-updater-core = { group = "com.pavi2410.kmp-app-updater", name = "core", version.ref = "kmpAppUpdater" }
+kmp-app-updater-compose-ui = { group = "com.pavi2410.kmp-app-updater", name = "compose-ui", version.ref = "kmpAppUpdater" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
