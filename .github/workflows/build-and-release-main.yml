@@ -29,6 +29,9 @@ jobs:
           java-version: "17"
           cache: gradle
 
+      - name: Prepare opencode submodule (sparse)
+        run: sh script/setup-opencode-submodule.sh
+
       - name: Make Gradle wrapper executable
         run: chmod +x ./gradlew
 

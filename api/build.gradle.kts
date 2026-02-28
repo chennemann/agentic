@@ -29,7 +29,7 @@ dependencies {
 }
 
 openApiGenerate {
-    inputSpec.set("$rootDir/../sdk/openapi.json")
+    inputSpec.set("$rootDir/third_party/opencode/packages/sdk/openapi.json")
     configFile.set("$rootDir/openapi/openapi-config.json")
     outputDir.set(layout.buildDirectory.dir("generated/openapi").get().asFile.path)
     globalProperties.set(

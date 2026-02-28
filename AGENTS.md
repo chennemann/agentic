@@ -31,6 +31,9 @@ adb logcat -d | grep -E "de\.chennemann\.opencode\.mobile|AndroidRuntime" # Chec
 # Releases
 ./gradlew createBaselineTag            # Create next manual baseline tag (v<major>) at HEAD; tag push remains manual
 
+# OpenAPI source
+sh script/setup-opencode-submodule.sh  # Initialize/update opencode submodule with sparse API/DTO checkout
+
 # Icons
 bun run mobile:add-icon --source lucide --name pin --target PinLucide  # Generate ImageVector icon into app icons pack
 

@@ -1,0 +1,4 @@
+[submodule "third_party/opencode"]
+	path = third_party/opencode
+	url = https://github.com/anomalyco/opencode.git
+	branch = dev
