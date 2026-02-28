@@ -28,6 +28,9 @@ adb logcat -d | grep -E "de\.chennemann\.opencode\.mobile|AndroidRuntime" # Chec
 # Testing
 ./gradlew clean test                   # Run unit tests
 
+# Releases
+./gradlew createBaselineTag            # Create next manual baseline tag (v<major>) at HEAD; tag push remains manual
+
 # Icons
 bun run mobile:add-icon --source lucide --name pin --target PinLucide  # Generate ImageVector icon into app icons pack
 
@@ -37,6 +40,11 @@ bun run mobile:add-icon --source lucide --name pin --target PinLucide  # Generat
 ```
 
 ## Critical Rules
+
+### Releases
+
+1. **Baseline tags are manual only** – Use `v<major>` tags (for example `v1`, `v2`)
+2. **CI release tags are automatic** – Workflow publishes `v<major>.<commits_since_baseline>`
 
 ### Architecture
 
