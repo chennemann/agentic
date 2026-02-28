@@ -93,12 +93,6 @@ val openApiFix by tasks.registering {
                     "package $1\n\nimport de.chennemann.opencode.mobile.api.models.FileStatus\n",
                 )
             }
-            if (file.name == "java.io.File.kt") {
-                val target = file.parentFile.resolve("FileStatus.kt")
-                target.writeText(text)
-                file.delete()
-                return@forEach
-            }
             file.writeText(text)
         }
     }
