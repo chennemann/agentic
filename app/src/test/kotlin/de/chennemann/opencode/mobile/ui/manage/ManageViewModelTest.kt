@@ -320,4 +320,8 @@ private class StubProjectService : ProjectServiceV2 {
         toggleRequests += projectId
         return true
     }
+
+    override suspend fun syncServerProjects(serverId: String, baseUrl: String): List<LocalProjectInfo> {
+        return emptyList()
+    }
 }
