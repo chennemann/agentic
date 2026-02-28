@@ -29,11 +29,14 @@ jobs:
           java-version: "17"
           cache: gradle
 
+      - name: Make Gradle wrapper executable
+        run: chmod +x ./gradlew
+
       - name: Build project
-        run: bash ./gradlew build
+        run: ./gradlew build
 
       - name: Build debug APK
-        run: bash ./gradlew assembleDebug
+        run: ./gradlew assembleDebug
 
       - name: Compute release version
         id: version
