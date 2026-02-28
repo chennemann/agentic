@@ -1,0 +1,79 @@
+name: Build And Release On Main
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+concurrency:
+  group: build-and-release-main
+  cancel-in-progress: false
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 11
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "11"
+          cache: gradle
+
+      - name: Build project
+        run: ./gradlew build
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Compute release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          git fetch --tags --force
+          baseline_tag="$(git describe --tags --abbrev=0 --match "v[0-9]*" --exclude "v*.*" 2>/dev/null || true)"
+
+          if [ -z "${baseline_tag}" ]; then
+            commits_since="$(git rev-list --count HEAD)"
+            version="v0.${commits_since}"
+          else
+            if [[ "${baseline_tag}" =~ ^v([0-9]+)$ ]]; then
+              major="${BASH_REMATCH[1]}"
+            else
+              echo "Baseline tag ${baseline_tag} is not in the expected v<major> format." >&2
+              exit 1
+            fi
+
+            commits_since="$(git rev-list --count "${baseline_tag}..HEAD")"
+            version="v${major}.${commits_since}"
+          fi
+
+          echo "baseline_tag=${baseline_tag}" >> "${GITHUB_OUTPUT}"
+          echo "commits_since=${commits_since}" >> "${GITHUB_OUTPUT}"
+          echo "version=${version}" >> "${GITHUB_OUTPUT}"
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: Release ${{ steps.version.outputs.version }}
+          target_commitish: ${{ github.sha }}
+          generate_release_notes: true
+          body: |
+            Auto-generated from push to main.
+            Baseline tag: ${{ steps.version.outputs.baseline_tag || 'none' }}
+            Commits since baseline: ${{ steps.version.outputs.commits_since }}
+          files: |
+            app/build/outputs/apk/debug/*.apk
+          fail_on_unmatched_files: false
