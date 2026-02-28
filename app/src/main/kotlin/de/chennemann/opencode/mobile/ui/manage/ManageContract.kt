@@ -2,18 +2,6 @@ package de.chennemann.opencode.mobile.ui.manage
 
 import de.chennemann.opencode.mobile.domain.session.ProjectState
 import de.chennemann.opencode.mobile.domain.session.ServerState
-import de.chennemann.opencode.mobile.domain.session.SessionState
-
-data class WorkspaceOptionState(
-    val directory: String,
-    val title: String,
-    val local: Boolean,
-)
-
-data class SessionSectionState(
-    val workspace: WorkspaceOptionState,
-    val sessions: List<SessionState>,
-)
 
 data class ManageUiState(
     val url: String,
@@ -25,13 +13,6 @@ data class ManageUiState(
     val favoriteProjects: List<ProjectState>,
     val otherProjects: List<ProjectState>,
     val selectedProject: String?,
-    val selectedProjectName: String?,
-    val sessionScroll: Long,
-    val loadingSessions: Boolean,
-    val workspaceOptions: List<WorkspaceOptionState>,
-    val selectedWorkspace: String?,
-    val selectedWorkspaceName: String?,
-    val sessionSections: List<SessionSectionState>,
     val message: String?,
 )
 
@@ -50,10 +31,6 @@ sealed interface ManageEvent {
     data class ProjectFavoriteToggled(val worktree: String) : ManageEvent
 
     data class ProjectRemoved(val worktree: String) : ManageEvent
-
-    data class WorkspaceSelected(val directory: String) : ManageEvent
-
-    data class SessionRequested(val sessionId: String?) : ManageEvent
 
     data object LogsRequested : ManageEvent
 

@@ -87,9 +87,9 @@ class AppNavHostTest {
         compose.onNodeWithContentDescription("Open settings").performClick()
         compose.onNodeWithText("Workspace Hub").assertIsDisplayed()
 
-        compose.onNodeWithText("Resume Session").performClick()
+        compose.onNodeWithText("Back").performClick()
         compose.onAllNodesWithText("Workspace Hub").assertCountEquals(0)
-        compose.onNodeWithText("Resume Session").assertIsDisplayed()
+        compose.onNodeWithText("Conversation Home").assertIsDisplayed()
     }
 }
 
