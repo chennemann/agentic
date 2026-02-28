@@ -30,10 +30,10 @@ jobs:
           cache: gradle
 
       - name: Build project
-        run: ./gradlew build
+        run: bash ./gradlew build
 
       - name: Build debug APK
-        run: ./gradlew assembleDebug
+        run: bash ./gradlew assembleDebug
 
       - name: Compute release version
         id: version
