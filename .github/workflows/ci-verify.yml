@@ -28,7 +28,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
-          cache: gradle
 
       - name: Prepare opencode submodule (sparse)
         run: sh script/setup-opencode-submodule.sh
@@ -37,7 +36,7 @@ jobs:
         run: chmod +x ./gradlew
 
       - name: Run ktlint checks
-        run: ./gradlew --build-cache --parallel --configuration-cache ktlintCheck
+        run: ./gradlew --parallel ktlintCheck
 
       - name: Run build and tests
-        run: ./gradlew --build-cache --parallel --configuration-cache build
+        run: ./gradlew --parallel build

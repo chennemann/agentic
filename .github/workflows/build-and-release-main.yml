@@ -27,7 +27,6 @@ jobs:
         with:
           distribution: temurin
           java-version: "25"
-          cache: gradle
 
       - name: Prepare opencode submodule (sparse)
         run: sh script/setup-opencode-submodule.sh
@@ -144,7 +143,7 @@ jobs:
           echo "ANDROID_SIGNING_KEY_ALIAS=$KEY_ALIAS" >> "${GITHUB_ENV}"
 
       - name: Build signed release APK
-        run: ./gradlew --build-cache --parallel --configuration-cache :app:assembleRelease -PappVersionName=${{ steps.version.outputs.version }} -PappVersionCode=${{ steps.version.outputs.total_commits }}
+        run: ./gradlew --parallel :app:assembleRelease -PappVersionName=${{ steps.version.outputs.version }} -PappVersionCode=${{ steps.version.outputs.total_commits }}
 
       - name: Create GitHub release
         uses: softprops/action-gh-release@v2
