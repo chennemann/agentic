@@ -11,6 +11,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -45,12 +46,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import de.chennemann.agentic.domain.session.ServerState
 import de.chennemann.agentic.domain.session.ToolCallState
@@ -74,6 +77,7 @@ fun AgentChatScreen(
     onEvent: (ConversationEvent) -> Unit,
 ) {
     val context = LocalContext.current
+    val density = LocalDensity.current
     val list = rememberLazyListState()
     val dragging by list.interactionSource.collectIsDraggedAsState()
     val scope = rememberCoroutineScope()
@@ -84,6 +88,7 @@ fun AgentChatScreen(
     var viewportBottom by remember { mutableIntStateOf(0) }
     val tools = remember { mutableStateMapOf<String, ToolPosition>() }
     val offset = if (state.canLoadMoreMessages || state.loadingMoreMessages) 1 else 0
+    val workspaceHubSwipeThresholdPx = with(density) { 96.dp.toPx() }
     val snack = remember { SnackbarHostState() }
     val turns = state.turns
 
@@ -183,6 +188,24 @@ fun AgentChatScreen(
                         verticalArrangement = Arrangement.spacedBy(12.dp),
                         modifier = Modifier
                             .fillMaxSize()
+                            .pointerInput(workspaceHubSwipeThresholdPx) {
+                                var drag = 0f
+                                var opened = false
+                                detectHorizontalDragGestures(
+                                    onDragStart = {
+                                        drag = 0f
+                                        opened = false
+                                    },
+                                    onHorizontalDrag = { _, dragAmount ->
+                                        if (opened) return@detectHorizontalDragGestures
+                                        drag += dragAmount
+                                        if (drag > workspaceHubSwipeThresholdPx) {
+                                            opened = true
+                                            onEvent(ConversationEvent.WorkspaceHubRequested)
+                                        }
+                                    },
+                                )
+                            }
                             .onGloballyPositioned {
                                 viewportTop = it.positionInRoot().y.roundToInt()
                                 viewportBottom = (it.positionInRoot().y + it.size.height).roundToInt()
