@@ -86,22 +86,6 @@ fun AgentChatScreen(
     val offset = if (state.canLoadMoreMessages || state.loadingMoreMessages) 1 else 0
     val snack = remember { SnackbarHostState() }
     val turns = state.turns
-    val current = {
-        (list.firstVisibleItemIndex - offset)
-            .coerceIn(-1, turns.lastIndex)
-    }
-    val previous = {
-        (current() - 1).takeIf { it >= 0 }
-    }
-    val next = {
-        (current() + 1).takeIf { it <= turns.lastIndex }
-    }
-    val nextUser = {
-        val start = (current() + 1).coerceAtLeast(0)
-        turns.indices
-            .drop(start)
-            .firstOrNull { turns[it].userText != null }
-    }
 
     val requestSessionFromQuickSwitch = { item: QuickSwitchState ->
         val cycle = item.cycleSessionIds
@@ -262,37 +246,21 @@ fun AgentChatScreen(
                         }
                     }
 
-                    NavigationButtons(
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(bottom = 8.dp),
-                        following = follow,
-                        onPrevious = {
-                            follow = false
-                            val target = previous() ?: return@NavigationButtons
-                            scope.launch {
-                                list.scrollToItem(target + offset)
-                            }
-                        },
-                        onNext = {
-                            scope.launch {
-                                if (!follow) {
-                                    val target = nextUser()
-                                    if (target != null) {
-                                        list.animateScrollToItem(target + offset)
-                                        if (isAtEnd(list, turns.size + offset)) {
-                                            follow = true
-                                        }
-                                        return@launch
-                                    }
+                    if (!follow) {
+                        FollowLatestButton(
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(bottom = 8.dp),
+                            onFollowLatest = {
+                                scope.launch {
+                                    follow = true
+                                    val count = turns.size + offset
+                                    if (count <= 0) return@launch
+                                    ensureEndVisible(list, count - 1)
                                 }
-                                follow = true
-                                val count = turns.size + offset
-                                if (count <= 0) return@launch
-                                ensureEndVisible(list, count - 1)
-                            }
-                        },
-                    )
+                            },
+                        )
+                    }
                 }
 
                 MessageComposer(
@@ -663,21 +631,14 @@ private data class ToolPosition(
 )
 
 @Composable
-private fun NavigationButtons(
+private fun FollowLatestButton(
     modifier: Modifier = Modifier,
-    following: Boolean,
-    onPrevious: () -> Unit,
-    onNext: () -> Unit,
+    onFollowLatest: () -> Unit,
 ) {
-    Column(
+    SmallFloatingActionButton(
+        onClick = onFollowLatest,
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        SmallFloatingActionButton(onClick = onPrevious) {
-            Icon(Icons.ChevronUp, "Previous message")
-        }
-        SmallFloatingActionButton(onClick = onNext) {
-            Icon(if (following) Icons.DoubleChevronDown else Icons.ChevronDown, "Follow latest")
-        }
+        Icon(Icons.DoubleChevronDown, "Follow latest")
     }
 }
