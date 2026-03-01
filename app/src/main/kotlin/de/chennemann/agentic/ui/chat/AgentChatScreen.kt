@@ -1,8 +1,5 @@
 package de.chennemann.agentic.ui.chat
 
-import android.content.Context
-import android.content.Intent
-import android.provider.Settings
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
@@ -52,7 +49,6 @@ import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
 import de.chennemann.agentic.domain.session.ServerState
@@ -61,7 +57,6 @@ import de.chennemann.agentic.icons.ChevronDown
 import de.chennemann.agentic.icons.ChevronUp
 import de.chennemann.agentic.icons.DoubleChevronDown
 import de.chennemann.agentic.icons.Icons
-import de.chennemann.agentic.ui.components.ConversationHeader
 import de.chennemann.agentic.ui.components.MessageComposer
 import de.chennemann.agentic.ui.components.ToolCallCard
 import de.chennemann.agentic.ui.components.TurnTimer
@@ -76,7 +71,6 @@ fun AgentChatScreen(
     state: ConversationUiState,
     onEvent: (ConversationEvent) -> Unit,
 ) {
-    val context = LocalContext.current
     val density = LocalDensity.current
     val list = rememberLazyListState()
     val dragging by list.interactionSource.collectIsDraggedAsState()
@@ -170,12 +164,6 @@ fun AgentChatScreen(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            ConversationHeader(
-                title = state.title,
-                onOpenWirelessDebug = { openWirelessDebugSettings(context) },
-                onOpenManage = { onEvent(ConversationEvent.WorkspaceHubRequested) },
-            )
-
             Column(
                 modifier = Modifier
                     .weight(1f)
@@ -315,15 +303,6 @@ fun AgentChatScreen(
                 .imePadding(),
         )
     }
-}
-
-private fun openWirelessDebugSettings(context: Context) {
-    val wireless = Intent("com.android.settings.WIFI_ADB_SETTINGS")
-    val developer = Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
-    val fallback = Intent(Settings.ACTION_SETTINGS)
-    if (runCatching { context.startActivity(wireless); true }.getOrDefault(false)) return
-    if (runCatching { context.startActivity(developer); true }.getOrDefault(false)) return
-    runCatching { context.startActivity(fallback) }
 }
 
 @Composable
