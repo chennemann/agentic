@@ -15,6 +15,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -25,7 +26,9 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -34,8 +37,8 @@ import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.pavi2410.appupdater.AppUpdater
+import com.pavi2410.appupdater.UpdateState
 import com.pavi2410.appupdater.github
-import com.pavi2410.appupdater.ui.UpdateCard
 import de.chennemann.agentic.BuildConfig
 import de.chennemann.agentic.domain.session.ProjectState
 import de.chennemann.agentic.icons.Icons
@@ -45,6 +48,7 @@ import de.chennemann.agentic.icons.ChevronUp
 import de.chennemann.agentic.icons.FilterList
 import de.chennemann.agentic.icons.Star
 import de.chennemann.agentic.icons.StarOutline
+import kotlinx.coroutines.launch
 
 @Composable
 fun ManageScreen(state: ManageUiState, onEvent: (ManageEvent) -> Unit) {
@@ -108,6 +112,7 @@ fun ManageScreen(state: ManageUiState, onEvent: (ManageEvent) -> Unit) {
 @Composable
 private fun UpdateSectionCard() {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val updater = remember(context.applicationContext) {
         AppUpdater.github(
             context = context.applicationContext,
@@ -115,6 +120,7 @@ private fun UpdateSectionCard() {
             repo = BuildConfig.UPDATE_REPO_NAME,
         )
     }
+    val updateState by updater.state.collectAsState()
 
     DisposableEffect(updater) {
         onDispose {
@@ -133,8 +139,101 @@ private fun UpdateSectionCard() {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            UpdateCard(updater = updater)
+            Text(
+                text = "Current version: ${updater.currentVersion}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            when (val state = updateState) {
+                is UpdateState.Idle -> {
+                    Text(
+                        text = "Tap below to check for updates.",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedButton(
+                        onClick = { scope.launch { updater.checkForUpdate() } },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Check for updates")
+                    }
+                }
+                is UpdateState.Checking -> {
+                    LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                    Text("Checking...", style = MaterialTheme.typography.bodySmall)
+                }
+                is UpdateState.UpToDate -> {
+                    Text(
+                        text = "You're up to date.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    OutlinedButton(
+                        onClick = { scope.launch { updater.checkForUpdate() } },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Check again")
+                    }
+                }
+                is UpdateState.UpdateAvailable -> {
+                    Text(
+                        text = "${updater.currentVersion} -> ${state.release.version}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Button(
+                        onClick = { scope.launch { updater.downloadUpdate() } },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Download update (${formatUpdateSize(state.asset.size)})")
+                    }
+                }
+                is UpdateState.Downloading -> {
+                    LinearProgressIndicator(
+                        progress = state.progress.coerceIn(0f, 1f),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                    Text(
+                        text = "Downloading ${formatUpdateSize(state.bytesDownloaded)} / ${formatUpdateSize(state.totalBytes)}",
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+                is UpdateState.ReadyToInstall -> {
+                    Text(
+                        text = "Download complete.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Button(
+                        onClick = { updater.installUpdate() },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Install update")
+                    }
+                }
+                is UpdateState.Error -> {
+                    Text(
+                        text = state.message,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                    OutlinedButton(
+                        onClick = { scope.launch { updater.checkForUpdate() } },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Retry")
+                    }
+                }
+            }
         }
+    }
+}
+
+private fun formatUpdateSize(bytes: Long): String {
+    return when {
+        bytes >= 1_000_000 -> "%.1f MB".format(bytes / 1_000_000.0)
+        bytes >= 1_000 -> "%.1f KB".format(bytes / 1_000.0)
+        bytes > 0 -> "$bytes B"
+        else -> "0 B"
     }
 }
 
