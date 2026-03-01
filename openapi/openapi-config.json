@@ -1,10 +1,10 @@
 {
     "generatorName": "kotlin",
     "library": "jvm-ktor",
-    "packageName": "de.chennemann.opencode.mobile.api",
-    "apiPackage": "de.chennemann.opencode.mobile.api.apis",
-    "modelPackage": "de.chennemann.opencode.mobile.api.models",
-    "invokerPackage": "de.chennemann.opencode.mobile.api.invoker",
+    "packageName": "de.chennemann.agentic.api",
+    "apiPackage": "de.chennemann.agentic.api.apis",
+    "modelPackage": "de.chennemann.agentic.api.models",
+    "invokerPackage": "de.chennemann.agentic.api.invoker",
     "additionalProperties": {
         "serializationLibrary": "kotlinx_serialization",
         "dateLibrary": "kotlinx-datetime"

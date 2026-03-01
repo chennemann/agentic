@@ -85,12 +85,12 @@ val openApiFix by tasks.registering {
             if (
                 file.extension == "kt" &&
                 text.contains("FileStatus") &&
-                !text.contains("import de.chennemann.opencode.mobile.api.models.FileStatus") &&
+                !text.contains("import de.chennemann.agentic.api.models.FileStatus") &&
                 file.parentFile.name == "apis"
             ) {
                 text = text.replace(
                     Regex("package ([^\\n]+)\\n"),
-                    "package $1\n\nimport de.chennemann.opencode.mobile.api.models.FileStatus\n",
+                    "package $1\n\nimport de.chennemann.agentic.api.models.FileStatus\n",
                 )
             }
             file.writeText(text)

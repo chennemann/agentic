@@ -16,7 +16,7 @@ Agentic is a native opencode client for Android built with:
 ```bash
 # Build & Run
 ./gradlew clean build assembleDebug # Build debug APK
-./gradlew installDebug && adb logcat --clear && adb shell am start -W -n de.chennemann.opencode.mobile/.MainActivity  # Install & Start app on device
+./gradlew installDebug && adb logcat --clear && adb shell am start -W -n de.chennemann.agentic/.MainActivity  # Install & Start app on device
 
 # Logcat
 adb logcat -d | grep -E "de\.chennemann\.opencode\.mobile|AndroidRuntime" # Check for errors when asked

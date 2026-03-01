@@ -26,16 +26,16 @@ Constraints:
 
 ### Navigation
 
-- Routes are type-safe but minimal in `app/src/main/kotlin/de/chennemann/opencode/mobile/navigation/AppRoute.kt`.
-- Navigation output from ViewModels is destination-first (`ToManage`, `ToConversation`, `ToLogs`, `Back`) in `app/src/main/kotlin/de/chennemann/opencode/mobile/navigation/NavEvent.kt`.
-- `AppNavHost` performs route mutation inline per-screen with repeated nav collectors in `app/src/main/kotlin/de/chennemann/opencode/mobile/navigation/AppNavHost.kt`.
+- Routes are type-safe but minimal in `app/src/main/kotlin/de/chennemann/agentic/navigation/AppRoute.kt`.
+- Navigation output from ViewModels is destination-first (`ToManage`, `ToConversation`, `ToLogs`, `Back`) in `app/src/main/kotlin/de/chennemann/agentic/navigation/NavEvent.kt`.
+- `AppNavHost` performs route mutation inline per-screen with repeated nav collectors in `app/src/main/kotlin/de/chennemann/agentic/navigation/AppNavHost.kt`.
 
 ### Screen Contracts
 
 - Contracts are centralized (good) in:
-    - `app/src/main/kotlin/de/chennemann/opencode/mobile/ui/conversation/ConversationContract.kt`
-    - `app/src/main/kotlin/de/chennemann/opencode/mobile/ui/manage/ManageContract.kt`
-    - `app/src/main/kotlin/de/chennemann/opencode/mobile/ui/logs/LogsContract.kt`
+    - `app/src/main/kotlin/de/chennemann/agentic/ui/conversation/ConversationContract.kt`
+    - `app/src/main/kotlin/de/chennemann/agentic/ui/manage/ManageContract.kt`
+    - `app/src/main/kotlin/de/chennemann/agentic/ui/logs/LogsContract.kt`
 - Many event names encode UI mechanics (`*Tapped`, `*LongPressed`) instead of user intent.
 - ViewModels already perform orchestration correctly, but naming weakens API semantics and test readability:
     - `ConversationViewModel.kt`
@@ -45,8 +45,8 @@ Constraints:
 ### Tests
 
 - Good coverage for conversation/manage:
-    - `app/src/test/kotlin/de/chennemann/opencode/mobile/ui/conversation/ConversationViewModelTest.kt`
-    - `app/src/test/kotlin/de/chennemann/opencode/mobile/ui/manage/ManageViewModelTest.kt`
+    - `app/src/test/kotlin/de/chennemann/agentic/ui/conversation/ConversationViewModelTest.kt`
+    - `app/src/test/kotlin/de/chennemann/agentic/ui/manage/ManageViewModelTest.kt`
 - Missing dedicated logs VM test coverage for contract migration.
 
 ---

@@ -20,11 +20,11 @@ val hasReleaseSigning = listOf(
 ).all { !it.isNullOrBlank() }
 
 android {
-    namespace = "de.chennemann.opencode.mobile"
+    namespace = "de.chennemann.agentic"
     compileSdk = 36
 
     defaultConfig {
-        applicationId = "de.chennemann.opencode.mobile"
+        applicationId = "de.chennemann.agentic"
         minSdk = 36
         targetSdk = 36
         versionCode = appVersionCode
@@ -126,7 +126,7 @@ ktlint {
 sqldelight {
     databases {
         create("AgenticDb") {
-            packageName.set("de.chennemann.opencode.mobile.db")
+            packageName.set("de.chennemann.agentic.db")
             verifyMigrations = false
             generateAsync.set(true)
             deriveSchemaFromMigrations.set(true)

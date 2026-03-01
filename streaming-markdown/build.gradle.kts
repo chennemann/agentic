@@ -5,11 +5,11 @@ plugins {
     id("maven-publish")
 }
 
-group = findProperty("streamingMarkdownGroup") as String? ?: "de.chennemann.opencode.mobile"
+group = findProperty("streamingMarkdownGroup") as String? ?: "de.chennemann.agentic"
 version = findProperty("streamingMarkdownVersion") as String? ?: "0.1.0-SNAPSHOT"
 
 android {
-    namespace = "de.chennemann.opencode.mobile.streamingmarkdown"
+    namespace = "de.chennemann.agentic.streamingmarkdown"
     compileSdk = 36
 
     defaultConfig {

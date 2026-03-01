@@ -17,7 +17,7 @@ Options:
 
 const mobile = path.resolve(import.meta.dir, "..")
 const icons = path.join(mobile, "app", "src", "main", "kotlin", "de", "chennemann", "opencode", "mobile", "icons")
-const pkg = "de.chennemann.opencode.mobile.icons"
+const pkg = "de.chennemann.agentic.icons"
 const iconPack = "Icons"
 const tool = path.join(os.homedir(), ".opencode-mobile", "valkyrie")
 
