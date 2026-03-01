@@ -4,12 +4,17 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
-import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
+import androidx.navigation3.ui.defaultPopTransitionSpec
+import androidx.navigation3.ui.defaultTransitionSpec
 import de.chennemann.agentic.ui.chat.AgentChatScreen
 import de.chennemann.agentic.ui.chat.ConversationViewModel
 import de.chennemann.agentic.ui.chat.SessionSelectionBottomSheet
@@ -27,9 +32,38 @@ import org.koin.core.parameter.parametersOf
 fun AppNavHost() {
     val stack = rememberNavBackStack(AgentChatRoute)
     val owner = checkNotNull(LocalViewModelStoreOwner.current)
+    val defaultTransitionSpec = defaultTransitionSpec<AppRoute>()
+    val defaultPopTransitionSpec = defaultPopTransitionSpec<AppRoute>()
+
     NavDisplay(
         backStack = stack,
         sceneStrategy = BottomSheetSceneStrategy(),
+        transitionSpec = {
+            if (initialState.key == AgentChatRoute && targetState.key == WorkspaceHubRoute) {
+                slideInHorizontally(
+                    animationSpec = tween(durationMillis = 220),
+                    initialOffsetX = { -it },
+                ) togetherWith slideOutHorizontally(
+                    animationSpec = tween(durationMillis = 220),
+                    targetOffsetX = { it },
+                )
+            } else {
+                defaultTransitionSpec()
+            }
+        },
+        popTransitionSpec = {
+            if (initialState.key == WorkspaceHubRoute && targetState.key == AgentChatRoute) {
+                slideInHorizontally(
+                    animationSpec = tween(durationMillis = 220),
+                    initialOffsetX = { it },
+                ) togetherWith slideOutHorizontally(
+                    animationSpec = tween(durationMillis = 220),
+                    targetOffsetX = { -it },
+                )
+            } else {
+                defaultPopTransitionSpec()
+            }
+        },
         onBack = {
             dispatchNavAction(
                 stack = stack,
