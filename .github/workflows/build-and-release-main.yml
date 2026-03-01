@@ -75,22 +75,80 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Write keystore from Base64 (no extra newline/whitespace)
+          log() { echo "[keystore-check] $*"; }
+          fail() { echo "::error::$*"; exit 1; }
+
+          log "Step 1/7: Validate required secrets are present"
+          for required_var in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+            if [ -z "${!required_var:-}" ]; then
+              fail "Required secret ${required_var} is missing or empty."
+            fi
+            required_value="${!required_var}"
+            log "${required_var} is set (value length=${#required_value}, value hidden)."
+          done
+
+          log "Step 2/7: Decode KEYSTORE_BASE64 into a file"
           KEYSTORE_PATH="$RUNNER_TEMP/release.keystore"
-          printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
+          DECODE_ERR_PATH="$RUNNER_TEMP/keystore-base64-decode.err"
+          if ! printf '%s' "$KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH" 2>"$DECODE_ERR_PATH"; then
+            log "Base64 decode stderr:"
+            sed 's/^/[base64] /' "$DECODE_ERR_PATH"
+            fail "Failed to decode KEYSTORE_BASE64."
+          fi
+          KEYSTORE_SIZE_BYTES="$(wc -c < "$KEYSTORE_PATH" | tr -d '[:space:]')"
+          log "Decoded keystore file at $KEYSTORE_PATH (size=${KEYSTORE_SIZE_BYTES} bytes)."
+          if [ "${KEYSTORE_SIZE_BYTES}" -le 0 ]; then
+            fail "Decoded keystore file is empty."
+          fi
 
-          # 1) Verify store password works (can read keystore)
-          keytool -list -storetype PKCS12 -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" > /dev/null
+          log "Step 3/7: Detect keystore type and verify store password"
+          KEYSTORE_TYPE=""
+          for candidate_type in PKCS12 JKS; do
+            LIST_OUT="$RUNNER_TEMP/keytool-list-${candidate_type}.out"
+            LIST_ERR="$RUNNER_TEMP/keytool-list-${candidate_type}.err"
+            log "Trying storetype=${candidate_type}"
+            if keytool -list -storetype "$candidate_type" -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" >"$LIST_OUT" 2>"$LIST_ERR"; then
+              KEYSTORE_TYPE="$candidate_type"
+              log "Store password is valid for storetype=${candidate_type}."
+              break
+            fi
+            log "storetype=${candidate_type} failed."
+            sed 's/^/[keytool] /' "$LIST_ERR"
+          done
 
-          # 2) Verify alias exists
-          keytool -list -storetype PKCS12 -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" | grep -Fxq "$KEY_ALIAS" \
-            || { echo "Alias '$KEY_ALIAS' not found in keystore"; exit 1; }
+          if [ -z "$KEYSTORE_TYPE" ]; then
+            fail "Unable to open keystore with provided password for supported storetypes (PKCS12, JKS)."
+          fi
 
-          # 3) Verify the private key for alias can be accessed with KEY_PASSWORD
-          # (no-op password change: set new password equal to existing password)
-          keytool -keypasswd -storetype PKCS12 -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" -keypass "$KEY_PASSWORD" -new "$KEY_PASSWORD" > /dev/null
+          log "Step 4/7: Read aliases from keystore"
+          ALIAS_LIST_OUT="$RUNNER_TEMP/keytool-aliases.out"
+          ALIAS_LIST_ERR="$RUNNER_TEMP/keytool-aliases.err"
+          if ! keytool -list -v -storetype "$KEYSTORE_TYPE" -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" >"$ALIAS_LIST_OUT" 2>"$ALIAS_LIST_ERR"; then
+            sed 's/^/[keytool] /' "$ALIAS_LIST_ERR"
+            fail "Failed to list aliases in keystore."
+          fi
+          FOUND_ALIASES="$(grep '^Alias name:' "$ALIAS_LIST_OUT" | sed 's/^Alias name:[[:space:]]*//' || true)"
+          if [ -n "$FOUND_ALIASES" ]; then
+            log "Aliases found in keystore:"
+            echo "$FOUND_ALIASES" | sed 's/^/[keystore-alias] /'
+          else
+            log "No aliases were discovered in keystore output."
+          fi
 
-          echo "Keystore OK: store password, alias, and key password verified."
+          log "Step 5/7: Verify KEY_ALIAS exists"
+          if ! echo "$FOUND_ALIASES" | grep -Fxq "$KEY_ALIAS"; then
+            fail "Alias '${KEY_ALIAS}' not found in keystore aliases above."
+          fi
+
+          log "Step 6/7: Verify KEY_PASSWORD can access the private key for KEY_ALIAS"
+          KEYPASS_ERR="$RUNNER_TEMP/keytool-keypass.err"
+          if ! keytool -keypasswd -storetype "$KEYSTORE_TYPE" -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" -keypass "$KEY_PASSWORD" -new "$KEY_PASSWORD" >/dev/null 2>"$KEYPASS_ERR"; then
+            sed 's/^/[keytool] /' "$KEYPASS_ERR"
+            fail "KEY_PASSWORD check failed for alias '${KEY_ALIAS}'."
+          fi
+
+          log "Step 7/7: Export signing env for Gradle"
+          log "Keystore verification succeeded (storetype=${KEYSTORE_TYPE})."
           echo "ANDROID_SIGNING_KEYSTORE_PATH=$KEYSTORE_PATH" >> "${GITHUB_ENV}"
           echo "ANDROID_SIGNING_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "${GITHUB_ENV}"
           echo "ANDROID_SIGNING_KEY_ALIAS=$KEY_ALIAS" >> "${GITHUB_ENV}"
