@@ -19,7 +19,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -55,6 +54,7 @@ import androidx.compose.ui.window.PopupProperties
 import de.chennemann.agentic.domain.session.CommandState
 import de.chennemann.agentic.icons.Icons
 import de.chennemann.agentic.icons.CircleSlash
+import de.chennemann.agentic.icons.Refresh
 import de.chennemann.agentic.icons.Send
 import de.chennemann.agentic.ui.chat.QuickSwitchState
 import de.chennemann.agentic.ui.chat.ConversationMode
@@ -252,14 +252,14 @@ fun MessageComposer(
                         }
                     }
 
-                    if (connected) {
-                        Box(
-                            Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(bottom = 4.dp, end = 16.dp)
-                        ) {
-                            IconButton(
-                                onClick = {
+                    Box(
+                        Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(bottom = 4.dp, end = 16.dp)
+                    ) {
+                        IconButton(
+                            onClick = {
+                                if (connected) {
                                     if (draft != field.text) {
                                         onDraftChange(field.text)
                                     }
@@ -269,21 +269,20 @@ fun MessageComposer(
                                         focus.clearFocus()
                                         keyboard?.hide()
                                     }
-                                },
-                                colors = IconButtonDefaults.iconButtonColors(
-                                    contentColor = MaterialTheme.colorScheme.primary,
-                                ),
-                                modifier = Modifier.size(48.dp),
-                            ) {
-                                Icon(Icons.Send, "")
-                            }
-                        }
-                    } else {
-                        Button(
-                            onClick = onReload,
-                            modifier = Modifier,
+                                } else {
+                                    onReload()
+                                }
+                            },
+                            colors = IconButtonDefaults.iconButtonColors(
+                                contentColor = MaterialTheme.colorScheme.primary,
+                            ),
+                            modifier = Modifier.size(48.dp),
                         ) {
-                            Text("Reload")
+                            if (connected) {
+                                Icon(Icons.Send, "Send message")
+                            } else {
+                                Icon(Icons.Refresh, "Reload")
+                            }
                         }
                     }
                 }
