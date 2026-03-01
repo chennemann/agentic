@@ -65,21 +65,20 @@ jobs:
           echo "total_commits=${total_commits}" >> "${GITHUB_OUTPUT}"
           echo "version=${version}" >> "${GITHUB_OUTPUT}"
 
-      - name: Verify Android keystore (base64 + passwords + alias)
+      - name: Verify Android keystore (base64 + password + alias + PKCS12)
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           set -euo pipefail
 
           log() { echo "[keystore-check] $*"; }
           fail() { echo "::error::$*"; exit 1; }
 
-          log "Step 1/7: Validate required secrets are present"
-          for required_var in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS KEY_PASSWORD; do
+          log "Step 1/6: Validate required secrets are present"
+          for required_var in KEYSTORE_BASE64 KEYSTORE_PASSWORD KEY_ALIAS; do
             if [ -z "${!required_var:-}" ]; then
               fail "Required secret ${required_var} is missing or empty."
             fi
@@ -101,29 +100,27 @@ jobs:
             fail "Decoded keystore file is empty."
           fi
 
-          log "Step 3/7: Detect keystore type and verify store password"
-          KEYSTORE_TYPE=""
-          for candidate_type in PKCS12 JKS; do
-            LIST_OUT="$RUNNER_TEMP/keytool-list-${candidate_type}.out"
-            LIST_ERR="$RUNNER_TEMP/keytool-list-${candidate_type}.err"
-            log "Trying storetype=${candidate_type}"
-            if keytool -list -storetype "$candidate_type" -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" >"$LIST_OUT" 2>"$LIST_ERR"; then
-              KEYSTORE_TYPE="$candidate_type"
-              log "Store password is valid for storetype=${candidate_type}."
-              break
+          log "Step 3/6: Verify keystore is PKCS12 and store password is valid"
+          PKCS12_LIST_OUT="$RUNNER_TEMP/keytool-list-pkcs12.out"
+          PKCS12_LIST_ERR="$RUNNER_TEMP/keytool-list-pkcs12.err"
+          if ! keytool -list -storetype PKCS12 -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" >"$PKCS12_LIST_OUT" 2>"$PKCS12_LIST_ERR"; then
+            log "PKCS12 verification failed."
+            sed 's/^/[keytool] /' "$PKCS12_LIST_ERR"
+
+            JKS_LIST_OUT="$RUNNER_TEMP/keytool-list-jks.out"
+            JKS_LIST_ERR="$RUNNER_TEMP/keytool-list-jks.err"
+            if keytool -list -storetype JKS -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" >"$JKS_LIST_OUT" 2>"$JKS_LIST_ERR"; then
+              fail "Decoded keystore is JKS. Release workflow requires PKCS12."
             fi
-            log "storetype=${candidate_type} failed."
-            sed 's/^/[keytool] /' "$LIST_ERR"
-          done
 
-          if [ -z "$KEYSTORE_TYPE" ]; then
-            fail "Unable to open keystore with provided password for supported storetypes (PKCS12, JKS)."
+            fail "Failed to open decoded keystore as PKCS12 with KEYSTORE_PASSWORD."
           fi
+          log "Keystore is PKCS12 and password is valid."
 
-          log "Step 4/7: Read aliases from keystore"
+          log "Step 4/6: Read aliases from keystore"
           ALIAS_LIST_OUT="$RUNNER_TEMP/keytool-aliases.out"
           ALIAS_LIST_ERR="$RUNNER_TEMP/keytool-aliases.err"
-          if ! keytool -list -v -storetype "$KEYSTORE_TYPE" -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" >"$ALIAS_LIST_OUT" 2>"$ALIAS_LIST_ERR"; then
+          if ! keytool -list -v -storetype PKCS12 -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" >"$ALIAS_LIST_OUT" 2>"$ALIAS_LIST_ERR"; then
             sed 's/^/[keytool] /' "$ALIAS_LIST_ERR"
             fail "Failed to list aliases in keystore."
           fi
@@ -135,24 +132,16 @@ jobs:
             log "No aliases were discovered in keystore output."
           fi
 
-          log "Step 5/7: Verify KEY_ALIAS exists"
+          log "Step 5/6: Verify KEY_ALIAS exists"
           if ! echo "$FOUND_ALIASES" | grep -Fxq "$KEY_ALIAS"; then
             fail "Alias '${KEY_ALIAS}' not found in keystore aliases above."
           fi
 
-          log "Step 6/7: Verify KEY_PASSWORD can access the private key for KEY_ALIAS"
-          KEYPASS_ERR="$RUNNER_TEMP/keytool-keypass.err"
-          if ! keytool -keypasswd -storetype "$KEYSTORE_TYPE" -keystore "$KEYSTORE_PATH" -storepass "$KEYSTORE_PASSWORD" -alias "$KEY_ALIAS" -keypass "$KEY_PASSWORD" -new "$KEY_PASSWORD" >/dev/null 2>"$KEYPASS_ERR"; then
-            sed 's/^/[keytool] /' "$KEYPASS_ERR"
-            fail "KEY_PASSWORD check failed for alias '${KEY_ALIAS}'."
-          fi
-
-          log "Step 7/7: Export signing env for Gradle"
-          log "Keystore verification succeeded (storetype=${KEYSTORE_TYPE})."
+          log "Step 6/6: Export signing env for Gradle"
+          log "Keystore verification succeeded (storetype=PKCS12)."
           echo "ANDROID_SIGNING_KEYSTORE_PATH=$KEYSTORE_PATH" >> "${GITHUB_ENV}"
           echo "ANDROID_SIGNING_KEYSTORE_PASSWORD=$KEYSTORE_PASSWORD" >> "${GITHUB_ENV}"
           echo "ANDROID_SIGNING_KEY_ALIAS=$KEY_ALIAS" >> "${GITHUB_ENV}"
-          echo "ANDROID_SIGNING_KEY_PASSWORD=$KEY_PASSWORD" >> "${GITHUB_ENV}"
 
       - name: Build signed release APK
         run: ./gradlew --build-cache --parallel --configuration-cache :app:assembleRelease -PappVersionName=${{ steps.version.outputs.version }} -PappVersionCode=${{ steps.version.outputs.total_commits }}

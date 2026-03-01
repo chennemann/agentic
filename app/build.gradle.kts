@@ -13,12 +13,10 @@ val updateRepoName = (findProperty("updateRepoName") as String?) ?: "agentic"
 val signingKeystorePath = System.getenv("ANDROID_SIGNING_KEYSTORE_PATH")
 val signingKeystorePassword = System.getenv("ANDROID_SIGNING_KEYSTORE_PASSWORD")
 val signingKeyAlias = System.getenv("ANDROID_SIGNING_KEY_ALIAS")
-val signingKeyPassword = System.getenv("ANDROID_SIGNING_KEY_PASSWORD")
 val hasReleaseSigning = listOf(
     signingKeystorePath,
     signingKeystorePassword,
-    signingKeyAlias,
-    signingKeyPassword,
+    signingKeyAlias
 ).all { !it.isNullOrBlank() }
 
 android {
@@ -43,7 +41,7 @@ android {
                 storeFile = file(checkNotNull(signingKeystorePath))
                 storePassword = checkNotNull(signingKeystorePassword)
                 keyAlias = checkNotNull(signingKeyAlias)
-                keyPassword = checkNotNull(signingKeyPassword)
+                keyPassword = checkNotNull(signingKeystorePassword)
             }
         }
     }

@@ -31,7 +31,7 @@ adb logcat -d | grep -E "de\.chennemann\.opencode\.mobile|AndroidRuntime" # Chec
 # Releases
 ./gradlew createBaselineTag            # Create next manual baseline tag (v<major>) at HEAD; tag push remains manual
 keytool -genkeypair -v -keystore app/release.keystore -alias agentic -keyalg RSA -keysize 2048 -validity 36500 -storepass changeit -keypass changeit -dname "CN=Agentic, O=Agentic"  # Generate Android release keystore (replace passwords)
-base64 app/release.keystore | gh secret set KEYSTORE_BASE64 && gh secret set KEYSTORE_PASSWORD -b"changeit" && gh secret set KEY_ALIAS -b"agentic" && gh secret set KEY_PASSWORD -b"changeit"  # Upload signing secrets for GitHub Actions
+base64 app/release.keystore | gh secret set KEYSTORE_BASE64 && gh secret set KEYSTORE_PASSWORD -b"changeit" && gh secret set KEY_ALIAS -b"agentic"  # Upload signing secrets for GitHub Actions
 
 # OpenAPI source
 sh script/setup-opencode-submodule.sh  # Initialize/update opencode submodule with sparse API/DTO checkout
@@ -50,7 +50,7 @@ bun run mobile:add-icon --source lucide --name pin --target PinLucide  # Generat
 
 1. **Baseline tags are manual only** – Use `v<major>` tags (for example `v1`, `v2`)
 2. **CI release tags are automatic** – Workflow publishes `v<major>.<commits_since_baseline>`
-3. **Release APKs must be signed in CI** – Configure `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS`, `KEY_PASSWORD` GitHub secrets
+3. **Release APKs must be signed in CI** – Configure `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` GitHub secrets
 
 ### Architecture
 
