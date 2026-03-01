@@ -11,6 +11,7 @@ import androidx.compose.animation.togetherWith
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation3.runtime.NavEntry
+import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import androidx.navigation3.ui.defaultPopTransitionSpec
@@ -32,8 +33,6 @@ import org.koin.core.parameter.parametersOf
 fun AppNavHost() {
     val stack = rememberNavBackStack(AgentChatRoute)
     val owner = checkNotNull(LocalViewModelStoreOwner.current)
-    val defaultTransitionSpec = defaultTransitionSpec<AppRoute>()
-    val defaultPopTransitionSpec = defaultPopTransitionSpec<AppRoute>()
 
     NavDisplay(
         backStack = stack,
@@ -48,7 +47,7 @@ fun AppNavHost() {
                     targetOffsetX = { it },
                 )
             } else {
-                defaultTransitionSpec()
+                defaultTransitionSpec<AppRoute>().invoke(this)
             }
         },
         popTransitionSpec = {
@@ -61,7 +60,7 @@ fun AppNavHost() {
                     targetOffsetX = { -it },
                 )
             } else {
-                defaultPopTransitionSpec()
+                defaultPopTransitionSpec<AppRoute>().invoke(this)
             }
         },
         onBack = {
