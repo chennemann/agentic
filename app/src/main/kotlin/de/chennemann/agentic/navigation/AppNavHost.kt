@@ -47,7 +47,7 @@ fun AppNavHost() {
                     targetOffsetX = { it },
                 )
             } else {
-                defaultTransitionSpec<AppRoute>().invoke(this)
+                defaultTransitionSpec<NavKey>().invoke(this)
             }
         },
         popTransitionSpec = {
@@ -60,7 +60,7 @@ fun AppNavHost() {
                     targetOffsetX = { -it },
                 )
             } else {
-                defaultPopTransitionSpec<AppRoute>().invoke(this)
+                defaultPopTransitionSpec<NavKey>().invoke(this)
             }
         },
         onBack = {

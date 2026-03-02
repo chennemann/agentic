@@ -10,7 +10,7 @@ import org.junit.jupiter.api.Test
 class ArchitectureBoundaryTest {
     @Test
     fun domainDoesNotImportDataOrAndroid() {
-        val root = Path.of("src", "main", "kotlin", "de", "chennemann", "opencode", "mobile", "domain")
+        val root = Path.of("src", "main", "kotlin", "de", "chennemann", "agentic", "domain")
         Files.walk(root).use { paths ->
             val imports = paths
                 .filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }
@@ -26,8 +26,8 @@ class ArchitectureBoundaryTest {
 
     @Test
     fun featureCodeDoesNotUseDispatchersDirectly() {
-        val root = Path.of("src", "main", "kotlin", "de", "chennemann", "opencode", "mobile")
-        val infra = Path.of("src", "main", "kotlin", "de", "chennemann", "opencode", "mobile", "di", "DispatcherProvider.kt")
+        val root = Path.of("src", "main", "kotlin", "de", "chennemann", "agentic")
+        val infra = Path.of("src", "main", "kotlin", "de", "chennemann", "agentic", "di", "DispatcherProvider.kt")
         Files.walk(root).use { paths ->
             val violations = paths
                 .filter { Files.isRegularFile(it) && it.toString().endsWith(".kt") }

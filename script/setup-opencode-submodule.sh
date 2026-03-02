@@ -9,5 +9,5 @@ git -C "$ROOT_DIR" submodule update --init third_party/opencode
 
 git -C "$SUBMODULE_PATH" sparse-checkout init --no-cone
 git -C "$SUBMODULE_PATH" sparse-checkout set \
-  /packages/sdk/openapi.json \
-  /packages/sdk/js/src
+  packages/sdk/openapi.json \
+  packages/sdk/js/src
