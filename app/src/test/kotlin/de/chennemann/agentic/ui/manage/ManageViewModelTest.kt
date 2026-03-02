@@ -141,6 +141,20 @@ class ManageViewModelTest {
     }
 
     @Test
+    fun refreshProjectsRequestsServiceRefresh() = runTest(TestCoroutineScheduler()) {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val worker = StandardTestDispatcher(testScheduler)
+        val service = StubSessionService()
+        val projectService = StubProjectService()
+        val viewModel = ManageViewModel(service, projectService, lanes(main, worker))
+
+        viewModel.onEvent(ManageEvent.ProjectsRefreshRequested)
+
+        assertEquals(1, service.refreshCalls)
+    }
+
+    @Test
     fun opensLogsAndNavigatesToLogsScreen() = runTest(TestCoroutineScheduler()) {
         val main = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(main)

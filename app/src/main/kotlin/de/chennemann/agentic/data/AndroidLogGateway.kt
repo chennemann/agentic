@@ -34,6 +34,7 @@ class AndroidLogGateway(
         val payload = promote(redactor.redact(context))
         val safeThrowable = redactor.throwable(error)
         val line = format(event, safeMessage, payload.context)
+        return
         when (level) {
             LogLevel.debug -> Log.d(tag, line)
             LogLevel.info -> Log.i(tag, line)

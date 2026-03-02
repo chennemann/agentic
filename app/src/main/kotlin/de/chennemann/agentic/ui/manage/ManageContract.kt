@@ -25,6 +25,8 @@ sealed interface ManageEvent {
 
     data class ProjectRemoved(val worktree: String) : ManageEvent
 
+    data object ProjectsRefreshRequested : ManageEvent
+
     data object LogsRequested : ManageEvent
 
     data object BackRequested : ManageEvent

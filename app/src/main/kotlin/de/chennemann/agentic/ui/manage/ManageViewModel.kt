@@ -7,29 +7,36 @@ import de.chennemann.agentic.domain.session.ProjectState
 import de.chennemann.agentic.domain.session.ServerState
 import de.chennemann.agentic.domain.session.SessionServiceApi
 import de.chennemann.agentic.domain.v2.projects.LocalProjectInfo
-import de.chennemann.agentic.domain.v2.projects.ProjectService as ProjectServiceV2
+import de.chennemann.agentic.domain.v2.servers.ServerService
+import de.chennemann.agentic.domain.v2.projects.ProjectService
+import de.chennemann.agentic.domain.v2.servers.LocalServerInfo
 import de.chennemann.agentic.navigation.LogsRoute
 import de.chennemann.agentic.navigation.NavEvent
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.lastOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 class ManageViewModel(
     private val service: SessionServiceApi,
-    private val projectService: ProjectServiceV2,
+    private val serverService: ServerService,
+    private val projectService: ProjectService,
     private val dispatchers: DispatcherProvider,
 ) : ViewModel() {
     private val lane = dispatchers.default.limitedParallelism(1)
     private val navFlow = MutableSharedFlow<NavEvent>(extraBufferCapacity = 1)
+    private val connectedServers: Flow<List<LocalServerInfo>> = serverService.connectedServers()
+    val projects = projectService.observeProjects()
 
     val nav = navFlow.asSharedFlow()
 
-    val state: StateFlow<ManageUiState> = combine(service.state, projectService.observeProjects()) { global, projects ->
+    val state: StateFlow<ManageUiState> = combine(service.state, projects) { global, projects ->
             val displayed = projects.map(::displayProject)
             ManageUiState(
                 url = global.url,
@@ -84,6 +91,14 @@ class ManageViewModel(
 
             is ManageEvent.ProjectRemoved -> {
                 service.removeProject(event.worktree)
+            }
+
+            ManageEvent.ProjectsRefreshRequested -> {
+                viewModelScope.launch {
+                    connectedServers.lastOrNull()?.forEach {
+                        projectService.syncServerProjects(it.id, it.url)
+                    }
+                }
             }
 
             ManageEvent.LogsRequested -> {

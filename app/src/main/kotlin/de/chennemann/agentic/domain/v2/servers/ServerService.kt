@@ -1,10 +1,17 @@
 package de.chennemann.agentic.domain.v2.servers
 
+import android.util.Log
 import de.chennemann.agentic.domain.v2.OpenCodeServerAdapter
 import de.chennemann.agentic.domain.v2.SynchronizationService
+import de.chennemann.agentic.domain.v2.projects.LocalProjectInfo
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.mapLatest
 import java.util.UUID
 
 interface ServerService {
+    fun connectedServers(): Flow<List<LocalServerInfo>>
     suspend fun connect(url: String): Boolean
 }
 
@@ -13,6 +20,20 @@ class DefaultServerService(
     private val serverRepository: ServerRepository,
     private val synchronizationService: SynchronizationService,
 ) : ServerService {
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    override fun connectedServers(): Flow<List<LocalServerInfo>> {
+        Log.i("server-service", "Load connected servers")
+        return serverRepository
+            .observeServers()
+            .mapLatest { servers ->
+                servers.filter { server ->
+                    val connected = connect(server.url)
+                    Log.i("server-service", "${server.url} is connected")
+                    connected
+                }
+            }
+    }
     override suspend fun connect(url: String): Boolean {
         val baseUrl = normalizeBaseUrl(url) ?: return false
         val healthy = runCatching {

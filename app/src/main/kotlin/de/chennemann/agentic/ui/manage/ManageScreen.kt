@@ -46,6 +46,7 @@ import de.chennemann.agentic.icons.Add
 import de.chennemann.agentic.icons.ChevronDown
 import de.chennemann.agentic.icons.ChevronUp
 import de.chennemann.agentic.icons.FilterList
+import de.chennemann.agentic.icons.Refresh
 import de.chennemann.agentic.icons.Star
 import de.chennemann.agentic.icons.StarOutline
 import kotlinx.coroutines.launch
@@ -271,6 +272,20 @@ private fun ProjectListCard(state: ManageUiState, onEvent: (ManageEvent) -> Unit
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
+                    IconButton(
+                        onClick = { onEvent(ManageEvent.ProjectsRefreshRequested) },
+                        enabled = !state.loadingProjects,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Refresh,
+                            contentDescription = if (state.loadingProjects) {
+                                "Refreshing projects"
+                            } else {
+                                "Refresh projects"
+                            },
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     IconButton(onClick = { filterOpen = !filterOpen }) {
                         Icon(
                             imageVector = Icons.FilterList,
@@ -328,6 +343,14 @@ private fun ProjectListCard(state: ManageUiState, onEvent: (ManageEvent) -> Unit
                         Text("Open path")
                     }
                 }
+            }
+
+            if (state.loadingProjects && projects.isNotEmpty()) {
+                Text(
+                    text = "Refreshing projects...",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
 
             if (projects.isEmpty()) {
