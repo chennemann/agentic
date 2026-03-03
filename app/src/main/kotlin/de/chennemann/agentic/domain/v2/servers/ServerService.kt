@@ -1,10 +1,12 @@
 package de.chennemann.agentic.domain.v2.servers
 
+import android.util.Log
 import de.chennemann.agentic.domain.v2.OpenCodeServerAdapter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import java.util.UUID
@@ -22,41 +24,51 @@ class DefaultServerService(
     private val serverRepository: ServerRepository,
 ) : ServerService {
 
+    private val persistedServers = serverRepository.observeServers()
     private val manualConnectedServer: MutableStateFlow<ServerInfo> = MutableStateFlow(ServerInfo.NONE)
-    private val mutableConnectionState = MutableStateFlow<ServerConnectionState>(ServerConnectionState.Idle)
-
-    override val connectedServer: Flow<ServerInfo> = manualConnectedServer.asStateFlow()
-    override val connectionState: Flow<ServerConnectionState> = mutableConnectionState.asStateFlow()
+    override val connectedServer: Flow<ServerInfo> = combine(manualConnectedServer, persistedServers) { manualConnectedServer, persistedServers ->
+        when (manualConnectedServer) {
+            is ServerInfo.NONE -> {
+                logInfo("checking for existing servers")
+                persistedServers
+                .firstOrNull { server -> connect(server.url) }
+                ?.also { this.manualConnectedServer.update { it } }
+            }
+            else -> manualConnectedServer
+        } ?: ServerInfo.NONE
+    }
+    private val _connectionState = MutableStateFlow<ServerConnectionState>(ServerConnectionState.Idle)
+    override val connectionState: Flow<ServerConnectionState> = _connectionState.asStateFlow()
 
     override suspend fun heartbeat() {
         logInfo("heartbeat")
         val server = connectedServer.first() as? ServerInfo.ConnectedServerInfo
         if (server == null) return
 
-        mutableConnectionState.update { ServerConnectionState.Refreshing }
+        _connectionState.update { ServerConnectionState.Refreshing }
 
         if (isConnected(server.url)) {
             manualConnectedServer.update { server }
-            mutableConnectionState.update { ServerConnectionState.Connected }
+            _connectionState.update { ServerConnectionState.Connected }
             return
         }
 
         logInfo("heartbeat failed for server '${server.url}'")
         manualConnectedServer.update { ServerInfo.NONE }
-        mutableConnectionState.update { ServerConnectionState.Disconnected }
+        _connectionState.update { ServerConnectionState.Disconnected }
     }
 
     override suspend fun connect(url: String): Boolean {
-        val fallbackState = mutableConnectionState.value
-        mutableConnectionState.update { ServerConnectionState.Connecting }
+        val fallbackState = _connectionState.value
+        _connectionState.update { ServerConnectionState.Connecting }
 
         val baseUrl = normalizeBaseUrl(url) ?: run {
-            mutableConnectionState.update { fallbackState }
+            _connectionState.update { fallbackState }
             return false
         }
         logInfo("check connection to '$baseUrl'")
         if (!isConnected(baseUrl)) {
-            mutableConnectionState.update { fallbackState }
+            _connectionState.update { fallbackState }
             return false
         }
         logInfo("connected to '$baseUrl'")
@@ -78,7 +90,7 @@ class DefaultServerService(
             serverRepository.updateServer(server)
         }
         manualConnectedServer.update { server }
-        mutableConnectionState.update { ServerConnectionState.Connected }
+        _connectionState.update { ServerConnectionState.Connected }
 
         return true
     }
@@ -90,8 +102,9 @@ class DefaultServerService(
         }.getOrDefault(false)
     }
 
-    @Suppress("UNUSED_PARAMETER")
-    private fun logInfo(message: String) = Unit
+    private fun logInfo(message: String) {
+        Log.i("server-service", message)
+    }
 }
 
 private fun normalizeBaseUrl(value: String): String? {
