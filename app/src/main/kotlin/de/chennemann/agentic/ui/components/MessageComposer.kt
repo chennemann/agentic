@@ -81,6 +81,7 @@ fun MessageComposer(
     draft: String,
     mode: ConversationMode,
     connected: Boolean,
+    showRefreshButton: Boolean,
     suggestions: List<CommandState>,
     quickSwitches: List<QuickSwitchState>,
     onDraftChange: (String) -> Unit,
@@ -259,29 +260,31 @@ fun MessageComposer(
                     ) {
                         IconButton(
                             onClick = {
-                                if (connected) {
-                                    if (draft != field.text) {
-                                        onDraftChange(field.text)
-                                    }
-                                    onSend()
-                                    if (field.text.isNotBlank()) {
-                                        commandOpen = false
-                                        focus.clearFocus()
-                                        keyboard?.hide()
-                                    }
-                                } else {
+                                if (showRefreshButton) {
                                     onReload()
+                                    return@IconButton
+                                }
+                                if (!connected) return@IconButton
+                                if (draft != field.text) {
+                                    onDraftChange(field.text)
+                                }
+                                onSend()
+                                if (field.text.isNotBlank()) {
+                                    commandOpen = false
+                                    focus.clearFocus()
+                                    keyboard?.hide()
                                 }
                             },
+                            enabled = showRefreshButton || connected,
                             colors = IconButtonDefaults.iconButtonColors(
                                 contentColor = MaterialTheme.colorScheme.primary,
                             ),
                             modifier = Modifier.size(48.dp),
                         ) {
-                            if (connected) {
-                                Icon(Icons.Send, "Send message")
-                            } else {
+                            if (showRefreshButton) {
                                 Icon(Icons.Refresh, "Reload")
+                            } else {
+                                Icon(Icons.Send, "Send message")
                             }
                         }
                     }
@@ -397,6 +400,7 @@ private fun MessageComposerPreview() {
             draft = draft,
             mode = mode,
             connected = true,
+            showRefreshButton = false,
             suggestions = listOf(
                 CommandState(
                     name = "help",

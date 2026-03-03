@@ -278,6 +278,7 @@ fun AgentChatScreen(
                     draft = state.draft,
                     mode = state.mode,
                     connected = state.status is ServerState.Connected,
+                    showRefreshButton = state.showRefreshButton,
                     suggestions = state.slashSuggestions,
                     quickSwitches = state.quickSwitches,
                     onDraftChange = { onEvent(ConversationEvent.DraftChanged(it)) },

@@ -8,6 +8,8 @@ import de.chennemann.agentic.domain.session.ProjectState
 import de.chennemann.agentic.domain.session.ServerState
 import de.chennemann.agentic.domain.session.SessionServiceApi
 import de.chennemann.agentic.domain.session.SessionState
+import de.chennemann.agentic.domain.v2.servers.ServerInfo
+import de.chennemann.agentic.domain.v2.servers.ServerService
 import de.chennemann.agentic.navigation.NavEvent
 import de.chennemann.agentic.navigation.SessionSelectionBottomSheetRoute
 import de.chennemann.agentic.navigation.WorkspaceHubRoute
@@ -25,6 +27,7 @@ import kotlinx.coroutines.launch
 
 class ConversationViewModel(
     private val service: SessionServiceApi,
+    private val serverService: ServerService,
     private val dispatchers: DispatcherProvider,
 ) : ViewModel() {
     private val mapper = ConversationRenderMapper()
@@ -109,7 +112,7 @@ class ConversationViewModel(
             initialValue = null,
         )
 
-    val state: StateFlow<ConversationUiState> = combine(global, local) { global, local ->
+    val state: StateFlow<ConversationUiState> = combine(global, local, serverService.connectedServer) { global, local, connectedServer ->
         val quick = quickSwitchModel(
             global.projects,
             global.activeSessions,
@@ -122,6 +125,7 @@ class ConversationViewModel(
         ConversationUiState(
             title = global.title,
             status = global.status,
+            showRefreshButton = connectedServer is ServerInfo.NONE,
             message = global.message,
             turns = global.turns,
             canLoadMoreMessages = global.canLoadMoreMessages,
@@ -141,6 +145,7 @@ class ConversationViewModel(
             initialValue = ConversationUiState(
                 title = "No session selected",
                 status = service.state.value.status,
+                showRefreshButton = true,
                 message = service.state.value.message,
                 turns = emptyList(),
                 canLoadMoreMessages = false,

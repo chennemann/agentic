@@ -18,6 +18,7 @@ data class ConversationTurnUiState(
 data class ConversationUiState(
     val title: String,
     val status: ServerState,
+    val showRefreshButton: Boolean,
     val message: String?,
     val turns: List<ConversationTurnUiState>,
     val canLoadMoreMessages: Boolean,
