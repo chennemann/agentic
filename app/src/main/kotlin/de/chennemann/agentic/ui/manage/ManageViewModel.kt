@@ -31,7 +31,7 @@ class ManageViewModel(
     private val navFlow = MutableSharedFlow<NavEvent>(extraBufferCapacity = 1)
 
     private val connectedServer = serverService.connectedServer
-    private val projects = projectService.observeProjects()
+    private val projects = projectService.projects
     private val selectedProject: MutableStateFlow<String?> = MutableStateFlow(null)
 
     val nav = navFlow.asSharedFlow()

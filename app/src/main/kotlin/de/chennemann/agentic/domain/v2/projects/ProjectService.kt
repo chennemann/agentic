@@ -1,10 +1,14 @@
 package de.chennemann.agentic.domain.v2.projects
 
 import de.chennemann.agentic.domain.v2.OpenCodeServerAdapter
+import de.chennemann.agentic.domain.v2.servers.ServerInfo
+import de.chennemann.agentic.domain.v2.servers.ServerService
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 
 interface ProjectService {
-    fun observeProjects(serverId: String? = null): Flow<List<LocalProjectInfo>>
+
+    val projects: Flow<List<LocalProjectInfo>>
 
     suspend fun togglePinnedById(projectId: String): Boolean
 
@@ -12,11 +16,16 @@ interface ProjectService {
 }
 
 class DefaultProjectService(
-    private val projectRepository: ProjectRepository,
     private val adapter: OpenCodeServerAdapter,
+    private val serverService: ServerService,
+    private val projectRepository: ProjectRepository,
 ) : ProjectService {
-    override fun observeProjects(serverId: String?): Flow<List<LocalProjectInfo>> {
-        return projectRepository.observeProjects(serverId)
+
+    override val projects: Flow<List<LocalProjectInfo>> = combine(serverService.connectedServer, projectRepository.observeProjects()) { connectedServer, projects ->
+        when (connectedServer) {
+            is ServerInfo.ConnectedServerInfo -> projects.filter { it.serverId == connectedServer.id }
+            else -> emptyList()
+        }
     }
 
     override suspend fun togglePinnedById(projectId: String): Boolean {
