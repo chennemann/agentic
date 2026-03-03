@@ -72,6 +72,34 @@ val openApiFix by tasks.registering {
             mapReplacements.forEach { (from, to) ->
                 text = text.replace(from, to)
             }
+            if (file.name == "ApiClient.kt") {
+                if (!text.contains("import io.ktor.serialization.kotlinx.json.json")) {
+                    text = text.replace(
+                        "import io.ktor.client.plugins.contentnegotiation.ContentNegotiation",
+                        "import io.ktor.client.plugins.contentnegotiation.ContentNegotiation\nimport io.ktor.serialization.kotlinx.json.json\nimport kotlinx.serialization.json.Json",
+                    )
+                }
+                text = text.replace(
+                    Regex("(import io\\.ktor\\.serialization\\.kotlinx\\.json\\.json\\nimport kotlinx\\.serialization\\.json\\.Json\\n)+"),
+                    "import io.ktor.serialization.kotlinx.json.json\nimport kotlinx.serialization.json.Json\n",
+                )
+                text = text.replace(
+                    Regex("it\\.install\\(ContentNegotiation\\) \\{\\s*\\}"),
+                    "it.install(ContentNegotiation) {\n                json(\n                    Json {\n                        ignoreUnknownKeys = true\n                        explicitNulls = false\n                    },\n                )\n            }",
+                )
+            }
+            if (file.name == "GlobalHealth200Response.kt") {
+                text = text.replace(
+                    "    val healthy: GlobalHealth200Response.Healthy,",
+                    "    val healthy: kotlin.Boolean,",
+                )
+                text = text.replace(
+                    Regex(
+                        """(?s)\n\s*/\*\*\s*\n\s*\*\s*\n\s*\*\s*\n\s*\* Values: `true`\s*\n\s*\*/\s*\n\s*@Serializable\s*\n\s*enum class Healthy\(val value: kotlin.Boolean\) \{\s*\n\s*@SerialName\(value = "true"\) `true`\(true\);\s*\n\s*\}\s*""",
+                    ),
+                    "\n",
+                )
+            }
             if (
                 file.extension == "kt" &&
                 text.contains("kotlinx.serialization.json.JsonElement") &&

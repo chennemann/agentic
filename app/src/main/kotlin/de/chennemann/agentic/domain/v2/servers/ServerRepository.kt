@@ -3,15 +3,15 @@ package de.chennemann.agentic.domain.v2.servers
 import kotlinx.coroutines.flow.Flow
 
 interface ServerRepository {
-    fun observeServers(): Flow<List<LocalServerInfo>>
+    fun observeServers(): Flow<List<ServerInfo.ConnectedServerInfo>>
 
-    suspend fun selectServer(id: String): LocalServerInfo?
+    suspend fun selectServer(id: String): ServerInfo.ConnectedServerInfo?
 
-    suspend fun selectServerByUrl(url: String): LocalServerInfo?
+    suspend fun selectServerByUrl(url: String): ServerInfo.ConnectedServerInfo?
 
-    suspend fun insertServer(server: LocalServerInfo)
+    suspend fun insertServer(server: ServerInfo.ConnectedServerInfo)
 
-    suspend fun updateServer(server: LocalServerInfo)
+    suspend fun updateServer(server: ServerInfo.ConnectedServerInfo)
 
     suspend fun deleteServer(id: String)
 }

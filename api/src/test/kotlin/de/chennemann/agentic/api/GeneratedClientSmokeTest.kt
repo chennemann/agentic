@@ -19,7 +19,7 @@ class GeneratedClientSmokeTest {
     @Test
     fun serializes_and_deserializes_generated_model() {
         val data = GlobalHealth200Response(
-            healthy = GlobalHealth200Response.Healthy.`true`,
+            healthy = true,
             version = "1.2.3",
         )
 
@@ -47,8 +47,11 @@ class GeneratedClientSmokeTest {
         )
 
         val response = api.globalHealth()
+        val body = response.body()
 
         assertTrue(response.success)
         assertEquals(200, response.status)
+        assertTrue(body.healthy)
+        assertEquals("1.2.3", body.version)
     }
 }

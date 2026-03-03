@@ -23,12 +23,13 @@ import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -40,6 +41,7 @@ import com.pavi2410.appupdater.AppUpdater
 import com.pavi2410.appupdater.UpdateState
 import com.pavi2410.appupdater.github
 import de.chennemann.agentic.BuildConfig
+import de.chennemann.agentic.di.DefaultDispatcherProvider
 import de.chennemann.agentic.domain.session.ProjectState
 import de.chennemann.agentic.icons.Icons
 import de.chennemann.agentic.icons.Add
@@ -50,13 +52,14 @@ import de.chennemann.agentic.icons.Refresh
 import de.chennemann.agentic.icons.Star
 import de.chennemann.agentic.icons.StarOutline
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun ManageScreen(state: ManageUiState, onEvent: (ManageEvent) -> Unit) {
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 24.dp),
+            .padding(horizontal = 16.dp, vertical = 48.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item("title") {
@@ -66,28 +69,13 @@ fun ManageScreen(state: ManageUiState, onEvent: (ManageEvent) -> Unit) {
             )
         }
         item("server") {
-            ServerCard(state.url, state.discovered, state.status, state.message, onEvent)
+            ServerCard(state.url, state.status, onEvent)
         }
         item("updates") {
             UpdateSectionCard()
         }
         item("projects") {
             ProjectListCard(state, onEvent)
-        }
-        if (!state.message.isNullOrBlank()) {
-            item("message") {
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.errorContainer,
-                    ),
-                ) {
-                    Text(
-                        text = state.message.orEmpty(),
-                        color = MaterialTheme.colorScheme.onErrorContainer,
-                        modifier = Modifier.padding(12.dp),
-                    )
-                }
-            }
         }
         item("back") {
             Row(
@@ -114,18 +102,23 @@ fun ManageScreen(state: ManageUiState, onEvent: (ManageEvent) -> Unit) {
 private fun UpdateSectionCard() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val updater = remember(context.applicationContext) {
-        AppUpdater.github(
-            context = context.applicationContext,
-            owner = BuildConfig.UPDATE_REPO_OWNER,
-            repo = BuildConfig.UPDATE_REPO_NAME,
-        )
+    val dispatchers = remember { DefaultDispatcherProvider() }
+    val updater by produceState<AppUpdater?>(
+        initialValue = null,
+        key1 = context.applicationContext,
+    ) {
+        value = withContext(dispatchers.io) {
+            AppUpdater.github(
+                context = context.applicationContext,
+                owner = BuildConfig.UPDATE_REPO_OWNER,
+                repo = BuildConfig.UPDATE_REPO_NAME,
+            )
+        }
     }
-    val updateState by updater.state.collectAsState()
 
     DisposableEffect(updater) {
         onDispose {
-            updater.close()
+            updater?.close()
         }
     }
 
@@ -140,11 +133,21 @@ private fun UpdateSectionCard() {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            val activeUpdater = updater
+            if (activeUpdater == null) {
+                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                Text(
+                    text = "Preparing update checker...",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                return@Column
+            }
             Text(
-                text = "Current version: ${updater.currentVersion}",
+                text = "Current version: ${activeUpdater.currentVersion}",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            val updateState by activeUpdater.state.collectAsState()
             when (val state = updateState) {
                 is UpdateState.Idle -> {
                     Text(
@@ -152,7 +155,7 @@ private fun UpdateSectionCard() {
                         style = MaterialTheme.typography.bodySmall,
                     )
                     OutlinedButton(
-                        onClick = { scope.launch { updater.checkForUpdate() } },
+                        onClick = { scope.launch { activeUpdater.checkForUpdate() } },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("Check for updates")
@@ -169,7 +172,7 @@ private fun UpdateSectionCard() {
                         color = MaterialTheme.colorScheme.primary,
                     )
                     OutlinedButton(
-                        onClick = { scope.launch { updater.checkForUpdate() } },
+                        onClick = { scope.launch { activeUpdater.checkForUpdate() } },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("Check again")
@@ -177,12 +180,12 @@ private fun UpdateSectionCard() {
                 }
                 is UpdateState.UpdateAvailable -> {
                     Text(
-                        text = "${updater.currentVersion} -> ${state.release.version}",
+                        text = "${activeUpdater.currentVersion} -> ${state.release.version}",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Button(
-                        onClick = { scope.launch { updater.downloadUpdate() } },
+                        onClick = { scope.launch { activeUpdater.downloadUpdate() } },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("Download update (${formatUpdateSize(state.asset.size)})")
@@ -205,7 +208,7 @@ private fun UpdateSectionCard() {
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Button(
-                        onClick = { updater.installUpdate() },
+                        onClick = { activeUpdater.installUpdate() },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("Install update")
@@ -218,7 +221,7 @@ private fun UpdateSectionCard() {
                         color = MaterialTheme.colorScheme.error,
                     )
                     OutlinedButton(
-                        onClick = { scope.launch { updater.checkForUpdate() } },
+                        onClick = { scope.launch { activeUpdater.checkForUpdate() } },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("Retry")

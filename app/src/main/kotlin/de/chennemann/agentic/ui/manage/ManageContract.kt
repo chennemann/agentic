@@ -5,12 +5,10 @@ import de.chennemann.agentic.domain.session.ServerState
 
 data class ManageUiState(
     val url: String,
-    val discovered: String?,
     val status: ServerState,
     val loadingProjects: Boolean,
     val projects: List<ProjectState>,
     val selectedProject: String?,
-    val message: String?,
 )
 
 sealed interface ManageEvent {

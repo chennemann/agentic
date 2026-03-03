@@ -4,7 +4,7 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import de.chennemann.agentic.db.AgenticDb
 import de.chennemann.agentic.di.DispatcherProvider
-import de.chennemann.agentic.domain.v2.servers.LocalServerInfo
+import de.chennemann.agentic.domain.v2.servers.ServerInfo
 import de.chennemann.agentic.domain.v2.servers.ServerRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -13,14 +13,14 @@ class SqlDelightServerRepository(
     private val db: AgenticDb,
     private val dispatchers: DispatcherProvider,
 ) : ServerRepository {
-    override fun observeServers(): Flow<List<LocalServerInfo>> {
+    override fun observeServers(): Flow<List<ServerInfo.ConnectedServerInfo>> {
         return db.serversQueries
             .selectServers(mapper = ::mapServer)
             .asFlow()
             .mapToList(dispatchers.io)
     }
 
-    override suspend fun selectServer(id: String): LocalServerInfo? {
+    override suspend fun selectServer(id: String): ServerInfo.ConnectedServerInfo? {
         val serverId = id.trim()
         require(serverId.isNotBlank()) { "id must not be blank" }
         return withContext(dispatchers.io) {
@@ -30,7 +30,7 @@ class SqlDelightServerRepository(
         }
     }
 
-    override suspend fun selectServerByUrl(url: String): LocalServerInfo? {
+    override suspend fun selectServerByUrl(url: String): ServerInfo.ConnectedServerInfo? {
         val serverUrl = url.trim()
         require(serverUrl.isNotBlank()) { "url must not be blank" }
         return withContext(dispatchers.io) {
@@ -40,7 +40,7 @@ class SqlDelightServerRepository(
         }
     }
 
-    override suspend fun insertServer(server: LocalServerInfo) {
+    override suspend fun insertServer(server: ServerInfo.ConnectedServerInfo) {
         withContext(dispatchers.io) {
             db.serversQueries.insertServer(
                 id = server.id,
@@ -50,7 +50,7 @@ class SqlDelightServerRepository(
         }
     }
 
-    override suspend fun updateServer(server: LocalServerInfo) {
+    override suspend fun updateServer(server: ServerInfo.ConnectedServerInfo) {
         withContext(dispatchers.io) {
             db.serversQueries.updateServer(
                 url = server.url,
@@ -73,8 +73,8 @@ private fun mapServer(
     id: String,
     url: String,
     last_connected_at: Long?,
-): LocalServerInfo {
-    return LocalServerInfo(
+): ServerInfo.ConnectedServerInfo {
+    return ServerInfo.ConnectedServerInfo(
         id = id,
         url = url,
         lastConnectedAt = last_connected_at,

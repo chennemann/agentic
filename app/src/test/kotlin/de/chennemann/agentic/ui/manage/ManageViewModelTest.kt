@@ -8,6 +8,8 @@ import de.chennemann.agentic.domain.session.SessionState
 import de.chennemann.agentic.domain.session.SessionUiState
 import de.chennemann.agentic.domain.v2.projects.LocalProjectInfo
 import de.chennemann.agentic.domain.v2.projects.ProjectService as ProjectServiceV2
+import de.chennemann.agentic.domain.v2.servers.LocalServerInfo
+import de.chennemann.agentic.domain.v2.servers.ServerService as ServerServiceV2
 import de.chennemann.agentic.navigation.LogsRoute
 import de.chennemann.agentic.navigation.NavEvent
 import kotlinx.coroutines.CoroutineScope
@@ -41,8 +43,9 @@ class ManageViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
+        val serverService = StubServerService()
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(service, projectService, lanes(main, worker))
+        val viewModel = ManageViewModel(service, serverService, projectService, lanes(main, worker))
         val collect = backgroundScope.launch(worker) { viewModel.state.collect {} }
         service.state.value = state(selectedProject = "/repo/main")
         projectService.projects.value = listOf(
@@ -78,8 +81,9 @@ class ManageViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
+        val serverService = StubServerService()
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(service, projectService, lanes(main, worker))
+        val viewModel = ManageViewModel(service, serverService, projectService, lanes(main, worker))
         val collect = backgroundScope.launch(worker) { viewModel.state.collect {} }
         service.state.value = state(
             projects = listOf(
@@ -102,8 +106,9 @@ class ManageViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
+        val serverService = StubServerService()
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(service, projectService, lanes(main, worker))
+        val viewModel = ManageViewModel(service, serverService, projectService, lanes(main, worker))
         viewModel.onEvent(ManageEvent.LoadProjectRequested(" /repo/alpha "))
         advanceUntilIdle()
 
@@ -116,8 +121,9 @@ class ManageViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
+        val serverService = StubServerService()
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(service, projectService, lanes(main, worker))
+        val viewModel = ManageViewModel(service, serverService, projectService, lanes(main, worker))
 
         viewModel.onEvent(ManageEvent.LoadProjectRequested("   "))
         advanceUntilIdle()
@@ -131,8 +137,9 @@ class ManageViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
+        val serverService = StubServerService()
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(service, projectService, lanes(main, worker))
+        val viewModel = ManageViewModel(service, serverService, projectService, lanes(main, worker))
 
         viewModel.onEvent(ManageEvent.Connect("http://127.0.0.1"))
 
@@ -146,12 +153,22 @@ class ManageViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
+        val serverService = StubServerService().also {
+            it.connected.value = listOf(
+                LocalServerInfo(
+                    id = "server-1",
+                    url = "http://127.0.0.1",
+                    lastConnectedAt = 1L,
+                )
+            )
+        }
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(service, projectService, lanes(main, worker))
+        val viewModel = ManageViewModel(service, serverService, projectService, lanes(main, worker))
 
         viewModel.onEvent(ManageEvent.ProjectsRefreshRequested)
+        advanceUntilIdle()
 
-        assertEquals(1, service.refreshCalls)
+        assertEquals(listOf("server-1|http://127.0.0.1"), projectService.syncRequests)
     }
 
     @Test
@@ -160,8 +177,9 @@ class ManageViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
+        val serverService = StubServerService()
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(service, projectService, lanes(main, worker))
+        val viewModel = ManageViewModel(service, serverService, projectService, lanes(main, worker))
 
         val nav = async { viewModel.nav.first() }
         advanceUntilIdle()
@@ -177,8 +195,9 @@ class ManageViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
+        val serverService = StubServerService()
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(service, projectService, lanes(main, worker))
+        val viewModel = ManageViewModel(service, serverService, projectService, lanes(main, worker))
 
         val nav = async { viewModel.nav.first() }
         advanceUntilIdle()
@@ -194,8 +213,9 @@ class ManageViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
+        val serverService = StubServerService()
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(service, projectService, lanes(main, worker))
+        val viewModel = ManageViewModel(service, serverService, projectService, lanes(main, worker))
 
         viewModel.onEvent(ManageEvent.ProjectFavoriteToggled("project-42"))
         advanceUntilIdle()
@@ -327,6 +347,7 @@ private class StubSessionService : SessionServiceApi {
 private class StubProjectService : ProjectServiceV2 {
     val projects = MutableStateFlow<List<LocalProjectInfo>>(emptyList())
     val toggleRequests = mutableListOf<String>()
+    val syncRequests = mutableListOf<String>()
 
     override fun observeProjects(serverId: String?) = projects
 
@@ -336,6 +357,17 @@ private class StubProjectService : ProjectServiceV2 {
     }
 
     override suspend fun syncServerProjects(serverId: String, baseUrl: String): List<LocalProjectInfo> {
+        syncRequests += "$serverId|$baseUrl"
         return emptyList()
+    }
+}
+
+private class StubServerService : ServerServiceV2 {
+    val connected = MutableStateFlow<List<LocalServerInfo>>(emptyList())
+
+    override fun connectedServers() = connected
+
+    override suspend fun connect(url: String): Boolean {
+        return false
     }
 }

@@ -108,7 +108,7 @@ val appModule = module {
     single<ServerRepositoryV2> { SqlDelightServerRepository(get(), get()) }
     single<MessageRepositoryV2> { SqlDelightMessageRepository(get(), get()) }
     single<SynchronizationServiceV2> { DefaultSynchronizationService(get(), get(), get()) }
-    single<ServerServiceV2> { DefaultServerService(get(), get(), get()) }
+    single<ServerServiceV2> { DefaultServerService(get(), get()) }
     single<ProjectServiceV2> { DefaultProjectService(get(), get()) }
     single<SessionServiceV2> { DefaultSessionService(get(), get()) }
     single<MessageServiceV2> { DefaultMessageService(get()) }
@@ -132,6 +132,6 @@ val appModule = module {
     single<SessionServiceApi> { get<SessionService>() }
     viewModel { ConversationViewModel(get(), get()) }
     viewModel { (projectKey: String) -> SessionSelectionViewModel(projectKey, get(), get(), get()) }
-    viewModel { ManageViewModel(get(), get(), get(), get()) }
+    viewModel { ManageViewModel(get(), get(), get()) }
     viewModel { LogsViewModel(get(), get()) }
 }

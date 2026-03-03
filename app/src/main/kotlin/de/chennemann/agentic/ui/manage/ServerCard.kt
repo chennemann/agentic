@@ -19,7 +19,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
@@ -32,7 +31,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.TextFieldValue
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import de.chennemann.agentic.domain.session.ServerState
@@ -43,15 +41,11 @@ import de.chennemann.agentic.ui.theme.MobileTheme
 
 
 @Composable
-fun ServerCard(url: String, discoveredUrl: String?, status: ServerState, urlError: String?, onEvent: (ManageEvent) -> Unit) {
+fun ServerCard(url: String, status: ServerState, onEvent: (ManageEvent) -> Unit) {
     val connected = status is ServerState.Connected
     val connecting = status is ServerState.Loading
     var expanded by rememberSaveable(connected) { mutableStateOf(!connected) }
     var edited by rememberSaveable { mutableStateOf(false) }
-    val error = when {
-        edited -> null
-        else -> urlError
-    }
 
     LaunchedEffect(connected) {
         if (connected) expanded = false
@@ -131,26 +125,8 @@ fun ServerCard(url: String, discoveredUrl: String?, status: ServerState, urlErro
                         label = { Text("Server URL") },
                         singleLine = true,
                         enabled = !connecting,
-                        isError = error != null,
-                        supportingText = { if (error != null) Text(error) },
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    if (discoveredUrl != null) {
-                        OutlinedButton(
-                            onClick = {
-                                urlField = urlField.copy(text = discoveredUrl)
-                                edited = true
-                            },
-                            enabled = !connecting,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(
-                                text = "Use discovered: $discoveredUrl",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
                     Button(
                         onClick = {
                             edited = false
@@ -212,9 +188,7 @@ private fun ServerCardPreviewDisconnectedWithDiscoveredUrl() {
     MobileTheme {
         ServerCard(
             url = "http://192.168.1.10:4096",
-            discoveredUrl = "http://192.168.1.12:4096",
             status = ServerState.Idle,
-            urlError = null,
             onEvent = {},
         )
     }
@@ -226,9 +200,7 @@ private fun ServerCardPreviewDisconnected() {
     MobileTheme {
         ServerCard(
             url = "http://192.168.1.10:4096",
-            discoveredUrl = null,
             status = ServerState.Idle,
-            urlError = null,
             onEvent = {},
         )
     }
@@ -240,9 +212,7 @@ private fun ServerCardPreviewConnected() {
     MobileTheme {
         ServerCard(
             url = "http://127.0.0.1:4096",
-            discoveredUrl = null,
             status = ServerState.Connected("v0.14.2"),
-            urlError = null,
             onEvent = {},
         )
     }

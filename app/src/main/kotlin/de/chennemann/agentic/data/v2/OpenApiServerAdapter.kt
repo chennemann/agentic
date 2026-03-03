@@ -2,7 +2,6 @@ package de.chennemann.agentic.data.v2
 
 import de.chennemann.agentic.api.apis.DefaultApi
 import de.chennemann.agentic.api.apis.SessionApi
-import de.chennemann.agentic.api.models.GlobalHealth200Response
 import de.chennemann.agentic.api.models.Project
 import de.chennemann.agentic.api.models.Session
 import de.chennemann.agentic.domain.v2.OpenCodeHealthCheck
@@ -28,7 +27,7 @@ class OpenApiServerAdapter(
         }
         val body = response.body()
         return OpenCodeHealthCheck(
-            healthy = body.healthy == GlobalHealth200Response.Healthy.`true`,
+            healthy = body.healthy,
             version = body.version,
         )
     }
