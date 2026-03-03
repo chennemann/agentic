@@ -4,6 +4,7 @@ import de.chennemann.agentic.di.DispatcherProvider
 import de.chennemann.agentic.domain.session.ServerState
 import de.chennemann.agentic.domain.v2.projects.LocalProjectInfo
 import de.chennemann.agentic.domain.v2.projects.ProjectService
+import de.chennemann.agentic.domain.v2.servers.ServerConnectionState
 import de.chennemann.agentic.domain.v2.servers.ServerInfo
 import de.chennemann.agentic.domain.v2.servers.ServerService
 import de.chennemann.agentic.navigation.LogsRoute
@@ -208,9 +209,11 @@ private class StubProjectService : ProjectService {
 
 private class StubServerService : ServerService {
     val connected = MutableStateFlow<ServerInfo>(ServerInfo.NONE)
+    val connection = MutableStateFlow<ServerConnectionState>(ServerConnectionState.Idle)
     val connectRequests = mutableListOf<String>()
 
     override val connectedServer: Flow<ServerInfo> = connected
+    override val connectionState: Flow<ServerConnectionState> = connection
 
     override suspend fun connect(url: String): Boolean {
         connectRequests += url

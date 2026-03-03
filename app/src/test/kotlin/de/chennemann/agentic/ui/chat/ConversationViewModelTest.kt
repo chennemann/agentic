@@ -7,6 +7,9 @@ import de.chennemann.agentic.domain.session.ServerState
 import de.chennemann.agentic.domain.session.SessionServiceApi
 import de.chennemann.agentic.domain.session.SessionState
 import de.chennemann.agentic.domain.session.SessionUiState
+import de.chennemann.agentic.domain.v2.servers.ServerConnectionState
+import de.chennemann.agentic.domain.v2.servers.ServerInfo
+import de.chennemann.agentic.domain.v2.servers.ServerService
 import de.chennemann.agentic.navigation.NavEvent
 import de.chennemann.agentic.navigation.SessionSelectionBottomSheetRoute
 import de.chennemann.agentic.navigation.WorkspaceHubRoute
@@ -14,6 +17,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,7 +47,7 @@ class ConversationViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
-        val viewModel = ConversationViewModel(service, lanes(main, worker))
+        val viewModel = viewModel(service, main, worker)
         val collect = backgroundScope.launch(worker) { viewModel.state.collect {} }
         val menuCollect = backgroundScope.launch(worker) { viewModel.quickSwitchMenu.collect {} }
         val focused = SessionState(
@@ -83,12 +87,36 @@ class ConversationViewModelTest {
     }
 
     @Test
+    fun refreshButtonShownOnlyWithoutConnectedServer() = runTest(TestCoroutineScheduler()) {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val worker = StandardTestDispatcher(testScheduler)
+        val service = StubSessionService()
+        val serverService = StubServerService()
+        val viewModel = viewModel(service, main, worker, serverService)
+        val collect = backgroundScope.launch(worker) { viewModel.state.collect {} }
+
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.showRefreshButton)
+
+        serverService.connected.value = ServerInfo.ConnectedServerInfo(
+            id = "server-1",
+            url = "http://127.0.0.1",
+            lastConnectedAt = 1L,
+        )
+        advanceUntilIdle()
+
+        assertFalse(viewModel.state.value.showRefreshButton)
+        collect.cancel()
+    }
+
+    @Test
     fun workspaceHubRequestedEmitsTypedNavigationAction() = runTest(TestCoroutineScheduler()) {
         val main = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
-        val viewModel = ConversationViewModel(service, lanes(main, worker))
+        val viewModel = viewModel(service, main, worker)
 
         val nav = async { viewModel.nav.first() }
         advanceUntilIdle()
@@ -104,7 +132,7 @@ class ConversationViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
-        val viewModel = ConversationViewModel(service, lanes(main, worker))
+        val viewModel = viewModel(service, main, worker)
         val session = SessionState(id = "s1", title = "One", version = "1", directory = "/repo/main", updatedAt = 100)
         service.state.value = state(activeSessions = listOf(session))
 
@@ -120,7 +148,7 @@ class ConversationViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
-        val viewModel = ConversationViewModel(service, lanes(main, worker))
+        val viewModel = viewModel(service, main, worker)
 
         viewModel.onEvent(ConversationEvent.SessionRequested(null, "/repo/main"))
         advanceUntilIdle()
@@ -134,7 +162,7 @@ class ConversationViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
-        val viewModel = ConversationViewModel(service, lanes(main, worker))
+        val viewModel = viewModel(service, main, worker)
         val collect = backgroundScope.launch(worker) { viewModel.state.collect {} }
         val menuCollect = backgroundScope.launch(worker) { viewModel.quickSwitchMenu.collect {} }
         val focused = SessionState(
@@ -175,7 +203,7 @@ class ConversationViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
-        val viewModel = ConversationViewModel(service, lanes(main, worker))
+        val viewModel = viewModel(service, main, worker)
 
         val nav = async { viewModel.nav.first() }
         advanceUntilIdle()
@@ -191,7 +219,7 @@ class ConversationViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
-        val viewModel = ConversationViewModel(service, lanes(main, worker))
+        val viewModel = viewModel(service, main, worker)
         val collect = backgroundScope.launch(worker) { viewModel.state.collect {} }
         val menuCollect = backgroundScope.launch(worker) { viewModel.quickSwitchMenu.collect {} }
         val focused = SessionState(
@@ -247,7 +275,7 @@ class ConversationViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
-        val viewModel = ConversationViewModel(service, lanes(main, worker))
+        val viewModel = viewModel(service, main, worker)
         val collect = backgroundScope.launch(worker) { viewModel.state.collect {} }
         val menuCollect = backgroundScope.launch(worker) { viewModel.quickSwitchMenu.collect {} }
         val focused = SessionState(
@@ -288,7 +316,7 @@ class ConversationViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
-        val viewModel = ConversationViewModel(service, lanes(main, worker))
+        val viewModel = viewModel(service, main, worker)
         val collect = backgroundScope.launch(worker) { viewModel.state.collect {} }
         service.state.value = state(
             projects = listOf(
@@ -313,7 +341,7 @@ class ConversationViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
-        val viewModel = ConversationViewModel(service, lanes(main, worker))
+        val viewModel = viewModel(service, main, worker)
         val collect = backgroundScope.launch(worker) { viewModel.state.collect {} }
         val sessions = listOf(
             SessionState(id = "s3", title = "Session 3", version = "1", directory = "/repo/main", updatedAt = 300),
@@ -357,7 +385,7 @@ class ConversationViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
-        val viewModel = ConversationViewModel(service, lanes(main, worker))
+        val viewModel = viewModel(service, main, worker)
         val collect = backgroundScope.launch(worker) { viewModel.state.collect {} }
         val menuCollect = backgroundScope.launch(worker) { viewModel.quickSwitchMenu.collect {} }
         val focused = SessionState(
@@ -398,7 +426,7 @@ class ConversationViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
-        val viewModel = ConversationViewModel(service, lanes(main, worker))
+        val viewModel = viewModel(service, main, worker)
         val collect = backgroundScope.launch(worker) { viewModel.state.collect {} }
         val menuCollect = backgroundScope.launch(worker) { viewModel.quickSwitchMenu.collect {} }
         val root = SessionState(
@@ -440,7 +468,7 @@ class ConversationViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
-        val viewModel = ConversationViewModel(service, lanes(main, worker))
+        val viewModel = viewModel(service, main, worker)
         val collect = backgroundScope.launch(worker) { viewModel.state.collect {} }
         val focused = SessionState(
             id = "s-root",
@@ -481,7 +509,7 @@ class ConversationViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
-        val viewModel = ConversationViewModel(service, lanes(main, worker))
+        val viewModel = viewModel(service, main, worker)
         val collect = backgroundScope.launch(worker) { viewModel.state.collect {} }
 
         advanceUntilIdle()
@@ -509,7 +537,7 @@ class ConversationViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val service = StubSessionService()
-        val viewModel = ConversationViewModel(service, lanes(main, worker))
+        val viewModel = viewModel(service, main, worker)
         val collect = backgroundScope.launch(worker) { viewModel.state.collect {} }
         service.state.value = state(
             commands = listOf(
@@ -569,6 +597,15 @@ class ConversationViewModelTest {
         )
     }
 
+    private fun viewModel(
+        service: StubSessionService,
+        main: TestDispatcher,
+        worker: TestDispatcher,
+        serverService: StubServerService = StubServerService(),
+    ): ConversationViewModel {
+        return ConversationViewModel(service, serverService, lanes(main, worker))
+    }
+
     private fun lanes(main: TestDispatcher, worker: TestDispatcher): DispatcherProvider {
         return object : DispatcherProvider {
             override val io = worker
@@ -576,6 +613,18 @@ class ConversationViewModelTest {
             override val mainImmediate = main
         }
     }
+}
+
+private class StubServerService : ServerService {
+    val connected = MutableStateFlow<ServerInfo>(ServerInfo.NONE)
+    val connection = MutableStateFlow<ServerConnectionState>(ServerConnectionState.Idle)
+
+    override val connectedServer: Flow<ServerInfo> = connected
+    override val connectionState: Flow<ServerConnectionState> = connection
+
+    override suspend fun connect(url: String): Boolean = true
+
+    override suspend fun heartbeat() = Unit
 }
 
 private class StubSessionService : SessionServiceApi {

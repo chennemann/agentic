@@ -14,6 +14,7 @@ import de.chennemann.agentic.domain.v2.servers.DefaultServerService
 import de.chennemann.agentic.domain.v2.servers.ServerInfo
 import de.chennemann.agentic.domain.v2.servers.ServerRepository
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 
 fun connectedServerFixture(
@@ -40,6 +41,7 @@ fun healthCheckFixture(
 
 class OpenCodeServerAdapterFixture(
     var defaultHealthResult: Result<OpenCodeHealthCheck> = Result.success(healthCheckFixture()),
+    var healthCheckDelayMillis: Long = 0,
 ) : OpenCodeServerAdapter {
     private val healthChecksByUrl = linkedMapOf<String, Result<OpenCodeHealthCheck>>()
     val healthCheckRequests = mutableListOf<String>()
@@ -49,6 +51,9 @@ class OpenCodeServerAdapterFixture(
     }
 
     override suspend fun healthCheckWithUrl(baseUrl: String): OpenCodeHealthCheck {
+        if (healthCheckDelayMillis > 0) {
+            delay(healthCheckDelayMillis)
+        }
         healthCheckRequests += baseUrl
         return (healthChecksByUrl[baseUrl] ?: defaultHealthResult).getOrThrow()
     }

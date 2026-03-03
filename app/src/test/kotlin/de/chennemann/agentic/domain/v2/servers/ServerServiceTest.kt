@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -25,6 +26,7 @@ class ServerServiceTest {
         val connected = service.connectedServer.first()
 
         assertEquals(ServerInfo.NONE, connected)
+        assertEquals(ServerConnectionState.Idle, service.connectionState.first())
     }
 
     @Test
@@ -41,6 +43,7 @@ class ServerServiceTest {
         val connected = service.connectedServer.first()
 
         assertEquals(ServerInfo.NONE, connected)
+        assertEquals(ServerConnectionState.Idle, service.connectionState.first())
     }
 
     @Test
@@ -67,13 +70,8 @@ class ServerServiceTest {
         val connected = service.connectedServer.first()
 
         assertEquals(ServerInfo.NONE, connected)
-        assertEquals(
-            listOf(
-                "https://unreachable-one.test",
-                "https://unreachable-two.test",
-            ),
-            adapter.healthCheckRequests,
-        )
+        assertEquals(ServerConnectionState.Idle, service.connectionState.first())
+        assertTrue(adapter.healthCheckRequests.isEmpty())
     }
 
     @Test
@@ -90,6 +88,47 @@ class ServerServiceTest {
         val server = service.connectedServer.first()
 
         assertEquals(ServerInfo.NONE, server)
+        assertEquals(ServerConnectionState.Disconnected, service.connectionState.first())
+        assertEquals(2, adapter.healthCheckRequests.count { it == "https://example.test" })
+    }
+
+    @Test
+    fun heartbeatDoesNotRetryOnceDisconnected() = environmentTest {
+        assertTrue(service.connect("https://example.test"))
+        adapter.givenHealthCheck(
+            url = "https://example.test",
+            result = Result.success(healthCheckFixture(healthy = false)),
+        )
+
+        service.heartbeat()
+
+        val beforeExtraHeartbeat = adapter.healthCheckRequests.count { it == "https://example.test" }
+        service.heartbeat()
+        val afterExtraHeartbeat = adapter.healthCheckRequests.count { it == "https://example.test" }
+
+        assertEquals(ServerConnectionState.Disconnected, service.connectionState.first())
+        assertEquals(ServerInfo.NONE, service.connectedServer.first())
+        assertEquals(2, beforeExtraHeartbeat)
+        assertEquals(beforeExtraHeartbeat, afterExtraHeartbeat)
+    }
+
+    @Test
+    fun connectionStateIsRefreshingWhileHeartbeatRuns() = environmentTest {
+        assertTrue(service.connect("https://example.test"))
+        adapter.healthCheckDelayMillis = 1_000
+
+        val heartbeatJob = scope.launch {
+            service.heartbeat()
+        }
+        scope.runCurrent()
+
+        assertEquals(ServerConnectionState.Refreshing, service.connectionState.first())
+
+        scope.advanceTimeBy(1_000)
+        scope.advanceUntilIdle()
+        heartbeatJob.join()
+
+        assertEquals(ServerConnectionState.Connected, service.connectionState.first())
     }
 
     @Test
@@ -100,39 +139,45 @@ class ServerServiceTest {
         assertTrue(connected)
         assertEquals("https://example.test", server.url)
         assertNotNull(server.lastConnectedAt)
+        assertEquals(ServerConnectionState.Connected, service.connectionState.first())
     }
 
     @Test
-    fun connectedServerHasValueWhenOnePersistedServerIsReachable() = environmentTest(
-        adapter = OpenCodeServerAdapterFixture(
-            defaultHealthResult = Result.success(healthCheckFixture(healthy = false)),
-        )
+    fun connectionStateIsConnectingWhileManualConnectRuns() = environmentTest(
+        adapter = OpenCodeServerAdapterFixture(healthCheckDelayMillis = 1_000),
     ) {
-        val unreachable = connectedServerFixture(
-            id = "server-1",
-            url = "https://unreachable.test",
-            lastConnectedAt = 20L,
-        )
-        val reachable = connectedServerFixture(
-            id = "server-2",
-            url = "https://reachable.test",
-            lastConnectedAt = 10L,
-        )
-        seedServer(unreachable)
-        seedServer(reachable)
-        adapter.givenHealthCheck(
-            url = "https://reachable.test",
-            result = Result.success(healthCheckFixture(healthy = true)),
-        )
+        val connectJob = scope.launch {
+            service.connect("https://example.test")
+        }
+        scope.runCurrent()
 
-        val connected = service.connectedServer.first { it is ServerInfo.ConnectedServerInfo } as ServerInfo.ConnectedServerInfo
+        assertEquals(ServerConnectionState.Connecting, service.connectionState.first())
 
-        assertEquals(reachable.id, connected.id)
-        assertEquals(reachable.url, connected.url)
+        scope.advanceTimeBy(1_000)
+        scope.advanceUntilIdle()
+        connectJob.join()
+
+        assertEquals(ServerConnectionState.Connected, service.connectionState.first())
     }
 
     @Test
-    fun connectedServerFlowEmitsConnectedChangeOnlyOnce() = environmentTest {
+    fun connectedServerStaysNoneWhenPersistedServerIsReachable() = environmentTest {
+        seedServer(
+            connectedServerFixture(
+                id = "server-1",
+                url = "https://reachable.test",
+                lastConnectedAt = 10L,
+            )
+        )
+
+        val connected = service.connectedServer.first()
+
+        assertEquals(ServerInfo.NONE, connected)
+        assertTrue(adapter.healthCheckRequests.isEmpty())
+    }
+
+    @Test
+    fun connectedServerFlowEmitsConnectedChangeOnlyFromManualConnect() = environmentTest {
         val emissions = mutableListOf<ServerInfo>()
         val collectJob = scope.launch {
             service.connectedServer.collect { emissions += it }
@@ -146,6 +191,7 @@ class ServerServiceTest {
                 lastConnectedAt = 5L,
             )
         )
+        service.connect("https://example.test")
         scope.advanceUntilIdle()
         collectJob.cancel()
 
@@ -167,76 +213,21 @@ class ServerServiceTest {
     }
 
     @Test
-    fun restoreUpdatesLastConnectedAtOnlyForSelectedServer() = environmentTest {
-        val selected = seedServer(
+    fun connectUpdatesExistingPersistedServerByUrl() = environmentTest {
+        val seeded = seedServer(
             connectedServerFixture(
-                id = "server-selected",
-                url = "https://selected.test",
+                id = "server-1",
+                url = "https://example.test",
                 lastConnectedAt = 100L,
             )
         )
-        val untouched = seedServer(
-            connectedServerFixture(
-                id = "server-untouched",
-                url = "https://untouched.test",
-                lastConnectedAt = 90L,
-            )
-        )
 
-        val connected = service.connectedServer.first { it is ServerInfo.ConnectedServerInfo } as ServerInfo.ConnectedServerInfo
-        val persistedById = persistedServers().associateBy { it.id }
+        assertTrue(service.connect("https://example.test"))
 
-        assertEquals(selected.id, connected.id)
-        assertTrue((persistedById.getValue(selected.id).lastConnectedAt ?: 0L) > 100L)
-        assertEquals(untouched.lastConnectedAt, persistedById.getValue(untouched.id).lastConnectedAt)
-    }
-
-    @Test
-    fun restoreChecksServersByLastConnectedAtDescending() = environmentTest(
-        adapter = OpenCodeServerAdapterFixture(
-            defaultHealthResult = Result.success(healthCheckFixture(healthy = false)),
-        )
-    ) {
-        seedServer(
-            connectedServerFixture(
-                id = "server-middle-reachable",
-                url = "https://middle-reachable.test",
-                lastConnectedAt = 20L,
-            )
-        )
-        seedServer(
-            connectedServerFixture(
-                id = "server-oldest-reachable",
-                url = "https://oldest-reachable.test",
-                lastConnectedAt = 10L,
-            )
-        )
-        seedServer(
-            connectedServerFixture(
-                id = "server-newest-unreachable",
-                url = "https://newest-unreachable.test",
-                lastConnectedAt = 30L,
-            )
-        )
-        adapter.givenHealthCheck(
-            url = "https://middle-reachable.test",
-            result = Result.success(healthCheckFixture(healthy = true)),
-        )
-        adapter.givenHealthCheck(
-            url = "https://oldest-reachable.test",
-            result = Result.success(healthCheckFixture(healthy = true)),
-        )
-
-        val connected = service.connectedServer.first { it is ServerInfo.ConnectedServerInfo } as ServerInfo.ConnectedServerInfo
-
-        assertEquals("server-middle-reachable", connected.id)
-        assertEquals(
-            listOf(
-                "https://newest-unreachable.test",
-                "https://middle-reachable.test",
-            ),
-            adapter.healthCheckRequests,
-        )
+        val persisted = persistedServers().single()
+        assertEquals(seeded.id, persisted.id)
+        assertEquals(seeded.url, persisted.url)
+        assertTrue((persisted.lastConnectedAt ?: 0L) > 100L)
     }
 
     private fun environmentTest(

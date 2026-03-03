@@ -4,15 +4,14 @@ import de.chennemann.agentic.domain.v2.OpenCodeServerAdapter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import java.util.UUID
-import kotlin.collections.firstOrNull
 
 interface ServerService {
     val connectedServer: Flow<ServerInfo>
+    val connectionState: Flow<ServerConnectionState>
     suspend fun connect(url: String): Boolean
     suspend fun heartbeat()
 }
@@ -23,33 +22,43 @@ class DefaultServerService(
     private val serverRepository: ServerRepository,
 ) : ServerService {
 
-    private val persistedServers = serverRepository.observeServers()
     private val manualConnectedServer: MutableStateFlow<ServerInfo> = MutableStateFlow(ServerInfo.NONE)
+    private val mutableConnectionState = MutableStateFlow<ServerConnectionState>(ServerConnectionState.Idle)
 
-    override val connectedServer: Flow<ServerInfo> = combine(manualConnectedServer, persistedServers) { manualConnectedServer, persistedServers ->
-        when (manualConnectedServer) {
-            ServerInfo.NONE -> {
-                restorePersistedConnection(persistedServers)
-            }
-            else -> manualConnectedServer
-        }
-    }.distinctUntilChanged()
+    override val connectedServer: Flow<ServerInfo> = manualConnectedServer.asStateFlow()
+    override val connectionState: Flow<ServerConnectionState> = mutableConnectionState.asStateFlow()
 
     override suspend fun heartbeat() {
         logInfo("heartbeat")
-        when (val server = connectedServer.first()) {
-            is ServerInfo.ConnectedServerInfo if (!isConnected(server.url)) -> {
-                logInfo("reset connection to server '${server.url}")
-                manualConnectedServer.update { ServerInfo.NONE }
-            }
-            else -> { /* ignore */ }
+        val server = connectedServer.first() as? ServerInfo.ConnectedServerInfo
+        if (server == null) return
+
+        mutableConnectionState.update { ServerConnectionState.Refreshing }
+
+        if (isConnected(server.url)) {
+            manualConnectedServer.update { server }
+            mutableConnectionState.update { ServerConnectionState.Connected }
+            return
         }
+
+        logInfo("heartbeat failed for server '${server.url}'")
+        manualConnectedServer.update { ServerInfo.NONE }
+        mutableConnectionState.update { ServerConnectionState.Disconnected }
     }
 
     override suspend fun connect(url: String): Boolean {
-        val baseUrl = normalizeBaseUrl(url) ?: return false
+        val fallbackState = mutableConnectionState.value
+        mutableConnectionState.update { ServerConnectionState.Connecting }
+
+        val baseUrl = normalizeBaseUrl(url) ?: run {
+            mutableConnectionState.update { fallbackState }
+            return false
+        }
         logInfo("check connection to '$baseUrl'")
-        if (!isConnected(baseUrl)) return false
+        if (!isConnected(baseUrl)) {
+            mutableConnectionState.update { fallbackState }
+            return false
+        }
         logInfo("connected to '$baseUrl'")
 
         val now = System.currentTimeMillis()
@@ -69,6 +78,7 @@ class DefaultServerService(
             serverRepository.updateServer(server)
         }
         manualConnectedServer.update { server }
+        mutableConnectionState.update { ServerConnectionState.Connected }
 
         return true
     }
@@ -78,20 +88,6 @@ class DefaultServerService(
         return runCatching {
             adapter.healthCheckWithUrl(baseUrl).healthy
         }.getOrDefault(false)
-    }
-
-    private suspend fun restorePersistedConnection(servers: List<ServerInfo.ConnectedServerInfo>): ServerInfo {
-        logInfo("checking for existing servers")
-
-        val connected = servers
-            .sortedByDescending { it.lastConnectedAt ?: Long.MIN_VALUE }
-            .firstOrNull { server -> isConnected(server.url) }
-            ?: return ServerInfo.NONE
-
-        val updated = connected.copy(lastConnectedAt = System.currentTimeMillis())
-        serverRepository.updateServer(updated)
-        manualConnectedServer.update { updated }
-        return updated
     }
 
     @Suppress("UNUSED_PARAMETER")
