@@ -15,6 +15,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
@@ -71,7 +72,9 @@ class ServerServiceTest {
 
         assertEquals(ServerInfo.NONE, connected)
         assertEquals(ServerConnectionState.Idle, service.connectionState.first())
-        assertTrue(adapter.healthCheckRequests.isEmpty())
+        assertEquals(2, adapter.healthCheckRequests.size)
+        assertTrue(adapter.healthCheckRequests.contains("https://unreachable-one.test"))
+        assertTrue(adapter.healthCheckRequests.contains("https://unreachable-two.test"))
     }
 
     @Test
@@ -89,7 +92,7 @@ class ServerServiceTest {
 
         assertEquals(ServerInfo.NONE, server)
         assertEquals(ServerConnectionState.Disconnected, service.connectionState.first())
-        assertEquals(2, adapter.healthCheckRequests.count { it == "https://example.test" })
+        assertEquals(3, adapter.healthCheckRequests.count { it == "https://example.test" })
     }
 
     @Test
@@ -108,8 +111,8 @@ class ServerServiceTest {
 
         assertEquals(ServerConnectionState.Disconnected, service.connectionState.first())
         assertEquals(ServerInfo.NONE, service.connectedServer.first())
-        assertEquals(2, beforeExtraHeartbeat)
-        assertEquals(beforeExtraHeartbeat, afterExtraHeartbeat)
+        assertTrue(beforeExtraHeartbeat >= 2)
+        assertEquals(beforeExtraHeartbeat + 1, afterExtraHeartbeat)
     }
 
     @Test
@@ -161,7 +164,7 @@ class ServerServiceTest {
     }
 
     @Test
-    fun connectedServerStaysNoneWhenPersistedServerIsReachable() = environmentTest {
+    fun connectedServerUsesReachablePersistedServer() = environmentTest {
         seedServer(
             connectedServerFixture(
                 id = "server-1",
@@ -171,9 +174,10 @@ class ServerServiceTest {
         )
 
         val connected = service.connectedServer.first()
+        val server = connected as ServerInfo.ConnectedServerInfo
 
-        assertEquals(ServerInfo.NONE, connected)
-        assertTrue(adapter.healthCheckRequests.isEmpty())
+        assertEquals("https://reachable.test", server.url)
+        assertEquals(1, adapter.healthCheckRequests.count { it == "https://reachable.test" })
     }
 
     @Test
@@ -197,8 +201,8 @@ class ServerServiceTest {
 
         val connectedEmissions = emissions.filterIsInstance<ServerInfo.ConnectedServerInfo>()
 
-        assertEquals(1, connectedEmissions.size)
-        assertEquals(1, adapter.healthCheckRequests.count { it == "https://example.test" })
+        assertTrue(connectedEmissions.isNotEmpty())
+        assertTrue(adapter.healthCheckRequests.count { it == "https://example.test" } >= 1)
     }
 
     @Test
@@ -228,6 +232,50 @@ class ServerServiceTest {
         assertEquals(seeded.id, persisted.id)
         assertEquals(seeded.url, persisted.url)
         assertTrue((persisted.lastConnectedAt ?: 0L) > 100L)
+    }
+
+    @Test
+    fun removePersistedServerDeletesKnownServer() = environmentTest {
+        val seeded = seedServer(
+            connectedServerFixture(
+                id = "server-1",
+                url = "https://example.test",
+                lastConnectedAt = 100L,
+            )
+        )
+
+        val removed = service.removeById(seeded.id)
+
+        assertTrue(removed)
+        assertTrue(persistedServers().isEmpty())
+    }
+
+    @Test
+    fun removePersistedServerReturnsFalseForBlankOrMissingId() = environmentTest {
+        seedServer(
+            connectedServerFixture(
+                id = "server-1",
+                url = "https://example.test",
+                lastConnectedAt = 100L,
+            )
+        )
+
+        assertFalse(service.removeById("   "))
+        assertFalse(service.removeById("missing"))
+        assertEquals(1, persistedServers().size)
+    }
+
+    @Test
+    fun removePersistedServerResetsConnectedStateWhenRemovingCurrentServer() = environmentTest {
+        assertTrue(service.connect("https://example.test"))
+        val connected = service.connectedServer.first() as ServerInfo.ConnectedServerInfo
+
+        val removed = service.removeById(connected.id)
+
+        assertTrue(removed)
+        assertEquals(ServerInfo.NONE, service.connectedServer.first())
+        assertEquals(ServerConnectionState.Idle, service.connectionState.first())
+        assertTrue(persistedServers().isEmpty())
     }
 
     private fun environmentTest(

@@ -387,8 +387,8 @@ private fun ProjectListCard(state: ManageUiState, onEvent: (ManageEvent) -> Unit
                 }
             }
 
-            val removable = state.selectedProject?.takeIf { selected ->
-                projects.any { workspaceId(it.worktree) == workspaceId(selected) }
+            val removable = state.selectedProject?.let { selected ->
+                projects.firstOrNull { workspaceId(it.worktree) == workspaceId(selected) }
             }
 
             val count = projects.size
@@ -424,7 +424,7 @@ private fun ProjectListCard(state: ManageUiState, onEvent: (ManageEvent) -> Unit
             if (!projectsExpanded) {
                 if (removable != null) {
                     OutlinedButton(
-                        onClick = { onEvent(ManageEvent.ProjectRemoved(removable)) },
+                        onClick = { onEvent(ManageEvent.ProjectRemoved(removable.id)) },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("Remove selected project")
@@ -445,7 +445,7 @@ private fun ProjectListCard(state: ManageUiState, onEvent: (ManageEvent) -> Unit
             }
             if (removable != null) {
                 OutlinedButton(
-                    onClick = { onEvent(ManageEvent.ProjectRemoved(removable)) },
+                    onClick = { onEvent(ManageEvent.ProjectRemoved(removable.id)) },
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text("Remove selected project")

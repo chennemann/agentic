@@ -1,6 +1,5 @@
 package de.chennemann.agentic.domain.v2.servers
 
-import android.util.Log
 import de.chennemann.agentic.domain.v2.OpenCodeServerAdapter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
@@ -15,6 +14,7 @@ interface ServerService {
     val connectedServer: Flow<ServerInfo>
     val connectionState: Flow<ServerConnectionState>
     suspend fun connect(url: String): Boolean
+    suspend fun removeById(serverId: String): Boolean
     suspend fun heartbeat()
 }
 
@@ -95,6 +95,22 @@ class DefaultServerService(
         return true
     }
 
+    override suspend fun removeById(serverId: String): Boolean {
+        val id = serverId.trim()
+        if (id.isBlank()) return false
+
+        val existing = serverRepository.selectServer(id) ?: return false
+        serverRepository.deleteServer(existing.id)
+
+        val connected = manualConnectedServer.value as? ServerInfo.ConnectedServerInfo
+        if (connected?.id == existing.id) {
+            manualConnectedServer.update { ServerInfo.NONE }
+            _connectionState.update { ServerConnectionState.Idle }
+        }
+
+        return true
+    }
+
     private suspend fun isConnected(url: String): Boolean {
         val baseUrl = normalizeBaseUrl(url) ?: return false
         return runCatching {
@@ -102,9 +118,8 @@ class DefaultServerService(
         }.getOrDefault(false)
     }
 
-    private fun logInfo(message: String) {
-        Log.i("server-service", message)
-    }
+    @Suppress("UNUSED_PARAMETER")
+    private fun logInfo(message: String) = Unit
 }
 
 private fun normalizeBaseUrl(value: String): String? {

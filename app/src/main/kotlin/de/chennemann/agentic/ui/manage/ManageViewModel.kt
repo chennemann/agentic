@@ -92,7 +92,12 @@ class ManageViewModel(
             }
 
             is ManageEvent.ProjectRemoved -> {
-                // service.removeProject(event.worktree)
+                viewModelScope.launch {
+                    val removed = projectService.removeById(event.projectId)
+                    if (removed) {
+                        selectedProject.value = null
+                    }
+                }
             }
 
             ManageEvent.ProjectsRefreshRequested -> {

@@ -12,6 +12,8 @@ interface ProjectService {
 
     suspend fun togglePinnedById(projectId: String): Boolean
 
+    suspend fun removeById(projectId: String): Boolean
+
     suspend fun syncServerProjects(serverId: String, baseUrl: String): List<LocalProjectInfo>
 }
 
@@ -35,6 +37,14 @@ class DefaultProjectService(
         projectRepository.updateProject(
             project.copy(pinned = !project.pinned)
         )
+        return true
+    }
+
+    override suspend fun removeById(projectId: String): Boolean {
+        val id = projectId.trim()
+        if (id.isBlank()) return false
+        val project = projectRepository.selectProject(id) ?: return false
+        projectRepository.deleteProject(project.id)
         return true
     }
 

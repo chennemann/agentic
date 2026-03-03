@@ -111,12 +111,13 @@ private class FakeServerRepository : ServerRepository {
 private class FakeProjectService : ProjectService {
     val syncCalls = mutableListOf<String>()
     var nextProjects: List<LocalProjectInfo> = emptyList()
-
-    override fun observeProjects(serverId: String?): Flow<List<LocalProjectInfo>> {
-        return flowOf(emptyList())
-    }
+    override val projects: Flow<List<LocalProjectInfo>> = flowOf(emptyList())
 
     override suspend fun togglePinnedById(projectId: String): Boolean {
+        return true
+    }
+
+    override suspend fun removeById(projectId: String): Boolean {
         return true
     }
 

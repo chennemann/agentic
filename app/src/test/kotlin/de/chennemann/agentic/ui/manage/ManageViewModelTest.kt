@@ -178,6 +178,21 @@ class ManageViewModelTest {
         assertEquals(listOf("project-42"), projectService.toggleRequests)
     }
 
+    @Test
+    fun removesPersistentProjectUsingProjectServiceById() = runTest(TestCoroutineScheduler()) {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val worker = StandardTestDispatcher(testScheduler)
+        val serverService = StubServerService()
+        val projectService = StubProjectService()
+        val viewModel = ManageViewModel(serverService, projectService, lanes(main, worker))
+
+        viewModel.onEvent(ManageEvent.ProjectRemoved("project-42"))
+        advanceUntilIdle()
+
+        assertEquals(listOf("project-42"), projectService.removeRequests)
+    }
+
     private fun lanes(main: TestDispatcher, worker: TestDispatcher): DispatcherProvider {
         return object : DispatcherProvider {
             override val io = worker
@@ -188,16 +203,18 @@ class ManageViewModelTest {
 }
 
 private class StubProjectService : ProjectService {
-    val projects = MutableStateFlow<List<LocalProjectInfo>>(emptyList())
+    override val projects = MutableStateFlow<List<LocalProjectInfo>>(emptyList())
     val toggleRequests = mutableListOf<String>()
+    val removeRequests = mutableListOf<String>()
     val syncRequests = mutableListOf<String>()
-
-    override fun observeProjects(serverId: String?): Flow<List<LocalProjectInfo>> {
-        return projects
-    }
 
     override suspend fun togglePinnedById(projectId: String): Boolean {
         toggleRequests += projectId
+        return true
+    }
+
+    override suspend fun removeById(projectId: String): Boolean {
+        removeRequests += projectId
         return true
     }
 
@@ -218,6 +235,10 @@ private class StubServerService : ServerService {
     override suspend fun connect(url: String): Boolean {
         connectRequests += url
         return true
+    }
+
+    override suspend fun removeById(serverId: String): Boolean {
+        return false
     }
 
     override suspend fun heartbeat() {

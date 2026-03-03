@@ -624,6 +624,8 @@ private class StubServerService : ServerService {
 
     override suspend fun connect(url: String): Boolean = true
 
+    override suspend fun removeById(serverId: String): Boolean = false
+
     override suspend fun heartbeat() = Unit
 }
 
