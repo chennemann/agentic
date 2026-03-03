@@ -1,161 +1,276 @@
 package de.chennemann.agentic.domain.v2.servers
 
-import de.chennemann.agentic.domain.v2.OpenCodeHealthCheck
-import de.chennemann.agentic.domain.v2.OpenCodeProject
-import de.chennemann.agentic.domain.v2.OpenCodeServerAdapter
-import de.chennemann.agentic.domain.v2.OpenCodeSession
-import de.chennemann.agentic.domain.v2.SynchronizationService
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.flowOf
+import de.chennemann.agentic.domain.v2.fixtures.OpenCodeServerAdapterFixture
+import de.chennemann.agentic.domain.v2.fixtures.ServerServiceTestEnvironment
+import de.chennemann.agentic.domain.v2.fixtures.connectedServerFixture
+import de.chennemann.agentic.domain.v2.fixtures.healthCheckFixture
+import de.chennemann.agentic.domain.v2.fixtures.serverServiceTestEnvironment
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
+import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertNotNull
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ServerServiceTest {
     @Test
-    fun connectReturnsTruePersistsServerAndCallsSyncWhenHealthy() = runTest {
-        val adapter = FakeOpenCodeServerAdapter(
-            healthCheck = { OpenCodeHealthCheck(healthy = true, version = "1.0.0") },
-        )
-        val repository = FakeServerRepository()
-        val sync = FakeSynchronizationService()
-        val service = DefaultServerService(adapter, repository, sync)
+    fun connectedServerIsNoneInitially() = environmentTest {
+        val connected = service.connectedServer.first()
 
-        val connected = service.connect("  https://example.test/  ")
-        val stored = repository.servers.values.single()
-
-        assertTrue(connected)
-        assertEquals("https://example.test", adapter.lastHealthCheckBaseUrl)
-        assertEquals("https://example.test", stored.url)
-        assertNotNull(stored.lastConnectedAt)
-        assertEquals(listOf(stored.id), sync.calls)
+        assertEquals(ServerInfo.NONE, connected)
     }
 
     @Test
-    fun connectUpdatesExistingServerWhenHealthy() = runTest {
-        val adapter = FakeOpenCodeServerAdapter(
-            healthCheck = { OpenCodeHealthCheck(healthy = true, version = "1.0.0") },
-        )
-        val repository = FakeServerRepository()
-        val sync = FakeSynchronizationService()
-        repository.insertServer(
-            LocalServerInfo(
+    fun connectedServerIsNoneWhenNoPersistedServersExist() = environmentTest {
+        val seeded = seedServer(
+            connectedServerFixture(
                 id = "server-1",
                 url = "https://example.test",
                 lastConnectedAt = 1L,
             )
         )
-        val service = DefaultServerService(adapter, repository, sync)
+        repository.deleteServer(seeded.id)
 
+        val connected = service.connectedServer.first()
+
+        assertEquals(ServerInfo.NONE, connected)
+    }
+
+    @Test
+    fun connectedServerIsNoneWhenPersistedServersAreUnreachable() = environmentTest(
+        adapter = OpenCodeServerAdapterFixture(
+            defaultHealthResult = Result.success(healthCheckFixture(healthy = false)),
+        )
+    ) {
+        seedServer(
+            connectedServerFixture(
+                id = "server-1",
+                url = "https://unreachable-one.test",
+                lastConnectedAt = 20L,
+            )
+        )
+        seedServer(
+            connectedServerFixture(
+                id = "server-2",
+                url = "https://unreachable-two.test",
+                lastConnectedAt = 10L,
+            )
+        )
+
+        val connected = service.connectedServer.first()
+
+        assertEquals(ServerInfo.NONE, connected)
+        assertEquals(
+            listOf(
+                "https://unreachable-one.test",
+                "https://unreachable-two.test",
+            ),
+            adapter.healthCheckRequests,
+        )
+    }
+
+    @Test
+    fun connectedServerIsResetToNoneWhenHeartbeatDetectsUnreachableServer() = environmentTest {
+        assertTrue(service.connect("https://example.test"))
+
+        adapter.givenHealthCheck(
+            url = "https://example.test",
+            result = Result.success(healthCheckFixture(healthy = false)),
+        )
+
+        service.heartbeat()
+
+        val server = service.connectedServer.first()
+
+        assertEquals(ServerInfo.NONE, server)
+    }
+
+    @Test
+    fun connectedServerHasValueWhenConnectWithReachableUrlIsCalled() = environmentTest {
         val connected = service.connect("https://example.test")
-        val stored = repository.servers.values.single()
+        val server = service.connectedServer.first { it is ServerInfo.ConnectedServerInfo } as ServerInfo.ConnectedServerInfo
 
         assertTrue(connected)
-        assertEquals("server-1", stored.id)
-        assertTrue((stored.lastConnectedAt ?: 0L) >= 1L)
-        assertEquals(listOf("server-1"), sync.calls)
+        assertEquals("https://example.test", server.url)
+        assertNotNull(server.lastConnectedAt)
     }
 
     @Test
-    fun connectReturnsFalseWhenServerIsUnhealthy() = runTest {
-        val adapter = FakeOpenCodeServerAdapter(
-            healthCheck = { OpenCodeHealthCheck(healthy = false, version = "1.0.0") },
+    fun connectedServerHasValueWhenOnePersistedServerIsReachable() = environmentTest(
+        adapter = OpenCodeServerAdapterFixture(
+            defaultHealthResult = Result.success(healthCheckFixture(healthy = false)),
         )
-        val repository = FakeServerRepository()
-        val sync = FakeSynchronizationService()
-        val service = DefaultServerService(adapter, repository, sync)
+    ) {
+        val unreachable = connectedServerFixture(
+            id = "server-1",
+            url = "https://unreachable.test",
+            lastConnectedAt = 20L,
+        )
+        val reachable = connectedServerFixture(
+            id = "server-2",
+            url = "https://reachable.test",
+            lastConnectedAt = 10L,
+        )
+        seedServer(unreachable)
+        seedServer(reachable)
+        adapter.givenHealthCheck(
+            url = "https://reachable.test",
+            result = Result.success(healthCheckFixture(healthy = true)),
+        )
 
-        val connected = service.connect("https://example.test")
+        val connected = service.connectedServer.first { it is ServerInfo.ConnectedServerInfo } as ServerInfo.ConnectedServerInfo
 
-        assertFalse(connected)
-        assertTrue(repository.servers.isEmpty())
-        assertTrue(sync.calls.isEmpty())
+        assertEquals(reachable.id, connected.id)
+        assertEquals(reachable.url, connected.url)
     }
 
     @Test
-    fun connectReturnsFalseWhenHealthCheckFails() = runTest {
-        val adapter = FakeOpenCodeServerAdapter(
-            healthCheck = { throw IllegalStateException("network error") },
+    fun connectedServerFlowEmitsConnectedChangeOnlyOnce() = environmentTest {
+        val emissions = mutableListOf<ServerInfo>()
+        val collectJob = scope.launch {
+            service.connectedServer.collect { emissions += it }
+        }
+
+        scope.runCurrent()
+        seedServer(
+            connectedServerFixture(
+                id = "server-1",
+                url = "https://example.test",
+                lastConnectedAt = 5L,
+            )
         )
-        val repository = FakeServerRepository()
-        val sync = FakeSynchronizationService()
-        val service = DefaultServerService(adapter, repository, sync)
+        scope.advanceUntilIdle()
+        collectJob.cancel()
 
-        val connected = service.connect("https://example.test")
+        val connectedEmissions = emissions.filterIsInstance<ServerInfo.ConnectedServerInfo>()
 
-        assertFalse(connected)
-        assertTrue(repository.servers.isEmpty())
-        assertTrue(sync.calls.isEmpty())
+        assertEquals(1, connectedEmissions.size)
+        assertEquals(1, adapter.healthCheckRequests.count { it == "https://example.test" })
     }
 
     @Test
-    fun connectReturnsFalseForBlankUrl() = runTest {
-        val adapter = FakeOpenCodeServerAdapter(
-            healthCheck = { OpenCodeHealthCheck(healthy = true, version = "1.0.0") },
+    fun connectNormalizesUrlAndAddsHttpProtocolWhenMissing() = environmentTest {
+        val connected = service.connect(" example.test:4096/ ")
+        val stored = persistedServers().single()
+
+        assertTrue(connected)
+        assertEquals(listOf("http://example.test:4096"), adapter.healthCheckRequests)
+        assertEquals("http://example.test:4096", stored.url)
+        assertNotNull(stored.lastConnectedAt)
+    }
+
+    @Test
+    fun restoreUpdatesLastConnectedAtOnlyForSelectedServer() = environmentTest {
+        val selected = seedServer(
+            connectedServerFixture(
+                id = "server-selected",
+                url = "https://selected.test",
+                lastConnectedAt = 100L,
+            )
         )
-        val repository = FakeServerRepository()
-        val sync = FakeSynchronizationService()
-        val service = DefaultServerService(adapter, repository, sync)
+        val untouched = seedServer(
+            connectedServerFixture(
+                id = "server-untouched",
+                url = "https://untouched.test",
+                lastConnectedAt = 90L,
+            )
+        )
 
-        val connected = service.connect("   ")
+        val connected = service.connectedServer.first { it is ServerInfo.ConnectedServerInfo } as ServerInfo.ConnectedServerInfo
+        val persistedById = persistedServers().associateBy { it.id }
 
-        assertFalse(connected)
-        assertTrue(repository.servers.isEmpty())
-        assertTrue(sync.calls.isEmpty())
-        assertEquals(null, adapter.lastHealthCheckBaseUrl)
+        assertEquals(selected.id, connected.id)
+        assertTrue((persistedById.getValue(selected.id).lastConnectedAt ?: 0L) > 100L)
+        assertEquals(untouched.lastConnectedAt, persistedById.getValue(untouched.id).lastConnectedAt)
+    }
+
+    @Test
+    fun restoreChecksServersByLastConnectedAtDescending() = environmentTest(
+        adapter = OpenCodeServerAdapterFixture(
+            defaultHealthResult = Result.success(healthCheckFixture(healthy = false)),
+        )
+    ) {
+        seedServer(
+            connectedServerFixture(
+                id = "server-middle-reachable",
+                url = "https://middle-reachable.test",
+                lastConnectedAt = 20L,
+            )
+        )
+        seedServer(
+            connectedServerFixture(
+                id = "server-oldest-reachable",
+                url = "https://oldest-reachable.test",
+                lastConnectedAt = 10L,
+            )
+        )
+        seedServer(
+            connectedServerFixture(
+                id = "server-newest-unreachable",
+                url = "https://newest-unreachable.test",
+                lastConnectedAt = 30L,
+            )
+        )
+        adapter.givenHealthCheck(
+            url = "https://middle-reachable.test",
+            result = Result.success(healthCheckFixture(healthy = true)),
+        )
+        adapter.givenHealthCheck(
+            url = "https://oldest-reachable.test",
+            result = Result.success(healthCheckFixture(healthy = true)),
+        )
+
+        val connected = service.connectedServer.first { it is ServerInfo.ConnectedServerInfo } as ServerInfo.ConnectedServerInfo
+
+        assertEquals("server-middle-reachable", connected.id)
+        assertEquals(
+            listOf(
+                "https://newest-unreachable.test",
+                "https://middle-reachable.test",
+            ),
+            adapter.healthCheckRequests,
+        )
+    }
+
+    private fun environmentTest(
+        adapter: OpenCodeServerAdapterFixture = OpenCodeServerAdapterFixture(),
+        testBlock: suspend EnvironmentContext.() -> Unit,
+    ) = runTest {
+        val environment = serverServiceTestEnvironment(
+            dispatcher = StandardTestDispatcher(testScheduler),
+            adapter = adapter,
+        )
+
+        try {
+            EnvironmentContext(environment, this).testBlock()
+        } finally {
+            environment.close()
+        }
     }
 }
 
-private class FakeOpenCodeServerAdapter(
-    private val healthCheck: suspend (String) -> OpenCodeHealthCheck,
-) : OpenCodeServerAdapter {
-    var lastHealthCheckBaseUrl: String? = null
+private class EnvironmentContext(
+    private val environment: ServerServiceTestEnvironment,
+    val scope: TestScope,
+) {
+    val service: DefaultServerService = environment.service
+    val adapter: OpenCodeServerAdapterFixture = environment.adapter
+    val repository: ServerRepository = environment.repository
 
-    override suspend fun healthCheckWithUrl(baseUrl: String): OpenCodeHealthCheck {
-        lastHealthCheckBaseUrl = baseUrl
-        return healthCheck(baseUrl)
+    suspend fun seedServer(
+        server: ServerInfo.ConnectedServerInfo = connectedServerFixture(),
+    ): ServerInfo.ConnectedServerInfo {
+        return environment.seedServer(server)
     }
 
-    override suspend fun allProjects(baseUrl: String): List<OpenCodeProject> = emptyList()
-
-    override suspend fun allSessionsOfAGivenProject(baseUrl: String, path: String): List<OpenCodeSession> = emptyList()
-}
-
-private class FakeServerRepository : ServerRepository {
-    val servers = linkedMapOf<String, LocalServerInfo>()
-
-    override fun observeServers(): Flow<List<LocalServerInfo>> {
-        return flowOf(servers.values.toList())
-    }
-
-    override suspend fun selectServer(id: String): LocalServerInfo? {
-        return servers[id]
-    }
-
-    override suspend fun selectServerByUrl(url: String): LocalServerInfo? {
-        return servers.values.firstOrNull { it.url == url }
-    }
-
-    override suspend fun insertServer(server: LocalServerInfo) {
-        servers[server.id] = server
-    }
-
-    override suspend fun updateServer(server: LocalServerInfo) {
-        servers[server.id] = server
-    }
-
-    override suspend fun deleteServer(id: String) {
-        servers.remove(id)
-    }
-}
-
-private class FakeSynchronizationService : SynchronizationService {
-    val calls = mutableListOf<String>()
-
-    override suspend fun syncServer(serverId: String) {
-        calls += serverId
+    suspend fun persistedServers(): List<ServerInfo.ConnectedServerInfo> {
+        return environment.allPersistedServers()
     }
 }

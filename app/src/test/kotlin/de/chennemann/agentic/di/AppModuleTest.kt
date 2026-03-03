@@ -64,7 +64,6 @@ class AppModuleTest {
         assertNotNull(manage)
         assertNotNull(logs)
         assertSame(api, viewModelService(conversation))
-        assertSame(api, viewModelService(manage))
     }
 
     @Test

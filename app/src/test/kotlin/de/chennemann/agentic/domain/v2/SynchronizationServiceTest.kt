@@ -2,7 +2,8 @@ package de.chennemann.agentic.domain.v2
 
 import de.chennemann.agentic.domain.v2.projects.LocalProjectInfo
 import de.chennemann.agentic.domain.v2.projects.ProjectService
-import de.chennemann.agentic.domain.v2.servers.LocalServerInfo
+import de.chennemann.agentic.domain.v2.fixtures.connectedServerFixture
+import de.chennemann.agentic.domain.v2.servers.ServerInfo
 import de.chennemann.agentic.domain.v2.servers.ServerRepository
 import de.chennemann.agentic.domain.v2.session.LocalSessionInfo
 import de.chennemann.agentic.domain.v2.session.SessionService
@@ -21,7 +22,12 @@ class SynchronizationServiceTest {
         val sessions = FakeSessionService()
         val service = DefaultSynchronizationService(servers, projects, sessions)
 
-        servers.insertServer(LocalServerInfo(id = "server-1", url = "  https://example.test  "))
+        servers.insertServer(
+            connectedServerFixture(
+                id = "server-1",
+                url = "  https://example.test  ",
+            )
+        )
         projects.nextProjects = listOf(
             LocalProjectInfo(
                 id = "p1",
@@ -58,7 +64,12 @@ class SynchronizationServiceTest {
         val sessions = FakeSessionService()
         val service = DefaultSynchronizationService(servers, projects, sessions)
 
-        servers.insertServer(LocalServerInfo(id = "server-blank-url", url = "   "))
+        servers.insertServer(
+            connectedServerFixture(
+                id = "server-blank-url",
+                url = "   ",
+            )
+        )
 
         service.syncServer("   ")
         service.syncServer("missing")
@@ -70,25 +81,25 @@ class SynchronizationServiceTest {
 }
 
 private class FakeServerRepository : ServerRepository {
-    private val records = linkedMapOf<String, LocalServerInfo>()
+    private val records = linkedMapOf<String, ServerInfo.ConnectedServerInfo>()
 
-    override fun observeServers(): Flow<List<LocalServerInfo>> {
+    override fun observeServers(): Flow<List<ServerInfo.ConnectedServerInfo>> {
         return flowOf(records.values.toList())
     }
 
-    override suspend fun selectServer(id: String): LocalServerInfo? {
+    override suspend fun selectServer(id: String): ServerInfo.ConnectedServerInfo? {
         return records[id]
     }
 
-    override suspend fun selectServerByUrl(url: String): LocalServerInfo? {
+    override suspend fun selectServerByUrl(url: String): ServerInfo.ConnectedServerInfo? {
         return records.values.firstOrNull { it.url == url }
     }
 
-    override suspend fun insertServer(server: LocalServerInfo) {
+    override suspend fun insertServer(server: ServerInfo.ConnectedServerInfo) {
         records[server.id] = server
     }
 
-    override suspend fun updateServer(server: LocalServerInfo) {
+    override suspend fun updateServer(server: ServerInfo.ConnectedServerInfo) {
         records[server.id] = server
     }
 

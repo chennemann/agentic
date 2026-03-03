@@ -5,11 +5,10 @@ import androidx.lifecycle.viewModelScope
 import de.chennemann.agentic.di.DispatcherProvider
 import de.chennemann.agentic.domain.session.ProjectState
 import de.chennemann.agentic.domain.session.ServerState
-import de.chennemann.agentic.domain.session.SessionServiceApi
 import de.chennemann.agentic.domain.v2.projects.LocalProjectInfo
-import de.chennemann.agentic.domain.v2.servers.ServerService
 import de.chennemann.agentic.domain.v2.projects.ProjectService
 import de.chennemann.agentic.domain.v2.servers.ServerInfo
+import de.chennemann.agentic.domain.v2.servers.ServerService
 import de.chennemann.agentic.navigation.LogsRoute
 import de.chennemann.agentic.navigation.NavEvent
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -18,9 +17,8 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
-import kotlinx.coroutines.flow.last
-import kotlinx.coroutines.flow.lastOrNull
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
@@ -31,7 +29,6 @@ class ManageViewModel(
 ) : ViewModel() {
     private val lane = dispatchers.default.limitedParallelism(1)
     private val navFlow = MutableSharedFlow<NavEvent>(extraBufferCapacity = 1)
-
 
     private val connectedServer = serverService.connectedServer
     private val projects = projectService.observeProjects()
@@ -100,7 +97,7 @@ class ManageViewModel(
 
             ManageEvent.ProjectsRefreshRequested -> {
                 viewModelScope.launch {
-                    when (val server = connectedServer.last()) {
+                    when (val server = connectedServer.first()) {
                         is ServerInfo.ConnectedServerInfo -> {
                             projectService.syncServerProjects(server.id, server.url)
                         }

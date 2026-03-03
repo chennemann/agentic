@@ -1,14 +1,12 @@
 package de.chennemann.agentic.domain.v2.servers
 
-import android.util.Log
-import de.chennemann.agentic.domain.v2.OpenCodeHealthCheck
 import de.chennemann.agentic.domain.v2.OpenCodeServerAdapter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.last
 import kotlinx.coroutines.flow.update
 import java.util.UUID
 import kotlin.collections.firstOrNull
@@ -30,21 +28,18 @@ class DefaultServerService(
 
     override val connectedServer: Flow<ServerInfo> = combine(manualConnectedServer, persistedServers) { manualConnectedServer, persistedServers ->
         when (manualConnectedServer) {
-            is ServerInfo.NONE -> {
-                Log.i("server-service", "checking for existing servers")
-                persistedServers
-                .firstOrNull { server -> connect(server.url) }
-                ?.also { this.manualConnectedServer.update { it } }
+            ServerInfo.NONE -> {
+                restorePersistedConnection(persistedServers)
             }
             else -> manualConnectedServer
-        } ?: ServerInfo.NONE
-    }
+        }
+    }.distinctUntilChanged()
 
     override suspend fun heartbeat() {
-        Log.i("server-service", "heartbeat")
-        when (val server = connectedServer.last()) {
+        logInfo("heartbeat")
+        when (val server = connectedServer.first()) {
             is ServerInfo.ConnectedServerInfo if (!isConnected(server.url)) -> {
-                Log.i("server-service", "reset connection to server '${server.url}")
+                logInfo("reset connection to server '${server.url}")
                 manualConnectedServer.update { ServerInfo.NONE }
             }
             else -> { /* ignore */ }
@@ -52,18 +47,19 @@ class DefaultServerService(
     }
 
     override suspend fun connect(url: String): Boolean {
-        Log.i("server-service", "check connection to '$url'")
-        if (!isConnected(url)) return false
-        Log.i("server-service", "connected to '$url'")
+        val baseUrl = normalizeBaseUrl(url) ?: return false
+        logInfo("check connection to '$baseUrl'")
+        if (!isConnected(baseUrl)) return false
+        logInfo("connected to '$baseUrl'")
 
         val now = System.currentTimeMillis()
-        val existing = serverRepository.selectServerByUrl(url)
+        val existing = serverRepository.selectServerByUrl(baseUrl)
         val server = existing?.copy(
-            url = url,
+            url = baseUrl,
             lastConnectedAt = now,
         ) ?: ServerInfo.ConnectedServerInfo(
             id = UUID.randomUUID().toString(),
-            url = url,
+            url = baseUrl,
             lastConnectedAt = now,
         )
 
@@ -72,18 +68,43 @@ class DefaultServerService(
         } else {
             serverRepository.updateServer(server)
         }
+        manualConnectedServer.update { server }
 
         return true
     }
 
     private suspend fun isConnected(url: String): Boolean {
         val baseUrl = normalizeBaseUrl(url) ?: return false
-        return adapter.healthCheckWithUrl(baseUrl).healthy
+        return runCatching {
+            adapter.healthCheckWithUrl(baseUrl).healthy
+        }.getOrDefault(false)
     }
+
+    private suspend fun restorePersistedConnection(servers: List<ServerInfo.ConnectedServerInfo>): ServerInfo {
+        logInfo("checking for existing servers")
+
+        val connected = servers
+            .sortedByDescending { it.lastConnectedAt ?: Long.MIN_VALUE }
+            .firstOrNull { server -> isConnected(server.url) }
+            ?: return ServerInfo.NONE
+
+        val updated = connected.copy(lastConnectedAt = System.currentTimeMillis())
+        serverRepository.updateServer(updated)
+        manualConnectedServer.update { updated }
+        return updated
+    }
+
+    @Suppress("UNUSED_PARAMETER")
+    private fun logInfo(message: String) = Unit
 }
 
 private fun normalizeBaseUrl(value: String): String? {
     val trimmed = value.trim()
     if (trimmed.isBlank()) return null
-    return trimmed.replace(Regex("/+$"), "")
+    val withProtocol = if (trimmed.matches(Regex("^[A-Za-z][A-Za-z0-9+.-]*://.*$"))) {
+        trimmed
+    } else {
+        "http://$trimmed"
+    }
+    return withProtocol.replace(Regex("/+$"), "")
 }
