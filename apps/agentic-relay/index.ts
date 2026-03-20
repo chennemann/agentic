@@ -25,6 +25,7 @@ interface RelayState {
 	droppedEvents: number;
 	sequenceBySessionId: Map<string, number>;
 	verified: boolean;
+	disconnectWarningShown: boolean;
 }
 
 interface ServerHandshake {
@@ -76,6 +77,24 @@ function updateStatus(ctx: ExtensionContext, serverUrl: string | undefined): voi
 	ctx.ui.setStatus(RELAY_STATUS_KEY, ctx.ui.theme.fg("accent", `relay:${serverUrl}`));
 }
 
+function warnDisconnectedOnce(state: RelayState, serverUrl: string, reason: string): void {
+	if (state.disconnectWarningShown) {
+		return;
+	}
+
+	state.disconnectWarningShown = true;
+	console.warn(`Agentic relay disconnected from ${serverUrl}; forwarding disabled until the next session start (${reason})`);
+}
+
+function markDisconnected(state: RelayState, reason: string): void {
+	const serverUrl = state.serverUrl;
+	state.verified = false;
+	state.queue.length = 0;
+	if (serverUrl) {
+		warnDisconnectedOnce(state, serverUrl, reason);
+	}
+}
+
 function flush(state: RelayState): void {
 	while (
 		!state.closed &&
@@ -93,7 +112,7 @@ function flush(state: RelayState): void {
 		void sendEnvelope(state.serverUrl, envelope)
 			.catch((error: unknown) => {
 				const message = error instanceof Error ? error.message : String(error);
-				console.warn(`Failed to forward session event to ${state.serverUrl}: ${message}`);
+				markDisconnected(state, message);
 			})
 			.finally(() => {
 				state.activeRequests--;
@@ -191,20 +210,29 @@ export default function agenticRelayExtension(pi: ExtensionAPI) {
 		droppedEvents: 0,
 		sequenceBySessionId: new Map<string, number>(),
 		verified: false,
+		disconnectWarningShown: false,
 	};
 
 	async function configureServer(ctx: ExtensionContext): Promise<void> {
 		const flag = pi.getFlag("server");
 		state.serverUrl = typeof flag === "string" && flag.trim().length > 0 ? normalizeServerUrl(flag) : undefined;
 		state.verified = false;
+		state.disconnectWarningShown = false;
+		state.queue.length = 0;
 		updateStatus(ctx, state.serverUrl);
 
 		if (!state.serverUrl) {
 			return;
 		}
 
-		await fetchServerHandshake(state.serverUrl);
-		state.verified = true;
+		try {
+			await fetchServerHandshake(state.serverUrl);
+			state.verified = true;
+		} catch (error: unknown) {
+			const message = error instanceof Error ? error.message : String(error);
+			markDisconnected(state, message);
+			return;
+		}
 
 		const message = `Forwarding session events to ${state.serverUrl}`;
 		if (ctx.hasUI) {
