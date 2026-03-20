@@ -5,7 +5,7 @@
  * The target server must already be running and expose the relay handshake via /up.
  *
  * Usage:
- *   pi --extension packages/agentic-relay --server 127.0.0.1:8787
+ *   pi --extension apps/agentic-relay --server 127.0.0.1:8787
  */
 
 import type { ExtensionAPI, ExtensionContext, ExtensionEvent } from "@mariozechner/pi-coding-agent";

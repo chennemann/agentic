@@ -9,7 +9,7 @@ Start the server:
 
 ```bash
 npm run build:server
-node packages/server/dist/main.js
+node apps/server/dist/main.js
 # or
 npx pi-server
 ```
@@ -17,7 +17,7 @@ npx pi-server
 Run pi with the extension package and server flag:
 
 ```bash
-pi --extension packages/agentic-relay --server 127.0.0.1:8787
+pi --extension apps/agentic-relay --server 127.0.0.1:8787
 ```
 
 The extension registers `--server <ip:port>` and forwards events to:

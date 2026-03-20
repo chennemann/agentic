@@ -162,8 +162,9 @@ fabric.properties
 
 # Node / monorepo
 node_modules/
-packages/*/node_modules/
-packages/*/dist/
+apps/server/node_modules/
+apps/agentic-relay/node_modules/
+apps/server/dist/
 
 ### Gradle ###
 .gradle

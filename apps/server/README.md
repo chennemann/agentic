@@ -19,14 +19,14 @@ Not implemented yet:
 Development with live reload:
 
 ```bash
-cd packages/server
+cd apps/server
 npm run dev
 ```
 
 Build once:
 
 ```bash
-cd packages/server
+cd apps/server
 npm run build
 ```
 
@@ -85,7 +85,7 @@ If the file does not exist, the server uses:
 Start `pi-server`, then run `pi` with the relay extension package:
 
 ```bash
-pi --extension packages/agentic-relay --server 127.0.0.1:8787
+pi --extension apps/agentic-relay --server 127.0.0.1:8787
 ```
 
 The extension registers the `--server <ip:port>` flag, starts the bundled server automatically for local targets when needed, verifies the relay capability fingerprint via `/up`, and forwards each session event to:

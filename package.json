@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "workspaces": [
-    "packages/*"
+    "apps/server",
+    "apps/agentic-relay"
   ],
   "scripts": {
     "build": "npm run build --workspaces --if-present",
