@@ -6,7 +6,7 @@ import os from "node:os"
 import path from "node:path"
 
 const usage = `Usage:
-  bun ./packages/mobile/script/add-icon.ts --source lucide --name pin
+  bun ./script/add-icon.ts --source lucide --name pin
 
 Options:
   --source <id>   Icon source preset: lucide | material-symbols | material-icons (default: lucide)
@@ -15,8 +15,9 @@ Options:
   --overwrite     Overwrite an existing icon file
 `
 
-const mobile = path.resolve(import.meta.dir, "..")
-const icons = path.join(mobile, "app", "src", "main", "kotlin", "de", "chennemann", "opencode", "mobile", "icons")
+const repoRoot = path.resolve(import.meta.dir, "..")
+const androidRoot = path.join(repoRoot, "apps", "android")
+const icons = path.join(androidRoot, "app", "src", "main", "kotlin", "de", "chennemann", "opencode", "mobile", "icons")
 const pkg = "de.chennemann.agentic.icons"
 const iconPack = "Icons"
 const tool = path.join(os.homedir(), ".opencode-mobile", "valkyrie")

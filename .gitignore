@@ -160,6 +160,11 @@ fabric.properties
 # Turborepo task cache
 .turbo
 
+# Node / monorepo
+node_modules/
+packages/*/node_modules/
+packages/*/dist/
+
 ### Gradle ###
 .gradle
 **/build/

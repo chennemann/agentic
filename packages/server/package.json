@@ -1,0 +1,46 @@
+{
+	"name": "@mariozechner/pi-server",
+	"version": "0.59.0",
+	"description": "Network-accessible orchestrator server for pi agents",
+	"type": "module",
+	"bin": {
+		"pi-server": "dist/main.js"
+	},
+	"main": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"files": [
+		"dist",
+		"README.md"
+	],
+	"scripts": {
+		"clean": "shx rm -rf dist",
+		"build": "tsgo -p tsconfig.build.json && shx chmod +x dist/main.js",
+		"dev": "tsx watch src/main.ts",
+		"dev:build": "tsgo -p tsconfig.build.json --watch --preserveWatchOutput",
+		"prepublishOnly": "npm run clean && npm run build"
+	},
+	"dependencies": {
+		"@mariozechner/pi-coding-agent": "^0.59.0"
+	},
+	"devDependencies": {
+		"@types/node": "^24.3.0",
+		"shx": "^0.4.0",
+		"typescript": "^5.7.3"
+	},
+	"keywords": [
+		"pi",
+		"server",
+		"orchestrator",
+		"agent"
+	],
+	"author": "Mario Zechner",
+	"license": "MIT",
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/badlogic/pi-mono.git",
+		"directory": "packages/server"
+	},
+	"engines": {
+		"node": ">=20.0.0"
+	}
+}

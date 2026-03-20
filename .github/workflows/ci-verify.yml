@@ -23,6 +23,21 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install Node workspace dependencies
+        run: npm ci
+
+      - name: Build Node workspaces
+        run: npm run build
+
+      - name: Check Node workspaces
+        run: npm run check
+
       - name: Set up JDK 25
         uses: actions/setup-java@v4
         with:
@@ -32,11 +47,11 @@ jobs:
       - name: Prepare opencode submodule (sparse)
         run: sh script/setup-opencode-submodule.sh
 
-      - name: Make Gradle wrapper executable
-        run: chmod +x ./gradlew
+      - name: Make Android Gradle wrapper executable
+        run: chmod +x ./apps/android/gradlew
 
-      - name: Run ktlint checks
-        run: ./gradlew --parallel ktlintCheck
+      - name: Run Android ktlint checks
+        run: ./apps/android/gradlew --parallel -p apps/android ktlintCheck
 
-      - name: Run build and tests
-        run: ./gradlew --parallel build
+      - name: Run Android build and tests
+        run: ./apps/android/gradlew --parallel -p apps/android build

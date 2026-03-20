@@ -1,0 +1,23 @@
+{
+  "name": "pi-extension-agentic-relay",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "@mariozechner/pi-coding-agent": "^0.59.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.3.0",
+    "typescript": "^5.9.2"
+  },
+  "scripts": {
+    "clean": "echo 'nothing to clean'",
+    "build": "tsc -p tsconfig.json --noEmit",
+    "check": "npm run build"
+  },
+  "pi": {
+    "extensions": [
+      "./index.ts"
+    ]
+  }
+}

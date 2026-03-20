@@ -1,0 +1,25 @@
+{
+  "name": "agentic",
+  "private": true,
+  "type": "module",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces --if-present",
+    "build:android": "./apps/android/gradlew --parallel -p apps/android build",
+    "build:server": "npm run build --workspace @mariozechner/pi-server",
+    "build:relay": "npm run build --workspace pi-extension-agentic-relay",
+    "check": "npm run check --workspaces --if-present",
+    "check:android": "./apps/android/gradlew --parallel -p apps/android ktlintCheck",
+    "test:android": "./apps/android/gradlew --parallel -p apps/android test",
+    "ci": "npm run build && npm run check && npm run check:android && npm run build:android"
+  },
+  "devDependencies": {
+    "@typescript/native-preview": "7.0.0-dev.20260120.1",
+    "typescript": "^5.9.2"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

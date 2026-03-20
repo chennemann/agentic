@@ -15,23 +15,24 @@ Agentic is a native opencode client for Android built with:
 
 ```bash
 # Build & Run
-./gradlew clean build assembleDebug # Build debug APK
-./gradlew installDebug && adb logcat --clear && adb shell am start -W -n de.chennemann.agentic/.MainActivity  # Install & Start app on device
+./apps/android/gradlew -p apps/android clean build assembleDebug # Build debug APK
+./apps/android/gradlew -p apps/android installDebug && adb logcat --clear && adb shell am start -W -n de.chennemann.agentic/.MainActivity  # Install & Start app on device
 
 # Logcat
 adb logcat -d | grep -E "de\.chennemann\.opencode\.mobile|AndroidRuntime" # Check for errors when asked
 
 # Code Quality
-./gradlew ktlintCheck            # Check Kotlin style
-./gradlew ktlintFormat           # Auto-fix style issues
+./apps/android/gradlew -p apps/android ktlintCheck            # Check Kotlin style
+./apps/android/gradlew -p apps/android ktlintFormat           # Auto-fix style issues
 
 # Testing
-./gradlew clean test                   # Run unit tests
+./apps/android/gradlew -p apps/android clean test                   # Run Android unit tests
+npm run build && npm run check                                      # Run Node package builds and checks
 
 # Releases
-./gradlew createBaselineTag            # Create next manual baseline tag (v<major>) at HEAD; tag push remains manual
-keytool -genkeypair -v -keystore app/release.keystore -alias agentic -keyalg RSA -keysize 2048 -validity 36500 -storepass changeit -keypass changeit -dname "CN=Agentic, O=Agentic"  # Generate Android release keystore (replace passwords)
-base64 app/release.keystore | gh secret set KEYSTORE_BASE64 && gh secret set KEYSTORE_PASSWORD -b"changeit" && gh secret set KEY_ALIAS -b"agentic"  # Upload signing secrets for GitHub Actions
+./apps/android/gradlew -p apps/android createBaselineTag            # Create next manual baseline tag (v<major>) at HEAD; tag push remains manual
+keytool -genkeypair -v -keystore apps/android/app/release.keystore -alias agentic -keyalg RSA -keysize 2048 -validity 36500 -storepass changeit -keypass changeit -dname "CN=Agentic, O=Agentic"  # Generate Android release keystore (replace passwords)
+base64 apps/android/app/release.keystore | gh secret set KEYSTORE_BASE64 && gh secret set KEYSTORE_PASSWORD -b"changeit" && gh secret set KEY_ALIAS -b"agentic"  # Upload signing secrets for GitHub Actions
 
 # OpenAPI source
 sh script/setup-opencode-submodule.sh  # Initialize/update opencode submodule with sparse API/DTO checkout
@@ -41,7 +42,7 @@ bun run mobile:add-icon --source lucide --name pin --target PinLucide  # Generat
 
 # Database
 # SQLDelight generates code in build/generated/sqldelight/
-./gradlew generateSqlDelightInterface
+./apps/android/gradlew -p apps/android generateSqlDelightInterface
 ```
 
 ## Critical Rules
@@ -82,7 +83,7 @@ After completing the task, perform the following steps **in order**:
 1. **Run linting**
 
     ```bash
-    ./gradlew ktlintFormat
+    ./apps/android/gradlew -p apps/android ktlintFormat
     ```
 
     - Fix any linting errors.
@@ -91,7 +92,9 @@ After completing the task, perform the following steps **in order**:
 2. **Run a clean build with all tests**
 
     ```bash
-    ./gradlew build
+    ./apps/android/gradlew -p apps/android build
+    npm run build
+    npm run check
     ```
 
 3. **Failure handling**
@@ -99,8 +102,10 @@ After completing the task, perform the following steps **in order**:
         - Fix **only** the issues required to make tests pass.
         - Re-run:
             ```bash
-            ./gradlew ktlintFormat
-            ./gradlew build
+            ./apps/android/gradlew -p apps/android ktlintFormat
+            ./apps/android/gradlew -p apps/android build
+            npm run build
+            npm run check
             ```
     - Repeat until both linting and tests pass cleanly.
 
@@ -109,8 +114,9 @@ After completing the task, perform the following steps **in order**:
 Stop when **all** of the following are true:
 
 - The assigned task is fully implemented.
-- `./gradlew ktlintCheck` passes with zero errors.
-- `./gradlew build` passes with all tests green.
+- `./apps/android/gradlew -p apps/android ktlintCheck` passes with zero errors.
+- `./apps/android/gradlew -p apps/android build` passes with all tests green.
+- `npm run build` and `npm run check` pass for the Node workspaces.
 - **No additional tasks are started or modified.**
 
 ### 3. Create the Commit (Exactly One)
