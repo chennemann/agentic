@@ -19,6 +19,13 @@ build-android:
 build-server:
     npm run build:server
 
+run-server:
+    npm run build:server
+    node apps/server/dist/main.js
+
+dev-server:
+    npm run --workspace @mariozechner/pi-server dev
+
 build-relay:
     npm run build:relay
 
