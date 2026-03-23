@@ -2,13 +2,16 @@
  * Agentic Relay Extension
  *
  * Forwards extension lifecycle events to pi-server via HTTP.
+ * By default it reads the shared pi-server settings file and connects to 127.0.0.1:<port>.
  * The target server must already be running and expose the relay handshake via /up.
  *
  * Usage:
+ *   pi --extension apps/agentic-relay
  *   pi --extension apps/agentic-relay --server 127.0.0.1:8787
  */
 
 import type { ExtensionAPI, ExtensionContext, ExtensionEvent } from "@mariozechner/pi-coding-agent";
+import { DEFAULT_SERVER_PORT, loadServerSettings } from "../server/src/config.js";
 
 interface SessionEventEnvelope {
 	sessionId: string;
@@ -46,6 +49,11 @@ const MAX_QUEUE_SIZE = 1000;
 const CONCURRENCY = 4;
 const SERVER_PROTOCOL_VERSION = 1;
 const SERVER_PACKAGE_NAME = "@mariozechner/pi-server";
+
+function getConfiguredServerUrl(): string {
+	const loadedSettings = loadServerSettings();
+	return `http://127.0.0.1:${loadedSettings.settings.port ?? DEFAULT_SERVER_PORT}`;
+}
 
 function normalizeServerUrl(server: string): string {
 	const trimmed = server.trim();
@@ -199,7 +207,7 @@ async function fetchServerHandshake(serverUrl: string): Promise<ServerHandshake>
 
 export default function agenticRelayExtension(pi: ExtensionAPI) {
 	pi.registerFlag("server", {
-		description: "Forward extension event stream to pi-server ingest endpoint",
+		description: "Override the pi-server address (<ip:port>); otherwise uses ~/.pi/server/settings.json",
 		type: "string",
 	});
 
@@ -215,7 +223,8 @@ export default function agenticRelayExtension(pi: ExtensionAPI) {
 
 	async function configureServer(ctx: ExtensionContext): Promise<void> {
 		const flag = pi.getFlag("server");
-		state.serverUrl = typeof flag === "string" && flag.trim().length > 0 ? normalizeServerUrl(flag) : undefined;
+		state.serverUrl =
+			typeof flag === "string" && flag.trim().length > 0 ? normalizeServerUrl(flag) : getConfiguredServerUrl();
 		state.verified = false;
 		state.disconnectWarningShown = false;
 		state.queue.length = 0;
