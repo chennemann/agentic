@@ -12,7 +12,7 @@ import {
 	SessionManager,
 	SettingsManager,
 } from "@mariozechner/pi-coding-agent";
-import { type LoadedServerSettings, loadServerSettings, type ServerSettings } from "./config.js";
+import { DEFAULT_SERVER_PORT, type LoadedServerSettings, loadServerSettings, type ServerSettings } from "./config.js";
 
 export interface OrchestratorSdkOptions {
 	cwd?: string;
@@ -389,6 +389,7 @@ export function createOrchestratorSdkRuntime(options: OrchestratorSdkOptions = {
 				path: resolve(options.serverSettingsPath ?? "settings.json"),
 				settings: {
 					projectRoots: options.serverSettings.projectRoots.map((projectRoot) => resolve(projectRoot)),
+					port: options.serverSettings.port,
 				},
 			}
 		: loadServerSettings(options.serverSettingsPath);
@@ -415,9 +416,9 @@ export function createOrchestratorSdkRuntime(options: OrchestratorSdkOptions = {
 
 export function createOrchestratorServer(options: OrchestratorServerOptions = {}): OrchestratorServer {
 	const host = options.host ?? "0.0.0.0";
-	const port = options.port ?? 8787;
 	const logger = options.logger ?? console;
 	const runtime = createOrchestratorSdkRuntime(options);
+	const port = options.port ?? runtime.serverSettings.settings.port ?? DEFAULT_SERVER_PORT;
 	const server = createServer(createRequestHandler(runtime, logger));
 	let started = false;
 

@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 
-import { createOrchestratorServer, getServerSettingsPath } from "./index.js";
+import { createOrchestratorServer, getServerSettingsPath, loadServerSettings } from "./index.js";
 
-function parsePort(value: string | undefined): number {
+function parsePort(value: string | undefined, fallbackPort: number): number {
 	if (!value) {
-		return 8787;
+		return fallbackPort;
 	}
 
 	const port = Number.parseInt(value, 10);
@@ -15,9 +15,13 @@ function parsePort(value: string | undefined): number {
 	return port;
 }
 
+const loadedServerSettings = loadServerSettings();
+
 const server = createOrchestratorServer({
 	host: process.env.PI_SERVER_HOST ?? "0.0.0.0",
-	port: parsePort(process.env.PI_SERVER_PORT),
+	port: parsePort(process.env.PI_SERVER_PORT, loadedServerSettings.settings.port),
+	serverSettings: loadedServerSettings.settings,
+	serverSettingsPath: loadedServerSettings.path,
 });
 
 let stopping = false;
