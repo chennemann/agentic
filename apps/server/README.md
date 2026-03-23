@@ -36,6 +36,9 @@ Default bind address:
 
 `npm run dev` restarts the server when files imported by `src/main.ts` change.
 
+The server port can be configured in `%HOME%/.pi/server/settings.json`.
+Environment variable `PI_SERVER_PORT` still overrides the configured port.
+
 Override with environment variables:
 
 ```bash
@@ -52,6 +55,7 @@ Current supported settings:
 
 ```json
 {
+  "port": 8787,
   "projectRoots": [
     "/path/to/projects",
     "/another/path/to/projects"
@@ -63,9 +67,12 @@ If the file does not exist, the server uses:
 
 ```json
 {
+  "port": 8787,
   "projectRoots": []
 }
 ```
+
+`port` configures the HTTP port used by `pi-server` and is also the default port used by the Agentic relay extension when `--server` is not passed.
 
 `projectRoots` is used to discover projects. Each immediate subdirectory of each configured root is returned as a project with:
 - `cwd`: normalized absolute path
@@ -83,6 +90,12 @@ If the file does not exist, the server uses:
 ## Forwarding from pi
 
 Start `pi-server`, then run `pi` with the relay extension package:
+
+```bash
+pi --extension apps/agentic-relay
+```
+
+To override the configured/default server address explicitly:
 
 ```bash
 pi --extension apps/agentic-relay --server 127.0.0.1:8787

@@ -14,7 +14,15 @@ node apps/server/dist/main.js
 npx pi-server
 ```
 
-Run pi with the extension package and server flag:
+Run pi with the extension package:
+
+```bash
+pi --extension apps/agentic-relay
+```
+
+By default the extension reads `%HOME%/.pi/server/settings.json` and connects to `127.0.0.1:<port>` using the configured `port` value.
+
+To override the server address explicitly:
 
 ```bash
 pi --extension apps/agentic-relay --server 127.0.0.1:8787
