@@ -89,12 +89,15 @@ class ManageViewModelTest {
         val worker = StandardTestDispatcher(testScheduler)
         val serverService = StubServerService()
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(serverService, projectService, StubSessionService(), lanes(main, worker))
+        val sessionService = StubSessionService()
+        val viewModel = ManageViewModel(serverService, projectService, sessionService, lanes(main, worker))
 
         viewModel.onEvent(ManageEvent.Connect("http://127.0.0.1"))
         advanceUntilIdle()
 
         assertEquals(listOf("http://127.0.0.1"), serverService.connectRequests)
+        assertEquals(listOf("http://127.0.0.1"), sessionService.updateUrlRequests)
+        assertEquals(1, sessionService.refreshCalls)
     }
 
     @Test
@@ -110,12 +113,15 @@ class ManageViewModelTest {
             )
         }
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(serverService, projectService, StubSessionService(), lanes(main, worker))
+        val sessionService = StubSessionService()
+        val viewModel = ManageViewModel(serverService, projectService, sessionService, lanes(main, worker))
 
         viewModel.onEvent(ManageEvent.ProjectsRefreshRequested)
         advanceUntilIdle()
 
         assertEquals(listOf("server-1|http://127.0.0.1"), projectService.syncRequests)
+        assertEquals(listOf("http://127.0.0.1"), sessionService.updateUrlRequests)
+        assertEquals(1, sessionService.refreshCalls)
     }
 
     @Test
@@ -241,6 +247,8 @@ private class StubProjectService : ProjectService {
 }
 
 private class StubSessionService : SessionServiceApi {
+    val updateUrlRequests = mutableListOf<String>()
+    var refreshCalls: Int = 0
     override val state = MutableStateFlow(
         SessionUiState(
             url = "",
@@ -268,9 +276,13 @@ private class StubSessionService : SessionServiceApi {
     val toggleProjectFavoriteRequests = mutableListOf<String>()
 
     override fun start(scope: CoroutineScope) = Unit
-    override fun updateUrl(value: String) = Unit
+    override fun updateUrl(value: String) {
+        updateUrlRequests += value
+    }
     override fun useDiscovered() = Unit
-    override fun refresh() = Unit
+    override fun refresh() {
+        refreshCalls += 1
+    }
     override fun selectProject(worktree: String) = Unit
     override fun toggleProjectFavorite(worktree: String) {
         toggleProjectFavoriteRequests += worktree

@@ -74,7 +74,11 @@ class ManageViewModel(
         when (event) {
             is ManageEvent.Connect -> {
                 viewModelScope.launch {
-                    serverService.connect(event.url)
+                    val connected = serverService.connect(event.url)
+                    if (connected) {
+                        sessionService.updateUrl(event.url)
+                        sessionService.refresh()
+                    }
                 }
             }
 
@@ -111,6 +115,8 @@ class ManageViewModel(
                     when (val server = connectedServer.first()) {
                         is ServerInfo.ConnectedServerInfo -> {
                             projectService.syncServerProjects(server.id, server.url)
+                            sessionService.updateUrl(server.url)
+                            sessionService.refresh()
                         }
                         else -> {}
                     }
