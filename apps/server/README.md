@@ -6,13 +6,14 @@ Current scope:
 - start an HTTP server bound to the network
 - initialize shared pi SDK state
 - load server settings from `%HOME%/.pi/server/settings.json`
-- expose uptime and project discovery endpoints
-- ingest forwarded pi session events over HTTP and log them asynchronously
+- expose uptime, project discovery, session, and message endpoints
+- provide a mock prompt flow for Android integration
+- ingest forwarded pi session events over HTTP and replay them over SSE without changing the streamed envelope shape
 
 Not implemented yet:
-- remote prompt/session control
 - authentication/authorization
 - autostart/service installation
+- persistent mock storage
 
 ## Run
 
@@ -86,10 +87,16 @@ If the file does not exist, the server uses:
 
 ## Endpoints
 
-- `GET /up` - server status, SDK runtime metadata, loaded server settings, and relay capability fingerprint
-- `GET /projects` - `{ id, cwd, sessionCount }` for each immediate subdirectory in each configured project root
-- `GET /projects/:id/sessions` - session metadata for the project identified by `id`
-- `POST /api/session/:id/ingest` - accepts forwarded session events and queues them for asynchronous logging
+- `GET /up` - server status, capabilities, SDK runtime metadata, loaded server settings, and relay capability fingerprint
+- `GET /projects` - discovered projects and mock project metadata
+- `GET /projects/:id/sessions` - sessions for the project identified by `id`
+- `GET /sessions/:id` - one session by id
+- `GET /sessions/:id/messages` - messages for a session
+- `POST /sessions` - create a mock session for a discovered project (`projectId` or `cwd`)
+- `PATCH /sessions/:id` - rename or archive a mock session
+- `POST /sessions/:id/messages` - append a user message and emit a mock assistant response
+- `GET /events` - server-sent events; replays buffered session event envelopes and streams new ones as-is
+- `POST /api/session/:id/ingest` - accepts forwarded pi session events and pushes them into the live/replay event stream
 
 ## Forwarding from pi
 
@@ -111,4 +118,4 @@ The extension registers the `--server <ip:port>` flag, starts the bundled server
 http://<configured-host>:<configured-port>/api/session/<sessionId>/ingest
 ```
 
-The client forwarding is fire-and-forget. The server accepts events, pushes them into an in-memory queue, and currently logs them as JSON lines.
+The client forwarding is fire-and-forget. The server accepts events, pushes them into an in-memory queue, logs them as JSON lines, and republishes the same `{ sessionId, sequence, emittedAt, event }` envelope over `GET /events` using SSE.
