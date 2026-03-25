@@ -1,101 +1,80 @@
 package de.chennemann.agentic.data.v2
 
-import de.chennemann.agentic.api.apis.DefaultApi
-import de.chennemann.agentic.api.apis.SessionApi
-import de.chennemann.agentic.api.models.Project
-import de.chennemann.agentic.api.models.Session
 import de.chennemann.agentic.domain.v2.OpenCodeHealthCheck
 import de.chennemann.agentic.domain.v2.OpenCodeProject
 import de.chennemann.agentic.domain.v2.OpenCodeSession
 import de.chennemann.agentic.domain.v2.OpenCodeServerAdapter
+import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
-import io.ktor.client.plugins.defaultRequest
-import io.ktor.client.request.header
+import io.ktor.client.request.get
+import io.ktor.client.statement.bodyAsText
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.contentOrNull
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 class OpenApiServerAdapter(
-    private val engine: HttpClientEngine,
+    engine: HttpClientEngine,
 ) : OpenCodeServerAdapter {
-    private val lock = Any()
-    private val defaultClients = mutableMapOf<String, DefaultApi>()
-    private val defaultClientsWithDirectory = mutableMapOf<String, DefaultApi>()
-    private val sessionClients = mutableMapOf<String, SessionApi>()
+    private val json = Json { ignoreUnknownKeys = true }
+    private val http = HttpClient(engine)
 
     override suspend fun healthCheckWithUrl(baseUrl: String): OpenCodeHealthCheck {
-        val response = defaultApi(baseUrl).globalHealth()
-        if (!response.success) {
+        val response = http.get("${normalizeBaseUrl(baseUrl)}/up")
+        if (response.status.value !in 200..299) {
             throw IllegalStateException("Server returned ${response.status}")
         }
-        val body = response.body()
+        val body = parseObject(response.bodyAsText())
         return OpenCodeHealthCheck(
-            healthy = body.healthy,
-            version = body.version,
+            healthy = body["status"]?.jsonPrimitive?.contentOrNull == "ok",
+            version = body["server"]
+                ?.jsonObject
+                ?.get("version")
+                ?.jsonPrimitive
+                ?.contentOrNull
+                ?: "unknown",
         )
     }
 
     override suspend fun allProjects(baseUrl: String): List<OpenCodeProject> {
-        val response = defaultApi(baseUrl).projectList(directory = null)
-        if (!response.success) {
+        val response = http.get("${normalizeBaseUrl(baseUrl)}/projects")
+        if (response.status.value !in 200..299) {
             throw IllegalStateException("Server returned ${response.status}")
         }
-        return response.body().map(::mapProject)
+        return parseObject(response.bodyAsText())["projects"]
+            ?.jsonArray
+            .orEmpty()
+            .mapNotNull { row ->
+                val obj = row.jsonObject
+                val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                val worktree = obj["cwd"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+                OpenCodeProject(
+                    id = id,
+                    worktree = worktree,
+                    name = obj["name"]?.jsonPrimitive?.contentOrNull ?: worktree,
+                    sandboxes = emptyList(),
+                )
+            }
     }
 
     override suspend fun allSessionsOfAGivenProject(baseUrl: String, path: String): List<OpenCodeSession> {
-        val directory = normalizeDirectory(path)
-        val response = defaultApiWithDirectory(baseUrl, directory).sessionList(
-            directory = null,
-            roots = null,
-            start = null,
-            search = null,
-            limit = null,
-        )
-        if (!response.success) {
+        val project = allProjects(baseUrl).firstOrNull { it.worktree == normalizeDirectory(path) } ?: return emptyList()
+        val response = http.get("${normalizeBaseUrl(baseUrl)}/projects/${project.id}/sessions")
+        if (response.status.value !in 200..299) {
             throw IllegalStateException("Server returned ${response.status}")
         }
-        return response.body().map(::mapSession)
+        return parseObject(response.bodyAsText())["sessions"]
+            ?.jsonArray
+            .orEmpty()
+            .mapNotNull(::mapSession)
     }
 
-    private fun defaultApi(baseUrl: String): DefaultApi {
-        val key = normalizeBaseUrl(baseUrl)
-        return synchronized(lock) {
-            defaultClients.getOrPut(key) {
-                DefaultApi(
-                    baseUrl = key,
-                    httpClientEngine = engine,
-                )
-            }
-        }
-    }
-
-    private fun defaultApiWithDirectory(baseUrl: String, directory: String): DefaultApi {
-        val normalizedBaseUrl = normalizeBaseUrl(baseUrl)
-        val key = "$normalizedBaseUrl|$directory"
-        return synchronized(lock) {
-            defaultClientsWithDirectory.getOrPut(key) {
-                DefaultApi(
-                    baseUrl = normalizedBaseUrl,
-                    httpClientEngine = engine,
-                    httpClientConfig = {
-                        it.defaultRequest {
-                            header(OPENCODE_DIRECTORY_HEADER, directory)
-                        }
-                    },
-                )
-            }
-        }
-    }
-
-    @Suppress("unused")
-    private fun sessionApi(baseUrl: String): SessionApi {
-        val key = normalizeBaseUrl(baseUrl)
-        return synchronized(lock) {
-            sessionClients.getOrPut(key) {
-                SessionApi(
-                    baseUrl = key,
-                    httpClientEngine = engine,
-                )
-            }
-        }
+    private fun parseObject(value: String): JsonObject {
+        return json.parseToJsonElement(value).jsonObject
     }
 }
 
@@ -111,26 +90,28 @@ private fun normalizeDirectory(value: String): String {
     return trimmed
 }
 
-private fun mapProject(value: Project): OpenCodeProject {
-    return OpenCodeProject(
-        id = value.id,
-        worktree = value.worktree,
-        name = value.name ?: value.worktree,
-        sandboxes = value.sandboxes,
-    )
-}
-
-private fun mapSession(value: Session): OpenCodeSession {
+private fun mapSession(value: JsonElement): OpenCodeSession? {
+    val obj = value.jsonObject
+    val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return null
+    val directory = obj["cwd"]?.jsonPrimitive?.contentOrNull ?: return null
     return OpenCodeSession(
-        id = value.id,
-        projectId = value.projectID,
-        directory = value.directory,
-        title = value.title,
-        version = value.version,
-        parentId = value.parentID,
-        updatedAt = value.time.updated.toLong(),
-        archivedAt = value.time.archived?.toLong(),
+        id = id,
+        projectId = obj["projectId"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+        directory = directory,
+        title = obj["title"]?.jsonPrimitive?.contentOrNull ?: directory,
+        version = obj["version"]?.jsonPrimitive?.contentOrNull ?: "mock",
+        parentId = obj["parentSessionId"]?.jsonPrimitive?.contentOrNull,
+        updatedAt = isoToMillis(obj["updatedAt"]?.jsonPrimitive?.contentOrNull),
+        archivedAt = isoToMillis(obj["archivedAt"]?.jsonPrimitive?.contentOrNull),
     )
 }
 
-private const val OPENCODE_DIRECTORY_HEADER = "x-opencode-directory"
+private fun isoToMillis(value: String?): Long? {
+    if (value.isNullOrBlank()) return null
+    return runCatching { java.time.Instant.parse(value).toEpochMilli() }.getOrNull()
+        ?: value.toLongOrNull()
+}
+
+private fun JsonElement?.orEmpty(): JsonArray {
+    return this as? JsonArray ?: JsonArray(emptyList())
+}

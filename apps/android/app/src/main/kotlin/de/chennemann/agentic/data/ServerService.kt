@@ -1,34 +1,29 @@
 package de.chennemann.agentic.data
 
-import de.chennemann.agentic.api.apis.DefaultApi
-import de.chennemann.agentic.api.models.SessionUpdateRequest
-import de.chennemann.agentic.api.models.SessionUpdateRequestTime
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.plugins.sse.SSE
 import io.ktor.client.plugins.sse.sse
 import io.ktor.client.request.get
 import io.ktor.client.request.header
-import io.ktor.client.request.parameter
+import io.ktor.client.request.patch
 import io.ktor.client.request.post
 import io.ktor.client.request.setBody
 import io.ktor.client.statement.bodyAsText
-import io.ktor.http.HttpHeaders
 import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
 import io.ktor.http.contentType
 import kotlinx.coroutines.flow.collect
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.buildJsonArray
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
-import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import java.math.BigDecimal
 import kotlinx.serialization.json.put
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -112,7 +107,7 @@ interface ServerGateway {
 
 class ServerService(
     private val json: Json,
-    private val engine: HttpClientEngine,
+    engine: HttpClientEngine,
 ) : ServerGateway {
     private val http = HttpClient(engine) {
         install(SSE) {
@@ -122,251 +117,138 @@ class ServerService(
             showRetryEvents()
         }
     }
-    private var url: String? = null
-    private var api: DefaultApi? = null
-
-    private fun client(next: String): DefaultApi {
-        if (url == next && api != null) return api!!
-        val created = DefaultApi(
-            baseUrl = next,
-            httpClientEngine = engine,
-        )
-        api = created
-        url = next
-        return created
-    }
+    private val sessionDirectories = mutableMapOf<String, String>()
 
     override suspend fun health(baseUrl: String): Health {
-        val res = client(baseUrl).globalHealth()
-        if (!res.success) {
-            throw IllegalStateException("Server returned ${res.status}")
+        val response = http.get("$baseUrl/up")
+        if (response.status.value !in 200..299) {
+            throw IllegalStateException("Server returned ${response.status}")
         }
-        val body = res.response.bodyAsText()
-        val obj = json.parseToJsonElement(body).jsonObject
-        val healthy = obj["healthy"]?.jsonPrimitive?.booleanOrNull ?: false
-        val version = obj["version"]?.jsonPrimitive?.content ?: "unknown"
-        return Health(
-            healthy = healthy,
-            version = version,
-        )
+        val obj = json.parseToJsonElement(response.bodyAsText()).jsonObject
+        val healthy = obj["status"]?.jsonPrimitive?.contentOrNull == "ok"
+        val version = obj["server"]
+            ?.jsonObject
+            ?.get("version")
+            ?.jsonPrimitive
+            ?.contentOrNull
+            ?: "unknown"
+        return Health(healthy = healthy, version = version)
     }
 
     override suspend fun projects(baseUrl: String): List<ProjectInfo> {
-        val res = client(baseUrl).projectList(null)
-        if (!res.success) {
-            throw IllegalStateException("Server returned ${res.status}")
+        val response = http.get("$baseUrl/projects")
+        if (response.status.value !in 200..299) {
+            throw IllegalStateException("Server returned ${response.status}")
         }
-        return json
-            .parseToJsonElement(res.response.bodyAsText())
-            .jsonArray
-            .mapNotNull {
-                val obj = it.jsonObject
-                val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-                val worktree = obj["worktree"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-                val name = obj["name"]?.jsonPrimitive?.contentOrNull ?: worktree
-                val sandboxes = projectDirectories(obj)
-                ProjectInfo(
-                    id = id,
-                    worktree = worktree,
-                    name = name,
-                    sandboxes = sandboxes,
-                )
-            }
+        val root = json.parseToJsonElement(response.bodyAsText()).jsonObject
+        val rows = root["projects"]?.jsonArray ?: JsonArray(emptyList())
+        return rows.mapNotNull { row ->
+            val obj = row.jsonObject
+            val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val worktree = obj["cwd"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            ProjectInfo(
+                id = id,
+                worktree = worktree,
+                name = obj["name"]?.jsonPrimitive?.contentOrNull ?: worktree,
+                sandboxes = projectDirectories(obj),
+            )
+        }
     }
 
     override suspend fun sessions(baseUrl: String, worktree: String, limit: Int?): List<SessionInfo> {
-        val res = client(baseUrl).sessionList(worktree, true, null, null, limit?.let(::BigDecimal))
-        if (!res.success) {
-            throw IllegalStateException("Server returned ${res.status}")
-        }
-        return json
-            .parseToJsonElement(res.response.bodyAsText())
-            .jsonArray
-            .mapNotNull {
-                val obj = it.jsonObject
-                val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-                val title = obj["title"]?.jsonPrimitive?.contentOrNull ?: "Session"
-                val version = obj["version"]?.jsonPrimitive?.contentOrNull ?: "unknown"
-                val directory = obj["directory"]?.jsonPrimitive?.contentOrNull ?: ""
-                val parentId = obj["parentID"]?.jsonPrimitive?.contentOrNull
-                    ?: obj["parentId"]?.jsonPrimitive?.contentOrNull
-                    ?: obj["parent_id"]?.jsonPrimitive?.contentOrNull
-                val updatedAt = (obj["time"] as? JsonObject)
-                    ?.get("updated")
-                    ?.jsonPrimitive
-                    ?.contentOrNull
-                    ?.toLongOrNull()
-                val archivedAt = (obj["time"] as? JsonObject)
-                    ?.get("archived")
-                    ?.jsonPrimitive
-                    ?.contentOrNull
-                    ?.toLongOrNull()
-                SessionInfo(
-                    id = id,
-                    title = title,
-                    version = version,
-                    directory = directory,
-                    parentId = parentId,
-                    updatedAt = updatedAt,
-                    archivedAt = archivedAt,
-                )
+        val project = projects(baseUrl)
+            .firstOrNull { candidate ->
+                candidate.worktree == worktree || candidate.sandboxes.any { it == worktree }
             }
+            ?: return emptyList()
+        val response = http.get("$baseUrl/projects/${project.id}/sessions")
+        if (response.status.value !in 200..299) {
+            throw IllegalStateException("Server returned ${response.status}")
+        }
+        val root = json.parseToJsonElement(response.bodyAsText()).jsonObject
+        val rows = root["sessions"]?.jsonArray ?: JsonArray(emptyList())
+        return rows.mapNotNull(::mapSession)
+            .let { sessions -> if (limit == null) sessions else sessions.take(limit) }
+            .onEach { sessionDirectories[it.id] = it.directory }
     }
 
     override suspend fun archiveSession(baseUrl: String, sessionId: String, directory: String) {
-        val res = client(baseUrl).sessionUpdate(
-            sessionId,
-            directory,
-            SessionUpdateRequest(
-                time = SessionUpdateRequestTime(
-                    archived = BigDecimal(System.currentTimeMillis()),
-                )
-            ),
-        )
-        if (!res.success) {
-            throw IllegalStateException("Server returned ${res.status}")
+        updateSession(baseUrl, sessionId) {
+            put("archived", true)
         }
     }
 
     override suspend fun renameSession(baseUrl: String, sessionId: String, directory: String, title: String) {
-        val res = client(baseUrl).sessionUpdate(
-            sessionId,
-            directory,
-            SessionUpdateRequest(
-                title = title,
-            ),
-        )
-        if (!res.success) {
-            throw IllegalStateException("Server returned ${res.status}")
+        updateSession(baseUrl, sessionId) {
+            put("title", title)
         }
     }
 
     override suspend fun createSession(baseUrl: String, worktree: String, title: String): SessionInfo {
-        val res = http.post("$baseUrl/session") {
-            parameter("directory", worktree)
+        val response = http.post("$baseUrl/sessions") {
             contentType(ContentType.Application.Json)
             setBody(
                 buildJsonObject {
+                    put("cwd", worktree)
                     put("title", title)
-                }.toString()
+                }.toString(),
             )
         }
-        if (res.status.value !in 200..299) {
-            throw IllegalStateException("Server returned ${res.status}")
+        if (response.status.value !in 200..299) {
+            throw IllegalStateException("Server returned ${response.status}")
         }
-        val obj = json.parseToJsonElement(res.bodyAsText()).jsonObject
-        val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: throw IllegalStateException("Invalid session payload")
-        val value = obj["title"]?.jsonPrimitive?.contentOrNull ?: "Session"
-        val version = obj["version"]?.jsonPrimitive?.contentOrNull ?: "unknown"
-        val directory = obj["directory"]?.jsonPrimitive?.contentOrNull ?: ""
-        return SessionInfo(
-            id = id,
-            title = value,
-            version = version,
-            directory = directory,
-        )
+        val root = json.parseToJsonElement(response.bodyAsText()).jsonObject
+        val session = mapSession(root["session"] ?: error("Invalid session payload")) ?: error("Invalid session payload")
+        sessionDirectories[session.id] = session.directory
+        return session
     }
 
     override suspend fun commands(baseUrl: String, directory: String): List<CommandInfo> {
-        val res = client(baseUrl).commandList(directory)
-        if (!res.success) {
-            throw IllegalStateException("Server returned ${res.status}")
-        }
-        return json
-            .parseToJsonElement(res.response.bodyAsText())
-            .jsonArray
-            .mapNotNull {
-                val obj = it.jsonObject
-                val name = obj["name"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-                val description = obj["description"]?.jsonPrimitive?.contentOrNull
-                val source = obj["source"]?.jsonPrimitive?.contentOrNull
-                CommandInfo(
-                    name = name,
-                    description = description,
-                    source = source,
-                )
-            }
+        return emptyList()
     }
 
     override suspend fun sessionMessages(baseUrl: String, sessionId: String, directory: String, limit: Int?): List<SessionMessageInfo> {
-        val res = client(baseUrl).sessionMessages(sessionId, directory, limit?.let(::BigDecimal))
-        if (!res.success) {
-            throw IllegalStateException("Server returned ${res.status}")
+        val response = http.get("$baseUrl/sessions/$sessionId/messages")
+        if (response.status.value !in 200..299) {
+            throw IllegalStateException("Server returned ${response.status}")
         }
-        return json
-            .parseToJsonElement(res.response.bodyAsText())
-            .jsonArray
-            .mapNotNull {
-                val row = it.jsonObject
-                val info = row["info"]?.jsonObject ?: return@mapNotNull null
-                val id = info["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-                val role = info["role"]?.jsonPrimitive?.contentOrNull ?: "assistant"
-                val time = info["time"] as? JsonObject
-                val createdAt = time?.get("created")?.jsonPrimitive?.contentOrNull?.toLongOrNull()
-                val completedAt = time?.get("completed")?.jsonPrimitive?.contentOrNull?.toLongOrNull()
-                val parts = row["parts"]?.jsonArray ?: return@mapNotNull null
-                val raw = parts.map { it.jsonObject }
-                val text = parts
-                    .mapNotNull {
-                        val obj = it.jsonObject
-                        val type = obj["type"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-                        if (type != "text") return@mapNotNull null
-                        obj["text"]?.jsonPrimitive?.contentOrNull
-                    }
-                    .filter { it.isNotBlank() }
-                    .joinToString("\n")
-                val value = if (text.isBlank()) {
-                    val tags = parts
-                        .mapNotNull { it.jsonObject["type"]?.jsonPrimitive?.contentOrNull }
-                        .distinct()
-                        .joinToString(", ")
-                    if (tags.isBlank()) "(empty)" else "[$tags]"
-                } else {
-                    text
-                }
-                SessionMessageInfo(
-                    id = id,
-                    role = role,
-                    text = value,
-                    parts = raw,
-                    createdAt = createdAt,
-                    completedAt = completedAt,
-                )
-            }
+        val root = json.parseToJsonElement(response.bodyAsText()).jsonObject
+        root["session"]?.let { mapSession(it) }?.let { sessionDirectories[it.id] = it.directory }
+        val rows = root["messages"]?.jsonArray ?: JsonArray(emptyList())
+        val messages = rows.mapNotNull { row ->
+            val obj = row.jsonObject
+            val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
+            val role = obj["role"]?.jsonPrimitive?.contentOrNull ?: "assistant"
+            val raw = obj["raw"]?.jsonObject
+            val parts = extractParts(id, role, obj["text"]?.jsonPrimitive?.contentOrNull.orEmpty(), raw)
+            val text = extractText(parts)
+            SessionMessageInfo(
+                id = id,
+                role = role,
+                text = text,
+                parts = parts,
+                createdAt = isoToMillis(obj["createdAt"]?.jsonPrimitive?.contentOrNull),
+                completedAt = isoToMillis(obj["completedAt"]?.jsonPrimitive?.contentOrNull),
+            )
+        }
+        return if (limit == null) messages else messages.takeLast(limit)
     }
 
     override suspend fun sessionUpdatedAt(baseUrl: String, sessionId: String, directory: String): Long? {
-        val res = http.get("$baseUrl/session/$sessionId") {
-            parameter("directory", directory)
+        val response = http.get("$baseUrl/sessions/$sessionId")
+        if (response.status.value !in 200..299) {
+            throw IllegalStateException("Server returned ${response.status}")
         }
-        if (res.status.value !in 200..299) {
-            throw IllegalStateException("Server returned ${res.status}")
-        }
-        val obj = json.parseToJsonElement(res.bodyAsText()).jsonObject
-        val time = obj["time"] as? JsonObject ?: return null
-        val value = time["updated"]?.jsonPrimitive?.contentOrNull ?: return null
-        return value.toLongOrNull()
+        val root = json.parseToJsonElement(response.bodyAsText()).jsonObject
+        val session = root["session"]?.jsonObject ?: return null
+        sessionDirectories[sessionId] = session["cwd"]?.jsonPrimitive?.contentOrNull ?: directory
+        return isoToMillis(session["updatedAt"]?.jsonPrimitive?.contentOrNull)
     }
 
     override suspend fun sessionStatus(baseUrl: String, directory: String): Map<String, String> {
-        val res = http.get("$baseUrl/session/status") {
-            parameter("directory", directory)
-        }
-        if (res.status.value !in 200..299) {
-            throw IllegalStateException("Server returned ${res.status}")
-        }
-        val obj = json.parseToJsonElement(res.bodyAsText()).jsonObject
-        return obj.mapNotNull { row ->
-            val key = row.key.trim()
-            if (key.isBlank()) return@mapNotNull null
-            val value = (row.value as? JsonObject)
-                ?.get("type")
-                ?.jsonPrimitive
-                ?.contentOrNull
-                ?: row.value.jsonPrimitive.contentOrNull
-                ?: "unknown"
-            key to value
-        }.toMap()
+        return sessions(baseUrl, directory, null)
+            .filter { it.archivedAt == null }
+            .associate { it.id to "idle" }
     }
 
     override suspend fun streamEvents(
@@ -376,83 +258,170 @@ class ServerService(
         onEvent: suspend (GlobalStreamEvent) -> Unit,
     ): String? {
         var cursor = lastEventId
-        http.sse("$baseUrl/global/event", request = {
+        http.sse("$baseUrl/events", request = {
             header(HttpHeaders.CacheControl, "no-cache")
             if (!cursor.isNullOrBlank()) {
                 header("Last-Event-ID", cursor)
             }
         }) {
             incoming.collect { event ->
-                onRawEvent(
-                    "id=${event.id} event=${event.event} retry=${event.retry} comments=${event.comments} data=${event.data}",
-                )
-
+                onRawEvent("id=${event.id} event=${event.event} retry=${event.retry} comments=${event.comments} data=${event.data}")
                 if (!event.id.isNullOrBlank()) {
                     cursor = event.id
                 }
-
                 val body = event.data ?: return@collect
-                val root = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return@collect
-                val payload = root["payload"]?.jsonObject ?: return@collect
-                val type = payload["type"]?.jsonPrimitive?.contentOrNull ?: event.event ?: return@collect
-                val properties = payload["properties"]?.jsonObject ?: JsonObject(emptyMap())
-                onEvent(
-                    GlobalStreamEvent(
-                        directory = root["directory"]?.jsonPrimitive?.contentOrNull ?: "global",
-                        type = type,
-                        properties = properties,
-                        id = event.id,
-                        retry = event.retry?.toInt(),
-                    )
-                )
+                val envelope = runCatching { json.parseToJsonElement(body).jsonObject }.getOrNull() ?: return@collect
+                val sessionId = envelope["sessionId"]?.jsonPrimitive?.contentOrNull ?: return@collect
+                val emittedAt = envelope["emittedAt"]?.jsonPrimitive?.contentOrNull
+                val rawEvent = envelope["event"]?.jsonObject ?: return@collect
+                val mapped = mapStreamEvent(baseUrl, sessionId, emittedAt, rawEvent, event.id, event.retry?.toInt()) ?: return@collect
+                onEvent(mapped)
             }
         }
-
         return cursor
     }
 
     override suspend fun sendMessage(baseUrl: String, sessionId: String, directory: String, text: String, agent: String) {
-        val res = http.post("$baseUrl/session/$sessionId/prompt_async") {
-            parameter("directory", directory)
+        val response = http.post("$baseUrl/sessions/$sessionId/messages") {
             contentType(ContentType.Application.Json)
             setBody(
                 buildJsonObject {
-                    put("agent", agent)
-                    put(
-                        "parts",
-                        buildJsonArray {
-                            add(
-                                buildJsonObject {
-                                    put("type", "text")
-                                    put("text", text)
-                                }
-                            )
-                        }
-                    )
-                }.toString()
+                    put("text", text)
+                    put("mode", agent)
+                }.toString(),
             )
         }
-        if (res.status.value !in 200..299) {
-            throw IllegalStateException("Server returned ${res.status}")
+        if (response.status.value !in 200..299) {
+            throw IllegalStateException("Server returned ${response.status}")
         }
     }
 
     override suspend fun sendCommand(baseUrl: String, sessionId: String, directory: String, name: String, arguments: String, agent: String) {
-        val res = http.post("$baseUrl/session/$sessionId/command") {
-            parameter("directory", directory)
-            contentType(ContentType.Application.Json)
-            setBody(
-                buildJsonObject {
-                    put("command", name)
-                    put("arguments", arguments)
-                    put("agent", agent)
-                }.toString()
-            )
+        val command = buildString {
+            append('/')
+            append(name)
+            if (arguments.isNotBlank()) {
+                append(' ')
+                append(arguments)
+            }
         }
-        if (res.status.value !in 200..299) {
-            throw IllegalStateException("Server returned ${res.status}")
+        sendMessage(baseUrl, sessionId, directory, command, agent)
+    }
+
+    private suspend fun updateSession(baseUrl: String, sessionId: String, block: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit) {
+        val response = http.patch("$baseUrl/sessions/$sessionId") {
+            contentType(ContentType.Application.Json)
+            setBody(buildJsonObject(block).toString())
+        }
+        if (response.status.value !in 200..299) {
+            throw IllegalStateException("Server returned ${response.status}")
+        }
+        val root = json.parseToJsonElement(response.bodyAsText()).jsonObject
+        root["session"]?.let { mapSession(it) }?.let { sessionDirectories[it.id] = it.directory }
+    }
+
+    private suspend fun mapStreamEvent(
+        baseUrl: String,
+        sessionId: String,
+        emittedAt: String?,
+        rawEvent: JsonObject,
+        eventId: String?,
+        retry: Int?,
+    ): GlobalStreamEvent? {
+        val type = rawEvent["type"]?.jsonPrimitive?.contentOrNull ?: return null
+        val directory = resolveDirectory(baseUrl, sessionId)
+        val message = rawEvent["message"]?.jsonObject
+        return when (type) {
+            "agent_start" -> GlobalStreamEvent(
+                directory = directory,
+                type = "session.status",
+                properties = buildJsonObject {
+                    put("sessionID", sessionId)
+                    put("status", buildJsonObject { put("type", "busy") })
+                },
+                id = eventId,
+                retry = retry,
+            )
+
+            "agent_end" -> GlobalStreamEvent(
+                directory = directory,
+                type = "session.idle",
+                properties = buildJsonObject {
+                    put("sessionID", sessionId)
+                },
+                id = eventId,
+                retry = retry,
+            )
+
+            "message_start", "message_update", "message_end" -> {
+                val messageId = message?.get("id")?.jsonPrimitive?.contentOrNull ?: return null
+                val role = message["role"]?.jsonPrimitive?.contentOrNull ?: "assistant"
+                val text = extractMessageText(message)
+                GlobalStreamEvent(
+                    directory = directory,
+                    type = "message.updated",
+                    properties = buildJsonObject {
+                        put(
+                            "info",
+                            buildJsonObject {
+                                put("sessionID", sessionId)
+                                put("id", messageId)
+                                put("role", role)
+                                put("text", text)
+                                put(
+                                    "time",
+                                    buildJsonObject {
+                                        if (type == "message_start") {
+                                            isoToMillis(emittedAt)?.let { put("created", it) }
+                                        }
+                                        if (type == "message_end") {
+                                            isoToMillis(emittedAt)?.let { put("completed", it) }
+                                        }
+                                    },
+                                )
+                            },
+                        )
+                    },
+                    id = eventId,
+                    retry = retry,
+                )
+            }
+
+            else -> null
         }
     }
+
+    private suspend fun resolveDirectory(baseUrl: String, sessionId: String): String {
+        sessionDirectories[sessionId]?.let { return it }
+        val response = http.get("$baseUrl/sessions/$sessionId")
+        if (response.status.value !in 200..299) {
+            return "global"
+        }
+        val root = json.parseToJsonElement(response.bodyAsText()).jsonObject
+        val directory = root["session"]
+            ?.jsonObject
+            ?.get("cwd")
+            ?.jsonPrimitive
+            ?.contentOrNull
+            ?: "global"
+        sessionDirectories[sessionId] = directory
+        return directory
+    }
+}
+
+
+private fun mapSession(value: JsonElement): SessionInfo? {
+    val obj = value.jsonObject
+    val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return null
+    return SessionInfo(
+        id = id,
+        title = obj["title"]?.jsonPrimitive?.contentOrNull ?: "Session",
+        version = obj["version"]?.jsonPrimitive?.contentOrNull ?: "mock",
+        directory = obj["cwd"]?.jsonPrimitive?.contentOrNull.orEmpty(),
+        parentId = obj["parentSessionId"]?.jsonPrimitive?.contentOrNull,
+        updatedAt = isoToMillis(obj["updatedAt"]?.jsonPrimitive?.contentOrNull),
+        archivedAt = isoToMillis(obj["archivedAt"]?.jsonPrimitive?.contentOrNull),
+    )
 }
 
 private fun projectDirectories(obj: JsonObject): List<String> {
@@ -472,4 +441,54 @@ private fun parseDirectoryArray(value: JsonElement?): List<String> {
         .map(String::trim)
         .filter(String::isNotEmpty)
         .distinct()
+}
+
+private fun isoToMillis(value: String?): Long? {
+    if (value.isNullOrBlank()) return null
+    return runCatching { java.time.Instant.parse(value).toEpochMilli() }.getOrNull()
+        ?: value.toLongOrNull()
+}
+
+private fun extractParts(messageId: String, role: String, fallbackText: String, raw: JsonObject?): List<JsonObject> {
+    val content = raw?.get("content") as? JsonArray
+    val rawParts = content
+        ?.mapNotNull { it as? JsonObject }
+        .orEmpty()
+    if (rawParts.isNotEmpty()) return rawParts
+    if (fallbackText.isBlank()) return emptyList()
+    return listOf(
+        buildJsonObject {
+            put("id", "$messageId:text")
+            put("type", "text")
+            put("role", role)
+            put("text", fallbackText)
+        },
+    )
+}
+
+private fun extractText(parts: List<JsonObject>): String {
+    val text = parts
+        .mapNotNull { part ->
+            if (part["type"]?.jsonPrimitive?.contentOrNull != "text") return@mapNotNull null
+            part["text"]?.jsonPrimitive?.contentOrNull
+        }
+        .filter { it.isNotBlank() }
+        .joinToString("\n")
+    if (text.isNotBlank()) return text
+    val tags = parts
+        .mapNotNull { it["type"]?.jsonPrimitive?.contentOrNull }
+        .distinct()
+        .joinToString(", ")
+    return if (tags.isBlank()) "(empty)" else "[$tags]"
+}
+
+private fun extractMessageText(message: JsonObject): String {
+    val content = message["content"] as? JsonArray ?: return ""
+    return content
+        .mapNotNull { item ->
+            val part = item as? JsonObject ?: return@mapNotNull null
+            if (part["type"]?.jsonPrimitive?.contentOrNull != "text") return@mapNotNull null
+            part["text"]?.jsonPrimitive?.contentOrNull
+        }
+        .joinToString(separator = "")
 }
