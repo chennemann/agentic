@@ -130,8 +130,8 @@ val appModule = module {
             .also { it.start(get(named(AppScopeName))) }
     }
     single<SessionServiceApi> { get<SessionService>() }
-    viewModel { ConversationViewModel(get(), get(), get()) }
-    viewModel { (projectKey: String) -> SessionSelectionViewModel(projectKey, get(), get(), get()) }
+    viewModel { ConversationViewModel(get(), get(), get(), get()) }
+    viewModel { (projectKey: String) -> SessionSelectionViewModel(projectKey, get(), get(), get(), get()) }
     viewModel { ManageViewModel(get(), get(), get(), get()) }
     viewModel { LogsViewModel(get(), get()) }
 }

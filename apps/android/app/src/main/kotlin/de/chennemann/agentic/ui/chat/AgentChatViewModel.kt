@@ -3,6 +3,7 @@ package de.chennemann.agentic.ui.chat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import de.chennemann.agentic.di.DispatcherProvider
+import de.chennemann.agentic.domain.projects.ProjectService
 import de.chennemann.agentic.domain.session.CommandState
 import de.chennemann.agentic.domain.session.ProjectState
 import de.chennemann.agentic.domain.session.ServerState
@@ -28,6 +29,7 @@ import kotlinx.coroutines.launch
 class ConversationViewModel(
     private val service: SessionServiceApi,
     private val serverService: ServerService,
+    private val projectService: ProjectService,
     private val dispatchers: DispatcherProvider,
 ) : ViewModel() {
     private val mapper = ConversationRenderMapper()
@@ -76,25 +78,24 @@ class ConversationViewModel(
 
     val nav = navFlow.asSharedFlow()
 
-    private val global = service.state
-        .map {
-            GlobalRenderState(
-                title = it.focusedSession?.title ?: "No session selected",
-                status = it.status,
-                message = it.message,
-                focusedSession = it.focusedSession,
-                turns = mapper.map(it.focusedMessages),
-                commands = mergeCommands(it.commands),
-                projects = it.projects,
-                activeSessions = it.activeSessions,
-                quickPinInclude = it.quickPinInclude,
-                quickPinExclude = it.quickPinExclude,
-                quickProcessing = it.quickProcessing,
-                quickUnread = it.quickUnread,
-                canLoadMoreMessages = it.canLoadMoreMessages,
-                loadingMoreMessages = it.loadingMoreMessages,
-            )
-        }
+    private val global = combine(service.state, projectService.projects) { session, projects ->
+        GlobalRenderState(
+            title = session.focusedSession?.title ?: "No session selected",
+            status = session.status,
+            message = session.message,
+            focusedSession = session.focusedSession,
+            turns = mapper.map(session.focusedMessages),
+            commands = mergeCommands(session.commands),
+            projects = quickSwitchProjects(projects, session.projects),
+            activeSessions = session.activeSessions,
+            quickPinInclude = session.quickPinInclude,
+            quickPinExclude = session.quickPinExclude,
+            quickProcessing = session.quickProcessing,
+            quickUnread = session.quickUnread,
+            canLoadMoreMessages = session.canLoadMoreMessages,
+            loadingMoreMessages = session.loadingMoreMessages,
+        )
+    }
         .flowOn(lane)
 
     val quickSwitchMenu: StateFlow<SessionSelectionUiState?> = combine(global, quickSwitchMenuLocal) { global, menu ->

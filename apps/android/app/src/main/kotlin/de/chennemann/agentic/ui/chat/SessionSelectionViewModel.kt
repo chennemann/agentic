@@ -3,6 +3,7 @@ package de.chennemann.agentic.ui.chat
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import de.chennemann.agentic.di.DispatcherProvider
+import de.chennemann.agentic.domain.projects.ProjectService
 import de.chennemann.agentic.domain.session.ProjectState
 import de.chennemann.agentic.domain.session.SessionServiceApi
 import de.chennemann.agentic.domain.session.SessionState
@@ -26,6 +27,7 @@ class SessionSelectionViewModel(
     private val projectKey: String,
     private val service: SessionServiceApi,
     private val sessionService: SessionService,
+    private val projectService: ProjectService,
     private val dispatchers: DispatcherProvider,
 ) : ViewModel() {
 
@@ -46,14 +48,13 @@ class SessionSelectionViewModel(
 
     val nav = navFlow.asSharedFlow()
 
-    private val global = service.state
-        .map {
-            GlobalState(
-                projects = it.projects,
-                include = it.quickPinInclude,
-                exclude = it.quickPinExclude,
-            )
-        }
+    private val global = combine(service.state, projectService.projects) { session, projects ->
+        GlobalState(
+            projects = quickSwitchProjects(projects, session.projects),
+            include = session.quickPinInclude,
+            exclude = session.quickPinExclude,
+        )
+    }
         .flowOn(lane)
 
     val state: StateFlow<SessionSelectionUiState?> = combine(global, menuLocal, sessions) { global, menu, sessions ->

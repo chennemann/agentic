@@ -1,6 +1,8 @@
 package de.chennemann.agentic.ui.chat
 
 import de.chennemann.agentic.di.DispatcherProvider
+import de.chennemann.agentic.domain.projects.LocalProjectInfo
+import de.chennemann.agentic.domain.projects.ProjectService
 import de.chennemann.agentic.domain.session.CommandState
 import de.chennemann.agentic.domain.session.ProjectState
 import de.chennemann.agentic.domain.session.ServerState
@@ -336,6 +338,33 @@ class ConversationViewModelTest {
     }
 
     @Test
+    fun quickSwitchUsesV2PinnedProjectsForPlaceholders() = runTest(TestCoroutineScheduler()) {
+        val main = StandardTestDispatcher(testScheduler)
+        Dispatchers.setMain(main)
+        val worker = StandardTestDispatcher(testScheduler)
+        val service = StubSessionService()
+        val projectService = StubProjectService()
+        val viewModel = viewModel(service, main, worker, projectService = projectService)
+        val collect = backgroundScope.launch(worker) { viewModel.state.collect {} }
+        projectService.flow.value = listOf(
+            LocalProjectInfo(
+                id = "p1",
+                serverId = "server-1",
+                name = "Main",
+                path = "/repo/main",
+                pinned = true,
+            )
+        )
+        service.state.value = state()
+
+        advanceUntilIdle()
+
+        assertEquals(listOf("Main"), viewModel.state.value.quickSwitches.map { it.project })
+        assertEquals(listOf("/repo/main"), viewModel.state.value.quickSwitches.map { it.worktree })
+        collect.cancel()
+    }
+
+    @Test
     fun quickSwitchCycleKeepsStableOrderAcrossStateRefresh() = runTest(TestCoroutineScheduler()) {
         val main = StandardTestDispatcher(testScheduler)
         Dispatchers.setMain(main)
@@ -602,8 +631,9 @@ class ConversationViewModelTest {
         main: TestDispatcher,
         worker: TestDispatcher,
         serverService: StubServerService = StubServerService(),
+        projectService: StubProjectService = StubProjectService(),
     ): ConversationViewModel {
-        return ConversationViewModel(service, serverService, lanes(main, worker))
+        return ConversationViewModel(service, serverService, projectService, lanes(main, worker))
     }
 
     private fun lanes(main: TestDispatcher, worker: TestDispatcher): DispatcherProvider {
@@ -627,6 +657,18 @@ private class StubServerService : ServerService {
     override suspend fun removeById(serverId: String): Boolean = false
 
     override suspend fun heartbeat() = Unit
+}
+
+private class StubProjectService : ProjectService {
+    val flow = MutableStateFlow<List<LocalProjectInfo>>(emptyList())
+
+    override val projects: Flow<List<LocalProjectInfo>> = flow
+
+    override suspend fun togglePinnedById(projectId: String): Boolean = false
+
+    override suspend fun removeById(projectId: String): Boolean = false
+
+    override suspend fun syncServerProjects(serverId: String, baseUrl: String): List<LocalProjectInfo> = emptyList()
 }
 
 private class StubSessionService : SessionServiceApi {
