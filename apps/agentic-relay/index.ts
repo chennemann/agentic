@@ -52,7 +52,12 @@ const SERVER_PACKAGE_NAME = "@mariozechner/pi-server";
 
 function getConfiguredServerUrl(): string {
 	const loadedSettings = loadServerSettings();
-	return `http://127.0.0.1:${loadedSettings.settings.port ?? DEFAULT_SERVER_PORT}`;
+	const configuredHost = loadedSettings.settings.host;
+	const serverHost =
+		configuredHost === "0.0.0.0" || configuredHost === "::" || configuredHost === "::0"
+			? "127.0.0.1"
+			: configuredHost;
+	return `http://${serverHost}:${loadedSettings.settings.port ?? DEFAULT_SERVER_PORT}`;
 }
 
 function normalizeServerUrl(server: string): string {

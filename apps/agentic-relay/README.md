@@ -20,7 +20,7 @@ Run pi with the extension package:
 pi --extension apps/agentic-relay
 ```
 
-By default the extension reads `%HOME%/.pi/server/settings.json` and connects to `127.0.0.1:<port>` using the configured `port` value.
+By default the extension reads `%HOME%/.pi/server/settings.json` and connects to the configured `host` and `port` values. If the configured host is `0.0.0.0`, it connects to `127.0.0.1:<port>`.
 
 To override the server address explicitly:
 

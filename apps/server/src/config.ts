@@ -3,10 +3,12 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 
 export const DEFAULT_SERVER_PORT = 8787;
+export const DEFAULT_SERVER_HOST = "0.0.0.0";
 
 export interface ServerSettings {
 	projectRoots: string[];
 	port: number;
+	host: string;
 }
 
 export interface LoadedServerSettings {
@@ -28,6 +30,16 @@ function parsePort(value: unknown, settingsPath: string): number {
 	return value;
 }
 
+function parseHost(value: unknown, settingsPath: string): string {
+	if (value === undefined) {
+		return DEFAULT_SERVER_HOST;
+	}
+	if (typeof value !== "string" || value.trim().length === 0) {
+		throw new Error(`Invalid server settings in ${settingsPath}: host must be a non-empty string`);
+	}
+	return value.trim();
+}
+
 export function getServerSettingsPath(): string {
 	return join(homedir(), ".pi", "server", "settings.json");
 }
@@ -40,6 +52,7 @@ export function loadServerSettings(settingsPath = getServerSettingsPath()): Load
 			settings: {
 				projectRoots: [],
 				port: DEFAULT_SERVER_PORT,
+				host: DEFAULT_SERVER_HOST,
 			},
 		};
 	}
@@ -56,12 +69,14 @@ export function loadServerSettings(settingsPath = getServerSettingsPath()): Load
 		throw new Error(`Invalid server settings in ${resolvedPath}: projectRoots must be an array of strings`);
 	}
 	const portValue = (parsed as { port?: unknown }).port;
+	const hostValue = (parsed as { host?: unknown }).host;
 
 	return {
 		path: resolvedPath,
 		settings: {
 			projectRoots: (projectRootsValue ?? []).map((projectRoot) => resolve(projectRoot)),
 			port: parsePort(portValue, resolvedPath),
+			host: parseHost(hostValue, resolvedPath),
 		},
 	};
 }

@@ -36,8 +36,8 @@ Default bind address:
 
 `npm run dev` restarts the server when files imported by `src/main.ts` change.
 
-The server port can be configured in `%HOME%/.pi/server/settings.json`.
-Environment variable `PI_SERVER_PORT` still overrides the configured port.
+The server host and port can be configured in `%HOME%/.pi/server/settings.json`.
+Environment variables `PI_SERVER_HOST` and `PI_SERVER_PORT` still override the configured values.
 
 Override with environment variables:
 
@@ -55,6 +55,7 @@ Current supported settings:
 
 ```json
 {
+  "host": "0.0.0.0",
   "port": 8787,
   "projectRoots": [
     "/path/to/projects",
@@ -67,10 +68,13 @@ If the file does not exist, the server uses:
 
 ```json
 {
+  "host": "0.0.0.0",
   "port": 8787,
   "projectRoots": []
 }
 ```
+
+`host` configures the HTTP bind address used by `pi-server`. Set it to your machine's LAN IP (for example `192.168.1.10`) if you want other devices on the network to connect using that address.
 
 `port` configures the HTTP port used by `pi-server` and is also the default port used by the Agentic relay extension when `--server` is not passed.
 
@@ -101,10 +105,10 @@ To override the configured/default server address explicitly:
 pi --extension apps/agentic-relay --server 127.0.0.1:8787
 ```
 
-The extension registers the `--server <ip:port>` flag, starts the bundled server automatically for local targets when needed, verifies the relay capability fingerprint via `/up`, and forwards each session event to:
+The extension registers the `--server <ip:port>` flag, starts the bundled server automatically for local targets when needed, verifies the relay capability fingerprint via `/up`, and forwards each session event to the configured host and port. If the configured host is `0.0.0.0`, the relay uses `127.0.0.1` when connecting from the same machine.
 
 ```text
-http://127.0.0.1:8787/api/session/<sessionId>/ingest
+http://<configured-host>:<configured-port>/api/session/<sessionId>/ingest
 ```
 
 The client forwarding is fire-and-forget. The server accepts events, pushes them into an in-memory queue, and currently logs them as JSON lines.

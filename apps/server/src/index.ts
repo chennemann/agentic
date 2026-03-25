@@ -12,7 +12,13 @@ import {
 	SessionManager,
 	SettingsManager,
 } from "@mariozechner/pi-coding-agent";
-import { DEFAULT_SERVER_PORT, type LoadedServerSettings, loadServerSettings, type ServerSettings } from "./config.js";
+import {
+	DEFAULT_SERVER_HOST,
+	DEFAULT_SERVER_PORT,
+	type LoadedServerSettings,
+	loadServerSettings,
+	type ServerSettings,
+} from "./config.js";
 
 export interface OrchestratorSdkOptions {
 	cwd?: string;
@@ -313,7 +319,9 @@ function createRequestHandler(runtime: OrchestratorSdkRuntime, logger: Pick<Cons
 				},
 				settings: {
 					path: runtime.serverSettings.path,
+					host: runtime.serverSettings.settings.host,
 					projectRoots: runtime.serverSettings.settings.projectRoots,
+					port: runtime.serverSettings.settings.port,
 				},
 			});
 			return;
@@ -390,6 +398,7 @@ export function createOrchestratorSdkRuntime(options: OrchestratorSdkOptions = {
 				settings: {
 					projectRoots: options.serverSettings.projectRoots.map((projectRoot) => resolve(projectRoot)),
 					port: options.serverSettings.port,
+					host: options.serverSettings.host,
 				},
 			}
 		: loadServerSettings(options.serverSettingsPath);
@@ -415,9 +424,9 @@ export function createOrchestratorSdkRuntime(options: OrchestratorSdkOptions = {
 }
 
 export function createOrchestratorServer(options: OrchestratorServerOptions = {}): OrchestratorServer {
-	const host = options.host ?? "0.0.0.0";
 	const logger = options.logger ?? console;
 	const runtime = createOrchestratorSdkRuntime(options);
+	const host = options.host ?? runtime.serverSettings.settings.host ?? DEFAULT_SERVER_HOST;
 	const port = options.port ?? runtime.serverSettings.settings.port ?? DEFAULT_SERVER_PORT;
 	const server = createServer(createRequestHandler(runtime, logger));
 	let started = false;

@@ -18,7 +18,7 @@ function parsePort(value: string | undefined, fallbackPort: number): number {
 const loadedServerSettings = loadServerSettings();
 
 const server = createOrchestratorServer({
-	host: process.env.PI_SERVER_HOST ?? "0.0.0.0",
+	host: process.env.PI_SERVER_HOST ?? loadedServerSettings.settings.host,
 	port: parsePort(process.env.PI_SERVER_PORT, loadedServerSettings.settings.port),
 	serverSettings: loadedServerSettings.settings,
 	serverSettingsPath: loadedServerSettings.path,
