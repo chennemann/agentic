@@ -1,4 +1,4 @@
-package de.chennemann.agentic.domain.v2.session
+package de.chennemann.agentic.domain.sessions
 
 data class LocalSessionInfo(
     val id: String,

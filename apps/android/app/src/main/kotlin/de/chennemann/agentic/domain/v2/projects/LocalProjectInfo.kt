@@ -1,4 +1,4 @@
-package de.chennemann.agentic.domain.v2.projects
+package de.chennemann.agentic.domain.projects
 
 data class LocalProjectInfo(
     val id: String,

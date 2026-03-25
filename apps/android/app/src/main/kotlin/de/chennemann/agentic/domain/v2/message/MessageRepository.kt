@@ -1,4 +1,4 @@
-package de.chennemann.agentic.domain.v2.message
+package de.chennemann.agentic.domain.messages
 
 import kotlinx.coroutines.flow.Flow
 

@@ -1,4 +1,4 @@
-package de.chennemann.agentic.domain.v2.projects
+package de.chennemann.agentic.domain.projects
 
 import kotlinx.coroutines.flow.Flow
 

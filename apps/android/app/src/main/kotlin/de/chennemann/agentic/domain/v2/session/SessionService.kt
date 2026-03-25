@@ -1,6 +1,6 @@
-package de.chennemann.agentic.domain.v2.session
+package de.chennemann.agentic.domain.sessions
 
-import de.chennemann.agentic.domain.v2.OpenCodeServerAdapter
+import de.chennemann.agentic.domain.remote.ServerAdapter
 import kotlinx.coroutines.flow.Flow
 
 interface SessionService {
@@ -15,7 +15,7 @@ interface SessionService {
 
 class DefaultSessionService(
     private val sessionRepository: SessionRepository,
-    private val adapter: OpenCodeServerAdapter,
+    private val adapter: ServerAdapter,
 ) : SessionService {
     override fun sessionsOfProject(projectKey: String): Flow<List<LocalSessionInfo>> {
         return sessionRepository.sessionsOfProject(projectKey)

@@ -1,6 +1,6 @@
-package de.chennemann.agentic.domain.v2.servers
+package de.chennemann.agentic.domain.servers
 
-import de.chennemann.agentic.domain.v2.OpenCodeServerAdapter
+import de.chennemann.agentic.domain.remote.ServerAdapter
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -20,7 +20,7 @@ interface ServerService {
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class DefaultServerService(
-    private val adapter: OpenCodeServerAdapter,
+    private val adapter: ServerAdapter,
     private val serverRepository: ServerRepository,
 ) : ServerService {
 

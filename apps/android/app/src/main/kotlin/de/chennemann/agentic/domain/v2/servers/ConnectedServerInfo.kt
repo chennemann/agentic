@@ -1,4 +1,4 @@
-package de.chennemann.agentic.domain.v2.servers
+package de.chennemann.agentic.domain.servers
 
 sealed interface ServerInfo {
 

@@ -1,27 +1,27 @@
-package de.chennemann.agentic.domain.v2.fixtures
+package de.chennemann.agentic.domain.fixtures
 
 import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
-import de.chennemann.agentic.data.v2.SqlDelightProjectRepository
-import de.chennemann.agentic.data.v2.SqlDelightServerRepository
-import de.chennemann.agentic.data.v2.SqlDelightSessionRepository
+import de.chennemann.agentic.data.store.SqlDelightProjectRepository
+import de.chennemann.agentic.data.store.SqlDelightServerRepository
+import de.chennemann.agentic.data.store.SqlDelightSessionRepository
 import de.chennemann.agentic.db.AgenticDb
 import de.chennemann.agentic.di.DispatcherProvider
 import de.chennemann.agentic.di.TestDispatcherProvider
-import de.chennemann.agentic.domain.v2.DefaultSynchronizationService
-import de.chennemann.agentic.domain.v2.OpenCodeHealthCheck
-import de.chennemann.agentic.domain.v2.OpenCodeProject
-import de.chennemann.agentic.domain.v2.OpenCodeServerAdapter
-import de.chennemann.agentic.domain.v2.OpenCodeSession
-import de.chennemann.agentic.domain.v2.projects.DefaultProjectService
-import de.chennemann.agentic.domain.v2.projects.LocalProjectInfo
-import de.chennemann.agentic.domain.v2.projects.ProjectRepository
-import de.chennemann.agentic.domain.v2.servers.DefaultServerService
-import de.chennemann.agentic.domain.v2.servers.ServerInfo
-import de.chennemann.agentic.domain.v2.servers.ServerRepository
-import de.chennemann.agentic.domain.v2.session.DefaultSessionService
-import de.chennemann.agentic.domain.v2.session.LocalSessionRecord
-import de.chennemann.agentic.domain.v2.session.SessionRepository
+import de.chennemann.agentic.domain.sync.DefaultSynchronizationService
+import de.chennemann.agentic.domain.remote.ServerHealthCheck
+import de.chennemann.agentic.domain.remote.ServerProject
+import de.chennemann.agentic.domain.remote.ServerAdapter
+import de.chennemann.agentic.domain.remote.ServerSession
+import de.chennemann.agentic.domain.projects.DefaultProjectService
+import de.chennemann.agentic.domain.projects.LocalProjectInfo
+import de.chennemann.agentic.domain.projects.ProjectRepository
+import de.chennemann.agentic.domain.servers.DefaultServerService
+import de.chennemann.agentic.domain.servers.ServerInfo
+import de.chennemann.agentic.domain.servers.ServerRepository
+import de.chennemann.agentic.domain.sessions.DefaultSessionService
+import de.chennemann.agentic.domain.sessions.LocalSessionRecord
+import de.chennemann.agentic.domain.sessions.SessionRepository
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
@@ -41,8 +41,8 @@ fun connectedServerFixture(
 fun healthCheckFixture(
     healthy: Boolean = true,
     version: String = "1.0.0",
-): OpenCodeHealthCheck {
-    return OpenCodeHealthCheck(
+): ServerHealthCheck {
+    return ServerHealthCheck(
         healthy = healthy,
         version = version,
     )
@@ -53,8 +53,8 @@ fun openCodeProjectFixture(
     worktree: String = "/repo/main",
     name: String = "Main",
     sandboxes: List<String> = emptyList(),
-): OpenCodeProject {
-    return OpenCodeProject(
+): ServerProject {
+    return ServerProject(
         id = id,
         worktree = worktree,
         name = name,
@@ -84,8 +84,8 @@ fun openCodeSessionFixture(
     directory: String = "/repo/main",
     title: String = "Session",
     version: String = "1.0.0",
-): OpenCodeSession {
-    return OpenCodeSession(
+): ServerSession {
+    return ServerSession(
         id = id,
         projectId = projectId,
         directory = directory,
@@ -110,37 +110,37 @@ fun localSessionRecordFixture(
     )
 }
 
-class OpenCodeServerAdapterFixture(
-    var defaultHealthResult: Result<OpenCodeHealthCheck> = Result.success(healthCheckFixture()),
-    var defaultProjectsResult: Result<List<OpenCodeProject>> = Result.success(emptyList()),
-    var defaultSessionsResult: Result<List<OpenCodeSession>> = Result.success(emptyList()),
+class ServerAdapterFixture(
+    var defaultHealthResult: Result<ServerHealthCheck> = Result.success(healthCheckFixture()),
+    var defaultProjectsResult: Result<List<ServerProject>> = Result.success(emptyList()),
+    var defaultSessionsResult: Result<List<ServerSession>> = Result.success(emptyList()),
     var healthCheckDelayMillis: Long = 0,
     var projectsDelayMillis: Long = 0,
     var sessionsDelayMillis: Long = 0,
-) : OpenCodeServerAdapter {
-    private val healthChecksByUrl = linkedMapOf<String, Result<OpenCodeHealthCheck>>()
-    private val projectsByUrl = linkedMapOf<String, Result<List<OpenCodeProject>>>()
-    private val sessionsByTarget = linkedMapOf<String, Result<List<OpenCodeSession>>>()
+) : ServerAdapter {
+    private val healthChecksByUrl = linkedMapOf<String, Result<ServerHealthCheck>>()
+    private val projectsByUrl = linkedMapOf<String, Result<List<ServerProject>>>()
+    private val sessionsByTarget = linkedMapOf<String, Result<List<ServerSession>>>()
     val healthCheckRequests = mutableListOf<String>()
     val projectRequests = mutableListOf<String>()
     val sessionRequests = mutableListOf<String>()
 
-    fun givenHealthCheck(url: String, result: Result<OpenCodeHealthCheck>) {
+    fun givenHealthCheck(url: String, result: Result<ServerHealthCheck>) {
         healthChecksByUrl[url] = result
     }
 
-    fun givenProjects(url: String, projects: List<OpenCodeProject>) {
+    fun givenProjects(url: String, projects: List<ServerProject>) {
         projectsByUrl[url] = Result.success(projects)
     }
 
-    fun givenProjects(url: String, result: Result<List<OpenCodeProject>>) {
+    fun givenProjects(url: String, result: Result<List<ServerProject>>) {
         projectsByUrl[url] = result
     }
 
     fun givenSessions(
         url: String,
         path: String,
-        sessions: List<OpenCodeSession>,
+        sessions: List<ServerSession>,
     ) {
         sessionsByTarget[sessionTarget(url, path)] = Result.success(sessions)
     }
@@ -148,12 +148,12 @@ class OpenCodeServerAdapterFixture(
     fun givenSessions(
         url: String,
         path: String,
-        result: Result<List<OpenCodeSession>>,
+        result: Result<List<ServerSession>>,
     ) {
         sessionsByTarget[sessionTarget(url, path)] = result
     }
 
-    override suspend fun healthCheckWithUrl(baseUrl: String): OpenCodeHealthCheck {
+    override suspend fun healthCheckWithUrl(baseUrl: String): ServerHealthCheck {
         if (healthCheckDelayMillis > 0) {
             delay(healthCheckDelayMillis)
         }
@@ -161,7 +161,7 @@ class OpenCodeServerAdapterFixture(
         return (healthChecksByUrl[baseUrl] ?: defaultHealthResult).getOrThrow()
     }
 
-    override suspend fun allProjects(baseUrl: String): List<OpenCodeProject> {
+    override suspend fun allProjects(baseUrl: String): List<ServerProject> {
         if (projectsDelayMillis > 0) {
             delay(projectsDelayMillis)
         }
@@ -169,7 +169,7 @@ class OpenCodeServerAdapterFixture(
         return (projectsByUrl[baseUrl] ?: defaultProjectsResult).getOrThrow()
     }
 
-    override suspend fun allSessionsOfAGivenProject(baseUrl: String, path: String): List<OpenCodeSession> {
+    override suspend fun allSessionsOfAGivenProject(baseUrl: String, path: String): List<ServerSession> {
         if (sessionsDelayMillis > 0) {
             delay(sessionsDelayMillis)
         }
@@ -186,7 +186,7 @@ class DomainV2TestEnvironment(
     private val driver: JdbcSqliteDriver,
     val db: AgenticDb,
     val dispatchers: DispatcherProvider,
-    val adapter: OpenCodeServerAdapterFixture,
+    val adapter: ServerAdapterFixture,
     val serverRepository: ServerRepository,
     val projectRepository: ProjectRepository,
     val sessionRepository: SessionRepository,
@@ -229,7 +229,7 @@ class DomainV2TestEnvironment(
 
 fun domainV2TestEnvironment(
     dispatcher: CoroutineDispatcher,
-    adapter: OpenCodeServerAdapterFixture = OpenCodeServerAdapterFixture(),
+    adapter: ServerAdapterFixture = ServerAdapterFixture(),
 ): DomainV2TestEnvironment {
     val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
     AgenticDb.Schema.synchronous().create(driver)
@@ -264,7 +264,7 @@ typealias ServerServiceTestEnvironment = DomainV2TestEnvironment
 
 fun serverServiceTestEnvironment(
     dispatcher: CoroutineDispatcher,
-    adapter: OpenCodeServerAdapterFixture = OpenCodeServerAdapterFixture(),
+    adapter: ServerAdapterFixture = ServerAdapterFixture(),
 ): ServerServiceTestEnvironment {
     return domainV2TestEnvironment(dispatcher, adapter)
 }

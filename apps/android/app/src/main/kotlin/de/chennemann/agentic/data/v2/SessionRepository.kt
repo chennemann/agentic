@@ -1,12 +1,12 @@
-package de.chennemann.agentic.data.v2
+package de.chennemann.agentic.data.store
 
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import de.chennemann.agentic.db.AgenticDb
 import de.chennemann.agentic.di.DispatcherProvider
-import de.chennemann.agentic.domain.v2.session.LocalSessionInfo
-import de.chennemann.agentic.domain.v2.session.LocalSessionRecord
-import de.chennemann.agentic.domain.v2.session.SessionRepository
+import de.chennemann.agentic.domain.sessions.LocalSessionInfo
+import de.chennemann.agentic.domain.sessions.LocalSessionRecord
+import de.chennemann.agentic.domain.sessions.SessionRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 

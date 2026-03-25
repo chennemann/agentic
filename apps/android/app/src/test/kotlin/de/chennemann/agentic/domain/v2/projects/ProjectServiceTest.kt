@@ -1,13 +1,13 @@
-package de.chennemann.agentic.domain.v2.projects
+package de.chennemann.agentic.domain.projects
 
-import de.chennemann.agentic.domain.v2.OpenCodeProject
-import de.chennemann.agentic.domain.v2.fixtures.DomainV2TestEnvironment
-import de.chennemann.agentic.domain.v2.fixtures.OpenCodeServerAdapterFixture
-import de.chennemann.agentic.domain.v2.fixtures.connectedServerFixture
-import de.chennemann.agentic.domain.v2.fixtures.domainV2TestEnvironment
-import de.chennemann.agentic.domain.v2.fixtures.localProjectFixture
-import de.chennemann.agentic.domain.v2.servers.DefaultServerService
-import de.chennemann.agentic.domain.v2.servers.ServerInfo
+import de.chennemann.agentic.domain.remote.ServerProject
+import de.chennemann.agentic.domain.fixtures.DomainV2TestEnvironment
+import de.chennemann.agentic.domain.fixtures.ServerAdapterFixture
+import de.chennemann.agentic.domain.fixtures.connectedServerFixture
+import de.chennemann.agentic.domain.fixtures.domainV2TestEnvironment
+import de.chennemann.agentic.domain.fixtures.localProjectFixture
+import de.chennemann.agentic.domain.servers.DefaultServerService
+import de.chennemann.agentic.domain.servers.ServerInfo
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -135,10 +135,10 @@ class ProjectServiceTest {
         adapter.givenProjects(
             url = "https://example.test",
             projects = listOf(
-                OpenCodeProject(id = "p1", worktree = "/repo/a", name = "Alpha", sandboxes = emptyList()),
-                OpenCodeProject(id = "p2", worktree = "/repo/b", name = "   ", sandboxes = emptyList()),
-                OpenCodeProject(id = "   ", worktree = "/repo/c", name = "Invalid", sandboxes = emptyList()),
-                OpenCodeProject(id = "p3", worktree = "   ", name = "Invalid", sandboxes = emptyList()),
+                ServerProject(id = "p1", worktree = "/repo/a", name = "Alpha", sandboxes = emptyList()),
+                ServerProject(id = "p2", worktree = "/repo/b", name = "   ", sandboxes = emptyList()),
+                ServerProject(id = "   ", worktree = "/repo/c", name = "Invalid", sandboxes = emptyList()),
+                ServerProject(id = "p3", worktree = "   ", name = "Invalid", sandboxes = emptyList()),
             )
         )
 
@@ -191,7 +191,7 @@ class ProjectServiceTest {
         adapter.givenProjects(
             url = "https://example.test",
             projects = listOf(
-                OpenCodeProject(id = "p1", worktree = "/repo/new", name = "New", sandboxes = emptyList()),
+                ServerProject(id = "p1", worktree = "/repo/new", name = "New", sandboxes = emptyList()),
             )
         )
 
@@ -208,7 +208,7 @@ class ProjectServiceTest {
 }
 
 private fun environmentTest(
-    adapter: OpenCodeServerAdapterFixture = OpenCodeServerAdapterFixture(),
+    adapter: ServerAdapterFixture = ServerAdapterFixture(),
     testBlock: suspend EnvironmentContext.() -> Unit,
 ) = runTest {
     val environment = domainV2TestEnvironment(
@@ -227,7 +227,7 @@ private class EnvironmentContext(
     private val environment: DomainV2TestEnvironment,
 ) {
     val service: DefaultProjectService = environment.projectService
-    val adapter: OpenCodeServerAdapterFixture = environment.adapter
+    val adapter: ServerAdapterFixture = environment.adapter
     val serverService: DefaultServerService = environment.serverService
     val repository: ProjectRepository = environment.projectRepository
 

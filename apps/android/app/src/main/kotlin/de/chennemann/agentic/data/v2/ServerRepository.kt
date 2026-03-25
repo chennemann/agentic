@@ -1,11 +1,11 @@
-package de.chennemann.agentic.data.v2
+package de.chennemann.agentic.data.store
 
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import de.chennemann.agentic.db.AgenticDb
 import de.chennemann.agentic.di.DispatcherProvider
-import de.chennemann.agentic.domain.v2.servers.ServerInfo
-import de.chennemann.agentic.domain.v2.servers.ServerRepository
+import de.chennemann.agentic.domain.servers.ServerInfo
+import de.chennemann.agentic.domain.servers.ServerRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 

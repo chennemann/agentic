@@ -1,9 +1,9 @@
-package de.chennemann.agentic.domain.v2.session
+package de.chennemann.agentic.domain.sessions
 
-import de.chennemann.agentic.domain.v2.OpenCodeHealthCheck
-import de.chennemann.agentic.domain.v2.OpenCodeProject
-import de.chennemann.agentic.domain.v2.OpenCodeServerAdapter
-import de.chennemann.agentic.domain.v2.OpenCodeSession
+import de.chennemann.agentic.domain.remote.ServerHealthCheck
+import de.chennemann.agentic.domain.remote.ServerProject
+import de.chennemann.agentic.domain.remote.ServerAdapter
+import de.chennemann.agentic.domain.remote.ServerSession
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest
@@ -16,7 +16,7 @@ class SessionServiceTest {
     @Test
     fun sessionsOfProjectDelegatesToRepository() {
         val repository = FakeSessionRepository()
-        val adapter = FakeOpenCodeServerAdapter()
+        val adapter = FakeServerAdapter()
         val service = DefaultSessionService(repository, adapter)
 
         val observed = service.sessionsOfProject("project-1")
@@ -28,30 +28,30 @@ class SessionServiceTest {
     @Test
     fun syncSessionsOfProjectPersistsValidRows() = runTest {
         val repository = FakeSessionRepository()
-        val adapter = FakeOpenCodeServerAdapter().apply {
+        val adapter = FakeServerAdapter().apply {
             sessionsByPath["/repo/a"] = listOf(
-                OpenCodeSession(
+                ServerSession(
                     id = "s1",
                     projectId = "p1",
                     directory = "/repo/a",
                     title = "Session A",
                     version = "1",
                 ),
-                OpenCodeSession(
+                ServerSession(
                     id = "s2",
                     projectId = "p1",
                     directory = "/repo/a",
                     title = "   ",
                     version = "1",
                 ),
-                OpenCodeSession(
+                ServerSession(
                     id = "   ",
                     projectId = "p1",
                     directory = "/repo/a",
                     title = "Invalid",
                     version = "1",
                 ),
-                OpenCodeSession(
+                ServerSession(
                     id = "s3",
                     projectId = "p1",
                     directory = "   ",
@@ -100,9 +100,9 @@ class SessionServiceTest {
                 pinned = true,
             )
         }
-        val adapter = FakeOpenCodeServerAdapter().apply {
+        val adapter = FakeServerAdapter().apply {
             sessionsByPath["/repo/new"] = listOf(
-                OpenCodeSession(
+                ServerSession(
                     id = "s1",
                     projectId = "p1",
                     directory = "/repo/new",
@@ -125,7 +125,7 @@ class SessionServiceTest {
     @Test
     fun syncSessionsOfProjectSkipsBlankInputs() = runTest {
         val repository = FakeSessionRepository()
-        val adapter = FakeOpenCodeServerAdapter()
+        val adapter = FakeServerAdapter()
         val service = DefaultSessionService(repository, adapter)
 
         service.syncSessionsOfProject("   ", "/repo/a", "https://example.test")
@@ -173,19 +173,19 @@ private class FakeSessionRepository : SessionRepository {
     }
 }
 
-private class FakeOpenCodeServerAdapter : OpenCodeServerAdapter {
-    val sessionsByPath = linkedMapOf<String, List<OpenCodeSession>>()
+private class FakeServerAdapter : ServerAdapter {
+    val sessionsByPath = linkedMapOf<String, List<ServerSession>>()
     val sessionRequests = mutableListOf<String>()
 
-    override suspend fun healthCheckWithUrl(baseUrl: String): OpenCodeHealthCheck {
-        return OpenCodeHealthCheck(healthy = true, version = "1.0.0")
+    override suspend fun healthCheckWithUrl(baseUrl: String): ServerHealthCheck {
+        return ServerHealthCheck(healthy = true, version = "1.0.0")
     }
 
-    override suspend fun allProjects(baseUrl: String): List<OpenCodeProject> {
+    override suspend fun allProjects(baseUrl: String): List<ServerProject> {
         return emptyList()
     }
 
-    override suspend fun allSessionsOfAGivenProject(baseUrl: String, path: String): List<OpenCodeSession> {
+    override suspend fun allSessionsOfAGivenProject(baseUrl: String, path: String): List<ServerSession> {
         sessionRequests += "$baseUrl|$path"
         return sessionsByPath[path].orEmpty()
     }

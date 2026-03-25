@@ -1,26 +1,26 @@
-package de.chennemann.agentic.domain.v2
+package de.chennemann.agentic.domain.remote
 
-interface OpenCodeServerAdapter {
-    suspend fun healthCheckWithUrl(baseUrl: String): OpenCodeHealthCheck
+interface ServerAdapter {
+    suspend fun healthCheckWithUrl(baseUrl: String): ServerHealthCheck
 
-    suspend fun allProjects(baseUrl: String): List<OpenCodeProject>
+    suspend fun allProjects(baseUrl: String): List<ServerProject>
 
-    suspend fun allSessionsOfAGivenProject(baseUrl: String, path: String): List<OpenCodeSession>
+    suspend fun allSessionsOfAGivenProject(baseUrl: String, path: String): List<ServerSession>
 }
 
-data class OpenCodeHealthCheck(
+data class ServerHealthCheck(
     val healthy: Boolean,
     val version: String,
 )
 
-data class OpenCodeProject(
+data class ServerProject(
     val id: String,
     val worktree: String,
     val name: String,
     val sandboxes: List<String>,
 )
 
-data class OpenCodeSession(
+data class ServerSession(
     val id: String,
     val projectId: String,
     val directory: String,

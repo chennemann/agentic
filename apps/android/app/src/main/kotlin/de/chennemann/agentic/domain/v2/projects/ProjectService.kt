@@ -1,8 +1,8 @@
-package de.chennemann.agentic.domain.v2.projects
+package de.chennemann.agentic.domain.projects
 
-import de.chennemann.agentic.domain.v2.OpenCodeServerAdapter
-import de.chennemann.agentic.domain.v2.servers.ServerInfo
-import de.chennemann.agentic.domain.v2.servers.ServerService
+import de.chennemann.agentic.domain.remote.ServerAdapter
+import de.chennemann.agentic.domain.servers.ServerInfo
+import de.chennemann.agentic.domain.servers.ServerService
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 
@@ -18,7 +18,7 @@ interface ProjectService {
 }
 
 class DefaultProjectService(
-    private val adapter: OpenCodeServerAdapter,
+    private val adapter: ServerAdapter,
     private val serverService: ServerService,
     private val projectRepository: ProjectRepository,
 ) : ProjectService {

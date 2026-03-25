@@ -1,15 +1,15 @@
-package de.chennemann.agentic.data.v2
+package de.chennemann.agentic.data.store
 
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToList
 import de.chennemann.agentic.db.AgenticDb
 import de.chennemann.agentic.di.DispatcherProvider
-import de.chennemann.agentic.domain.v2.message.LocalMessage
-import de.chennemann.agentic.domain.v2.message.LocalMessageToolCall
-import de.chennemann.agentic.domain.v2.message.LocalMessageWithToolCalls
-import de.chennemann.agentic.domain.v2.message.MessageRepository
-import de.chennemann.agentic.domain.v2.message.messageRoleOf
-import de.chennemann.agentic.domain.v2.message.toolCallStatusOf
+import de.chennemann.agentic.domain.messages.LocalMessage
+import de.chennemann.agentic.domain.messages.LocalMessageToolCall
+import de.chennemann.agentic.domain.messages.LocalMessageWithToolCalls
+import de.chennemann.agentic.domain.messages.MessageRepository
+import de.chennemann.agentic.domain.messages.messageRoleOf
+import de.chennemann.agentic.domain.messages.toolCallStatusOf
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.withContext

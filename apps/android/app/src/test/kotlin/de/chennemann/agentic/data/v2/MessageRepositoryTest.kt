@@ -1,13 +1,13 @@
-package de.chennemann.agentic.data.v2
+package de.chennemann.agentic.data.store
 
 import app.cash.sqldelight.async.coroutines.synchronous
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import de.chennemann.agentic.db.AgenticDb
 import de.chennemann.agentic.di.DispatcherProvider
-import de.chennemann.agentic.domain.v2.message.LocalMessage
-import de.chennemann.agentic.domain.v2.message.LocalMessageRole
-import de.chennemann.agentic.domain.v2.message.LocalMessageToolCall
-import de.chennemann.agentic.domain.v2.message.LocalToolCallStatus
+import de.chennemann.agentic.domain.messages.LocalMessage
+import de.chennemann.agentic.domain.messages.LocalMessageRole
+import de.chennemann.agentic.domain.messages.LocalMessageToolCall
+import de.chennemann.agentic.domain.messages.LocalToolCallStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async

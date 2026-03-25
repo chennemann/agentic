@@ -1,8 +1,8 @@
-package de.chennemann.agentic.domain.v2
+package de.chennemann.agentic.domain.sync
 
-import de.chennemann.agentic.domain.v2.projects.ProjectService
-import de.chennemann.agentic.domain.v2.servers.ServerRepository
-import de.chennemann.agentic.domain.v2.session.SessionService
+import de.chennemann.agentic.domain.projects.ProjectService
+import de.chennemann.agentic.domain.servers.ServerRepository
+import de.chennemann.agentic.domain.sessions.SessionService
 
 interface SynchronizationService {
     suspend fun syncServer(serverId: String)

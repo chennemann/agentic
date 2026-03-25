@@ -5,17 +5,17 @@ import de.chennemann.agentic.data.LocalLogRepository
 import de.chennemann.agentic.data.MdnsService
 import de.chennemann.agentic.data.MdnsGateway
 import de.chennemann.agentic.data.NetworkService
-import de.chennemann.agentic.data.v2.OpenApiServerAdapter
+import de.chennemann.agentic.data.store.OpenApiServerAdapter
 import de.chennemann.agentic.data.ServerRepository
 import de.chennemann.agentic.data.ServerService
 import de.chennemann.agentic.data.ServerGateway
 import de.chennemann.agentic.data.SessionCacheRepository
-import de.chennemann.agentic.data.v2.SqlDelightMessageRepository
-import de.chennemann.agentic.data.v2.SqlDelightProjectRepository
-import de.chennemann.agentic.data.v2.SqlDelightServerRepository
-import de.chennemann.agentic.data.v2.SqlDelightSessionRepository
-import de.chennemann.agentic.domain.v2.OpenCodeServerAdapter
-import de.chennemann.agentic.domain.v2.message.DefaultMessageService
+import de.chennemann.agentic.data.store.SqlDelightMessageRepository
+import de.chennemann.agentic.data.store.SqlDelightProjectRepository
+import de.chennemann.agentic.data.store.SqlDelightServerRepository
+import de.chennemann.agentic.data.store.SqlDelightSessionRepository
+import de.chennemann.agentic.domain.remote.ServerAdapter
+import de.chennemann.agentic.domain.messages.DefaultMessageService
 import de.chennemann.agentic.domain.message.MessageDecorator
 import de.chennemann.agentic.domain.message.MessagePartParser
 import de.chennemann.agentic.domain.session.CommandGateway
@@ -35,19 +35,19 @@ import de.chennemann.agentic.domain.session.SessionServiceApi
 import de.chennemann.agentic.domain.session.SessionSyncPlanner
 import de.chennemann.agentic.domain.session.SessionStreamCoordinator
 import de.chennemann.agentic.domain.session.StreamGateway
-import de.chennemann.agentic.domain.v2.DefaultSynchronizationService
-import de.chennemann.agentic.domain.v2.projects.ProjectRepository
-import de.chennemann.agentic.domain.v2.projects.DefaultProjectService
-import de.chennemann.agentic.domain.v2.session.SessionRepository
-import de.chennemann.agentic.domain.v2.session.DefaultSessionService
-import de.chennemann.agentic.domain.v2.servers.DefaultServerService
-import de.chennemann.agentic.domain.v2.message.MessageRepository as MessageRepositoryV2
-import de.chennemann.agentic.domain.v2.message.MessageService as MessageServiceV2
-import de.chennemann.agentic.domain.v2.projects.ProjectService as ProjectServiceV2
-import de.chennemann.agentic.domain.v2.session.SessionService as SessionServiceV2
-import de.chennemann.agentic.domain.v2.servers.ServerRepository as ServerRepositoryV2
-import de.chennemann.agentic.domain.v2.servers.ServerService as ServerServiceV2
-import de.chennemann.agentic.domain.v2.SynchronizationService as SynchronizationServiceV2
+import de.chennemann.agentic.domain.sync.DefaultSynchronizationService
+import de.chennemann.agentic.domain.projects.ProjectRepository
+import de.chennemann.agentic.domain.projects.DefaultProjectService
+import de.chennemann.agentic.domain.sessions.SessionRepository
+import de.chennemann.agentic.domain.sessions.DefaultSessionService
+import de.chennemann.agentic.domain.servers.DefaultServerService
+import de.chennemann.agentic.domain.messages.MessageRepository
+import de.chennemann.agentic.domain.messages.MessageService
+import de.chennemann.agentic.domain.projects.ProjectService
+import de.chennemann.agentic.domain.sessions.SessionService as SessionCatalogService
+import de.chennemann.agentic.domain.servers.ServerRepository as ServerCatalogRepository
+import de.chennemann.agentic.domain.servers.ServerService as ServerCatalogService
+import de.chennemann.agentic.domain.sync.SynchronizationService
 import de.chennemann.agentic.ui.chat.ConversationViewModel
 import de.chennemann.agentic.ui.chat.SessionSelectionViewModel
 import de.chennemann.agentic.ui.manage.ManageViewModel
@@ -99,19 +99,19 @@ val appModule = module {
     single { LogRedactor() }
     single<LogStoreGateway> { LocalLogRepository(get(), get(), get()) }
     single<LogGateway> { AndroidLogGateway(get(), get(named(AppScopeName)), get()) }
-    single<OpenCodeServerAdapter> { OpenApiServerAdapter(get()) }
+    single<ServerAdapter> { OpenApiServerAdapter(get()) }
     single<ServerGateway> { ServerService(get(), get()) }
     single { ServerRepository(get(), get(), get(), get(), get(), get()) }
     single { SessionCacheRepository(get(), get()) }
     single<SessionRepository> { SqlDelightSessionRepository(get(), get()) }
     single<ProjectRepository> { SqlDelightProjectRepository(get(), get()) }
-    single<ServerRepositoryV2> { SqlDelightServerRepository(get(), get()) }
-    single<MessageRepositoryV2> { SqlDelightMessageRepository(get(), get()) }
-    single<SynchronizationServiceV2> { DefaultSynchronizationService(get(), get(), get()) }
-    single<ServerServiceV2> { DefaultServerService(get(), get()) }
-    single<ProjectServiceV2> { DefaultProjectService(get(), get(), get()) }
-    single<SessionServiceV2> { DefaultSessionService(get(), get()) }
-    single<MessageServiceV2> { DefaultMessageService(get()) }
+    single<ServerCatalogRepository> { SqlDelightServerRepository(get(), get()) }
+    single<MessageRepository> { SqlDelightMessageRepository(get(), get()) }
+    single<SynchronizationService> { DefaultSynchronizationService(get(), get(), get()) }
+    single<ServerCatalogService> { DefaultServerService(get(), get()) }
+    single<ProjectService> { DefaultProjectService(get(), get(), get()) }
+    single<SessionCatalogService> { DefaultSessionService(get(), get()) }
+    single<MessageService> { DefaultMessageService(get()) }
     single<ConnectionGateway> { get<ServerRepository>() }
     single<ProjectGateway> { get<ServerRepository>() }
     single<CommandGateway> { get<ServerRepository>() }

@@ -1,12 +1,12 @@
-package de.chennemann.agentic.domain.v2
+package de.chennemann.agentic.domain.sync
 
-import de.chennemann.agentic.domain.v2.projects.LocalProjectInfo
-import de.chennemann.agentic.domain.v2.projects.ProjectService
-import de.chennemann.agentic.domain.v2.fixtures.connectedServerFixture
-import de.chennemann.agentic.domain.v2.servers.ServerInfo
-import de.chennemann.agentic.domain.v2.servers.ServerRepository
-import de.chennemann.agentic.domain.v2.session.LocalSessionInfo
-import de.chennemann.agentic.domain.v2.session.SessionService
+import de.chennemann.agentic.domain.projects.LocalProjectInfo
+import de.chennemann.agentic.domain.projects.ProjectService
+import de.chennemann.agentic.domain.fixtures.connectedServerFixture
+import de.chennemann.agentic.domain.servers.ServerInfo
+import de.chennemann.agentic.domain.servers.ServerRepository
+import de.chennemann.agentic.domain.sessions.LocalSessionInfo
+import de.chennemann.agentic.domain.sessions.SessionService
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.test.runTest

@@ -6,8 +6,8 @@ import de.chennemann.agentic.di.DispatcherProvider
 import de.chennemann.agentic.domain.session.ProjectState
 import de.chennemann.agentic.domain.session.SessionServiceApi
 import de.chennemann.agentic.domain.session.SessionState
-import de.chennemann.agentic.domain.v2.session.LocalSessionInfo
-import de.chennemann.agentic.domain.v2.session.SessionService
+import de.chennemann.agentic.domain.sessions.LocalSessionInfo
+import de.chennemann.agentic.domain.sessions.SessionService
 import de.chennemann.agentic.navigation.NavEvent
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow

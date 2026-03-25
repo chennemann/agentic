@@ -5,11 +5,11 @@ import de.chennemann.agentic.domain.session.ServerState
 import de.chennemann.agentic.domain.session.SessionServiceApi
 import de.chennemann.agentic.domain.session.SessionState
 import de.chennemann.agentic.domain.session.SessionUiState
-import de.chennemann.agentic.domain.v2.projects.LocalProjectInfo
-import de.chennemann.agentic.domain.v2.projects.ProjectService
-import de.chennemann.agentic.domain.v2.servers.ServerConnectionState
-import de.chennemann.agentic.domain.v2.servers.ServerInfo
-import de.chennemann.agentic.domain.v2.servers.ServerService
+import de.chennemann.agentic.domain.projects.LocalProjectInfo
+import de.chennemann.agentic.domain.projects.ProjectService
+import de.chennemann.agentic.domain.servers.ServerConnectionState
+import de.chennemann.agentic.domain.servers.ServerInfo
+import de.chennemann.agentic.domain.servers.ServerService
 import de.chennemann.agentic.navigation.LogsRoute
 import de.chennemann.agentic.navigation.NavEvent
 import kotlinx.coroutines.CoroutineScope

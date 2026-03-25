@@ -1,10 +1,10 @@
-package de.chennemann.agentic.domain.v2.servers
+package de.chennemann.agentic.domain.servers
 
-import de.chennemann.agentic.domain.v2.fixtures.OpenCodeServerAdapterFixture
-import de.chennemann.agentic.domain.v2.fixtures.connectedServerFixture
-import de.chennemann.agentic.domain.v2.fixtures.DomainV2TestEnvironment
-import de.chennemann.agentic.domain.v2.fixtures.domainV2TestEnvironment
-import de.chennemann.agentic.domain.v2.fixtures.healthCheckFixture
+import de.chennemann.agentic.domain.fixtures.ServerAdapterFixture
+import de.chennemann.agentic.domain.fixtures.connectedServerFixture
+import de.chennemann.agentic.domain.fixtures.DomainV2TestEnvironment
+import de.chennemann.agentic.domain.fixtures.domainV2TestEnvironment
+import de.chennemann.agentic.domain.fixtures.healthCheckFixture
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -49,7 +49,7 @@ class ServerServiceTest {
 
     @Test
     fun connectedServerIsNoneWhenPersistedServersAreUnreachable() = environmentTest(
-        adapter = OpenCodeServerAdapterFixture(
+        adapter = ServerAdapterFixture(
             defaultHealthResult = Result.success(healthCheckFixture(healthy = false)),
         )
     ) {
@@ -147,7 +147,7 @@ class ServerServiceTest {
 
     @Test
     fun connectionStateIsConnectingWhileManualConnectRuns() = environmentTest(
-        adapter = OpenCodeServerAdapterFixture(healthCheckDelayMillis = 1_000),
+        adapter = ServerAdapterFixture(healthCheckDelayMillis = 1_000),
     ) {
         val connectJob = scope.launch {
             service.connect("https://example.test")
@@ -279,7 +279,7 @@ class ServerServiceTest {
     }
 
     private fun environmentTest(
-        adapter: OpenCodeServerAdapterFixture = OpenCodeServerAdapterFixture(),
+        adapter: ServerAdapterFixture = ServerAdapterFixture(),
         testBlock: suspend EnvironmentContext.() -> Unit,
     ) = runTest {
         val environment = domainV2TestEnvironment(
@@ -300,7 +300,7 @@ private class EnvironmentContext(
     val scope: TestScope,
 ) {
     val service: DefaultServerService = environment.serverService
-    val adapter: OpenCodeServerAdapterFixture = environment.adapter
+    val adapter: ServerAdapterFixture = environment.adapter
     val repository: ServerRepository = environment.serverRepository
 
     suspend fun seedServer(

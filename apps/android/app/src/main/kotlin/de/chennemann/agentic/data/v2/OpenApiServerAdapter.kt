@@ -1,9 +1,9 @@
-package de.chennemann.agentic.data.v2
+package de.chennemann.agentic.data.store
 
-import de.chennemann.agentic.domain.v2.OpenCodeHealthCheck
-import de.chennemann.agentic.domain.v2.OpenCodeProject
-import de.chennemann.agentic.domain.v2.OpenCodeSession
-import de.chennemann.agentic.domain.v2.OpenCodeServerAdapter
+import de.chennemann.agentic.domain.remote.ServerHealthCheck
+import de.chennemann.agentic.domain.remote.ServerProject
+import de.chennemann.agentic.domain.remote.ServerSession
+import de.chennemann.agentic.domain.remote.ServerAdapter
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.request.get
@@ -19,17 +19,17 @@ import kotlinx.serialization.json.jsonPrimitive
 
 class OpenApiServerAdapter(
     engine: HttpClientEngine,
-) : OpenCodeServerAdapter {
+) : ServerAdapter {
     private val json = Json { ignoreUnknownKeys = true }
     private val http = HttpClient(engine)
 
-    override suspend fun healthCheckWithUrl(baseUrl: String): OpenCodeHealthCheck {
+    override suspend fun healthCheckWithUrl(baseUrl: String): ServerHealthCheck {
         val response = http.get("${normalizeBaseUrl(baseUrl)}/up")
         if (response.status.value !in 200..299) {
             throw IllegalStateException("Server returned ${response.status}")
         }
         val body = parseObject(response.bodyAsText())
-        return OpenCodeHealthCheck(
+        return ServerHealthCheck(
             healthy = body["status"]?.jsonPrimitive?.contentOrNull == "ok",
             version = body["server"]
                 ?.jsonObject
@@ -40,7 +40,7 @@ class OpenApiServerAdapter(
         )
     }
 
-    override suspend fun allProjects(baseUrl: String): List<OpenCodeProject> {
+    override suspend fun allProjects(baseUrl: String): List<ServerProject> {
         val response = http.get("${normalizeBaseUrl(baseUrl)}/projects")
         if (response.status.value !in 200..299) {
             throw IllegalStateException("Server returned ${response.status}")
@@ -52,7 +52,7 @@ class OpenApiServerAdapter(
                 val obj = row.jsonObject
                 val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
                 val worktree = obj["cwd"]?.jsonPrimitive?.contentOrNull ?: return@mapNotNull null
-                OpenCodeProject(
+                ServerProject(
                     id = id,
                     worktree = worktree,
                     name = obj["name"]?.jsonPrimitive?.contentOrNull ?: worktree,
@@ -61,7 +61,7 @@ class OpenApiServerAdapter(
             }
     }
 
-    override suspend fun allSessionsOfAGivenProject(baseUrl: String, path: String): List<OpenCodeSession> {
+    override suspend fun allSessionsOfAGivenProject(baseUrl: String, path: String): List<ServerSession> {
         val project = allProjects(baseUrl).firstOrNull { it.worktree == normalizeDirectory(path) } ?: return emptyList()
         val response = http.get("${normalizeBaseUrl(baseUrl)}/projects/${project.id}/sessions")
         if (response.status.value !in 200..299) {
@@ -90,11 +90,11 @@ private fun normalizeDirectory(value: String): String {
     return trimmed
 }
 
-private fun mapSession(value: JsonElement): OpenCodeSession? {
+private fun mapSession(value: JsonElement): ServerSession? {
     val obj = value.jsonObject
     val id = obj["id"]?.jsonPrimitive?.contentOrNull ?: return null
     val directory = obj["cwd"]?.jsonPrimitive?.contentOrNull ?: return null
-    return OpenCodeSession(
+    return ServerSession(
         id = id,
         projectId = obj["projectId"]?.jsonPrimitive?.contentOrNull.orEmpty(),
         directory = directory,
