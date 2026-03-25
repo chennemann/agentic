@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import de.chennemann.agentic.di.DispatcherProvider
 import de.chennemann.agentic.domain.session.ProjectState
 import de.chennemann.agentic.domain.session.ServerState
+import de.chennemann.agentic.domain.session.SessionServiceApi
 import de.chennemann.agentic.domain.v2.projects.LocalProjectInfo
 import de.chennemann.agentic.domain.v2.projects.ProjectService
 import de.chennemann.agentic.domain.v2.servers.ServerInfo
@@ -25,6 +26,7 @@ import kotlinx.coroutines.launch
 class ManageViewModel(
     private val serverService: ServerService,
     private val projectService: ProjectService,
+    private val sessionService: SessionServiceApi,
     private val dispatchers: DispatcherProvider,
 ) : ViewModel() {
     private val lane = dispatchers.default.limitedParallelism(1)
@@ -87,7 +89,11 @@ class ManageViewModel(
 
             is ManageEvent.ProjectFavoriteToggled -> {
                 viewModelScope.launch {
-                    projectService.togglePinnedById(event.projectId)
+                    val project = projects.first().firstOrNull { it.id == event.projectId }
+                    val toggled = projectService.togglePinnedById(event.projectId)
+                    if (toggled && project != null) {
+                        sessionService.toggleProjectFavorite(project.path)
+                    }
                 }
             }
 

@@ -2,6 +2,9 @@ package de.chennemann.agentic.ui.manage
 
 import de.chennemann.agentic.di.DispatcherProvider
 import de.chennemann.agentic.domain.session.ServerState
+import de.chennemann.agentic.domain.session.SessionServiceApi
+import de.chennemann.agentic.domain.session.SessionState
+import de.chennemann.agentic.domain.session.SessionUiState
 import de.chennemann.agentic.domain.v2.projects.LocalProjectInfo
 import de.chennemann.agentic.domain.v2.projects.ProjectService
 import de.chennemann.agentic.domain.v2.servers.ServerConnectionState
@@ -9,6 +12,7 @@ import de.chennemann.agentic.domain.v2.servers.ServerInfo
 import de.chennemann.agentic.domain.v2.servers.ServerService
 import de.chennemann.agentic.navigation.LogsRoute
 import de.chennemann.agentic.navigation.NavEvent
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
@@ -41,7 +45,7 @@ class ManageViewModelTest {
         val worker = StandardTestDispatcher(testScheduler)
         val serverService = StubServerService()
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(serverService, projectService, lanes(main, worker))
+        val viewModel = ManageViewModel(serverService, projectService, StubSessionService(), lanes(main, worker))
         val collect = backgroundScope.launch(worker) { viewModel.state.collect {} }
 
         serverService.connected.value = ServerInfo.ConnectedServerInfo(
@@ -85,7 +89,7 @@ class ManageViewModelTest {
         val worker = StandardTestDispatcher(testScheduler)
         val serverService = StubServerService()
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(serverService, projectService, lanes(main, worker))
+        val viewModel = ManageViewModel(serverService, projectService, StubSessionService(), lanes(main, worker))
 
         viewModel.onEvent(ManageEvent.Connect("http://127.0.0.1"))
         advanceUntilIdle()
@@ -106,7 +110,7 @@ class ManageViewModelTest {
             )
         }
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(serverService, projectService, lanes(main, worker))
+        val viewModel = ManageViewModel(serverService, projectService, StubSessionService(), lanes(main, worker))
 
         viewModel.onEvent(ManageEvent.ProjectsRefreshRequested)
         advanceUntilIdle()
@@ -121,7 +125,7 @@ class ManageViewModelTest {
         val worker = StandardTestDispatcher(testScheduler)
         val serverService = StubServerService()
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(serverService, projectService, lanes(main, worker))
+        val viewModel = ManageViewModel(serverService, projectService, StubSessionService(), lanes(main, worker))
 
         viewModel.onEvent(ManageEvent.ProjectsRefreshRequested)
         advanceUntilIdle()
@@ -136,7 +140,7 @@ class ManageViewModelTest {
         val worker = StandardTestDispatcher(testScheduler)
         val serverService = StubServerService()
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(serverService, projectService, lanes(main, worker))
+        val viewModel = ManageViewModel(serverService, projectService, StubSessionService(), lanes(main, worker))
 
         val nav = async { viewModel.nav.first() }
         advanceUntilIdle()
@@ -153,7 +157,7 @@ class ManageViewModelTest {
         val worker = StandardTestDispatcher(testScheduler)
         val serverService = StubServerService()
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(serverService, projectService, lanes(main, worker))
+        val viewModel = ManageViewModel(serverService, projectService, StubSessionService(), lanes(main, worker))
 
         val nav = async { viewModel.nav.first() }
         advanceUntilIdle()
@@ -169,13 +173,25 @@ class ManageViewModelTest {
         Dispatchers.setMain(main)
         val worker = StandardTestDispatcher(testScheduler)
         val serverService = StubServerService()
-        val projectService = StubProjectService()
-        val viewModel = ManageViewModel(serverService, projectService, lanes(main, worker))
+        val projectService = StubProjectService().also {
+            it.projects.value = listOf(
+                LocalProjectInfo(
+                    id = "project-42",
+                    serverId = "server-1",
+                    name = "Main",
+                    path = "/repo/main",
+                    pinned = false,
+                ),
+            )
+        }
+        val sessionService = StubSessionService()
+        val viewModel = ManageViewModel(serverService, projectService, sessionService, lanes(main, worker))
 
         viewModel.onEvent(ManageEvent.ProjectFavoriteToggled("project-42"))
         advanceUntilIdle()
 
         assertEquals(listOf("project-42"), projectService.toggleRequests)
+        assertEquals(listOf("/repo/main"), sessionService.toggleProjectFavoriteRequests)
     }
 
     @Test
@@ -185,7 +201,7 @@ class ManageViewModelTest {
         val worker = StandardTestDispatcher(testScheduler)
         val serverService = StubServerService()
         val projectService = StubProjectService()
-        val viewModel = ManageViewModel(serverService, projectService, lanes(main, worker))
+        val viewModel = ManageViewModel(serverService, projectService, StubSessionService(), lanes(main, worker))
 
         viewModel.onEvent(ManageEvent.ProjectRemoved("project-42"))
         advanceUntilIdle()
@@ -222,6 +238,53 @@ private class StubProjectService : ProjectService {
         syncRequests += "$serverId|$baseUrl"
         return emptyList()
     }
+}
+
+private class StubSessionService : SessionServiceApi {
+    override val state = MutableStateFlow(
+        SessionUiState(
+            url = "",
+            discovered = null,
+            status = ServerState.Idle,
+            projects = emptyList(),
+            selectedProject = null,
+            commands = emptyList(),
+            sessions = emptyList(),
+            activeSessions = emptyList(),
+            focusedSession = null,
+            focusedMessages = emptyList(),
+            canLoadMoreMessages = false,
+            loadingMoreMessages = false,
+            loadingProjects = false,
+            loadingSessions = false,
+            sessionRecentOnly = false,
+            quickPinInclude = emptySet(),
+            quickPinExclude = emptySet(),
+            quickProcessing = emptySet(),
+            quickUnread = emptySet(),
+            message = null,
+        ),
+    )
+    val toggleProjectFavoriteRequests = mutableListOf<String>()
+
+    override fun start(scope: CoroutineScope) = Unit
+    override fun updateUrl(value: String) = Unit
+    override fun useDiscovered() = Unit
+    override fun refresh() = Unit
+    override fun selectProject(worktree: String) = Unit
+    override fun toggleProjectFavorite(worktree: String) {
+        toggleProjectFavoriteRequests += worktree
+    }
+    override fun removeProject(worktree: String) = Unit
+    override fun toggleSessionQuickPin(session: SessionState, systemPinned: Boolean) = Unit
+    override suspend fun createSessionAndFocus(worktree: String): Boolean = false
+    override fun openSession(session: SessionState) = Unit
+    override fun send(text: String, agent: String) = Unit
+    override fun loadMoreMessages() = Unit
+    override fun archiveSession(session: SessionState) = Unit
+    override fun renameSession(session: SessionState, title: String) = Unit
+    override suspend fun cachedSessionsForProject(worktree: String, limit: Int?): List<SessionState> = emptyList()
+    override suspend fun sessionsForProject(worktree: String, limit: Int?): List<SessionState> = emptyList()
 }
 
 private class StubServerService : ServerService {
