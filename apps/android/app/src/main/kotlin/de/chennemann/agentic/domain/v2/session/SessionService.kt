@@ -44,6 +44,9 @@ class DefaultSessionService(
                 title = remote.title.trim().ifBlank { sessionPath },
                 path = sessionPath,
                 pinned = existing?.pinned ?: false,
+                parentId = remote.parentId,
+                updatedAt = remote.updatedAt,
+                archivedAt = remote.archivedAt,
             )
 
             if (existing == null) {

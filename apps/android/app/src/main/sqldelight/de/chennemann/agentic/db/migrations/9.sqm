@@ -1,0 +1,5 @@
+ALTER TABLE sessions ADD COLUMN parent_id TEXT;
+ALTER TABLE sessions ADD COLUMN updated_at INTEGER;
+ALTER TABLE sessions ADD COLUMN archived_at INTEGER;
+
+CREATE INDEX sessions_updated_idx ON sessions(project_id, pinned DESC, updated_at DESC, title COLLATE NOCASE);

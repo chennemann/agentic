@@ -36,6 +36,9 @@ class SessionServiceTest {
                     directory = "/repo/a",
                     title = "Session A",
                     version = "1",
+                    parentId = "root",
+                    updatedAt = 123L,
+                    archivedAt = 456L,
                 ),
                 ServerSession(
                     id = "s2",
@@ -74,6 +77,9 @@ class SessionServiceTest {
                 title = "Session A",
                 path = "/repo/a",
                 pinned = false,
+                parentId = "root",
+                updatedAt = 123L,
+                archivedAt = 456L,
             ),
             repository.stored["s1"],
         )

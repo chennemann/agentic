@@ -100,6 +100,9 @@ fun localSessionRecordFixture(
     title: String = "Session",
     path: String = "/repo/main",
     pinned: Boolean = false,
+    parentId: String? = null,
+    updatedAt: Long? = null,
+    archivedAt: Long? = null,
 ): LocalSessionRecord {
     return LocalSessionRecord(
         id = id,
@@ -107,6 +110,9 @@ fun localSessionRecordFixture(
         title = title,
         path = path,
         pinned = pinned,
+        parentId = parentId,
+        updatedAt = updatedAt,
+        archivedAt = archivedAt,
     )
 }
 

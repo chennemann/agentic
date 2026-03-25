@@ -6,4 +6,7 @@ data class LocalSessionRecord(
     val title: String,
     val path: String,
     val pinned: Boolean,
+    val parentId: String? = null,
+    val updatedAt: Long? = null,
+    val archivedAt: Long? = null,
 )

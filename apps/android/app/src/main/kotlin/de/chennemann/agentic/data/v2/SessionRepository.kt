@@ -17,11 +17,8 @@ class SqlDelightSessionRepository(
     override fun sessionsOfProject(projectKey: String): Flow<List<LocalSessionInfo>> {
         val key = projectKey.trim()
         require(key.isNotBlank()) { "projectKey must not be blank" }
-        return db.sessionCacheQueries
-            .listLocalSessionByProject(
-                project_key = key,
-                mapper = ::mapLocalSession,
-            )
+        return db.sessionsQueries
+            .selectSessionsByProject(project_id = key, mapper = ::mapLocalSession)
             .asFlow()
             .mapToList(dispatchers.io)
     }
@@ -56,6 +53,9 @@ class SqlDelightSessionRepository(
                 title = session.title,
                 path = session.path,
                 pinned = if (session.pinned) 1L else 0L,
+                parent_id = session.parentId,
+                updated_at = session.updatedAt,
+                archived_at = session.archivedAt,
             )
         }
     }
@@ -67,6 +67,9 @@ class SqlDelightSessionRepository(
                 title = session.title,
                 path = session.path,
                 pinned = if (session.pinned) 1L else 0L,
+                parent_id = session.parentId,
+                updated_at = session.updatedAt,
+                archived_at = session.archivedAt,
                 id = session.id,
             )
         }
@@ -84,23 +87,22 @@ class SqlDelightSessionRepository(
 private fun mapLocalSession(
     id: String,
     project_id: String,
-    workspace: String,
+    path: String,
     title: String,
     pinned: Long,
     parent_id: String?,
-    updated_at: Long,
-    last_read_at: Long?,
+    updated_at: Long?,
     archived_at: Long?,
 ): LocalSessionInfo {
     return LocalSessionInfo(
         id = id,
         projectId = project_id,
-        workspace = workspace,
+        workspace = path,
         title = title,
         pinned = pinned != 0L,
         parentId = parent_id,
         updatedAt = updated_at,
-        lastReadAt = last_read_at,
+        lastReadAt = null,
         archivedAt = archived_at,
     )
 }
@@ -111,6 +113,9 @@ private fun mapStoredSession(
     title: String,
     path: String,
     pinned: Long,
+    parent_id: String?,
+    updated_at: Long?,
+    archived_at: Long?,
 ): LocalSessionRecord {
     return LocalSessionRecord(
         id = id,
@@ -118,5 +123,8 @@ private fun mapStoredSession(
         title = title,
         path = path,
         pinned = pinned != 0L,
+        parentId = parent_id,
+        updatedAt = updated_at,
+        archivedAt = archived_at,
     )
 }

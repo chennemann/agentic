@@ -1,18 +1,18 @@
 selectSessions:
-SELECT id, project_id, title, path, pinned
+SELECT id, project_id, title, path, pinned, parent_id, updated_at, archived_at
 FROM sessions
-ORDER BY pinned DESC, title COLLATE NOCASE ASC, id ASC;
+ORDER BY pinned DESC, updated_at DESC, title COLLATE NOCASE ASC, id ASC;
 
 selectSessionById:
-SELECT id, project_id, title, path, pinned
+SELECT id, project_id, title, path, pinned, parent_id, updated_at, archived_at
 FROM sessions
 WHERE id = ?;
 
 selectSessionsByProject:
-SELECT id, project_id, title, path, pinned
+SELECT id, project_id, title, path, pinned, parent_id, updated_at, archived_at
 FROM sessions
 WHERE project_id = ?
-ORDER BY pinned DESC, title COLLATE NOCASE ASC, id ASC;
+ORDER BY pinned DESC, updated_at DESC, title COLLATE NOCASE ASC, id ASC;
 
 insertSession:
 INSERT INTO sessions(
@@ -20,16 +20,22 @@ INSERT INTO sessions(
   project_id,
   title,
   path,
-  pinned
+  pinned,
+  parent_id,
+  updated_at,
+  archived_at
 )
-VALUES (?, ?, ?, ?, ?);
+VALUES (?, ?, ?, ?, ?, ?, ?, ?);
 
 updateSession:
 UPDATE sessions
 SET project_id = ?,
     title = ?,
     path = ?,
-    pinned = ?
+    pinned = ?,
+    parent_id = ?,
+    updated_at = ?,
+    archived_at = ?
 WHERE id = ?;
 
 deleteSession:
