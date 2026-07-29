@@ -6,11 +6,15 @@ import android.os.Looper
 import android.os.StrictMode
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
-import de.chennemann.agentic.navigation.AppNavHost
 import de.chennemann.agentic.domain.connection.ConnectionSupervisor
+import de.chennemann.agentic.navigation.AppNavHost
 import de.chennemann.agentic.ui.theme.MobileTheme
 import org.koin.android.ext.android.inject
 
@@ -33,7 +37,13 @@ class MainActivity : ComponentActivity() {
         setContent {
             MobileTheme(darkTheme = true, dynamicColor = false) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    AppNavHost()
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .windowInsetsPadding(WindowInsets.safeDrawing),
+                    ) {
+                        AppNavHost()
+                    }
                 }
             }
         }
