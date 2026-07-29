@@ -8,8 +8,6 @@ plugins {
 
 val appVersionName = (findProperty("appVersionName") as String?) ?: "0.0.0"
 val appVersionCode = ((findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 1).coerceAtLeast(1)
-val updateRepoOwner = (findProperty("updateRepoOwner") as String?) ?: "chennemann"
-val updateRepoName = (findProperty("updateRepoName") as String?) ?: "agentic"
 val signingKeystorePath = System.getenv("ANDROID_SIGNING_KEYSTORE_PATH")
 val signingKeystorePassword = System.getenv("ANDROID_SIGNING_KEYSTORE_PASSWORD")
 val signingKeyAlias = System.getenv("ANDROID_SIGNING_KEY_ALIAS")
@@ -29,8 +27,6 @@ android {
         targetSdk = 36
         versionCode = appVersionCode
         versionName = appVersionName
-        buildConfigField("String", "UPDATE_REPO_OWNER", "\"$updateRepoOwner\"")
-        buildConfigField("String", "UPDATE_REPO_NAME", "\"$updateRepoName\"")
     }
 
     testBuildType = "uitest"
@@ -79,8 +75,8 @@ kotlin {
 }
 
 dependencies {
-    implementation(project(":api"))
     implementation(project(":streaming-markdown"))
+    implementation(project(":t3-contracts"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
@@ -98,12 +94,17 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.okhttp)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.ktor.serialization.kotlinx.json)
     implementation(libs.androidx.navigation3.runtime)
     implementation(libs.androidx.navigation3.ui)
-    implementation(libs.kmp.app.updater.core)
-    implementation(libs.kmp.app.updater.compose.ui)
     implementation(libs.sqldelight.android.driver)
     implementation(libs.sqldelight.coroutines.extensions)
+    implementation(libs.androidx.camera.core)
+    implementation(libs.androidx.camera.camera2)
+    implementation(libs.androidx.camera.lifecycle)
+    implementation(libs.androidx.camera.view)
+    implementation(libs.mlkit.barcode.scanning)
     testImplementation(libs.junit.jupiter.api)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.ktor.client.mock)
@@ -128,8 +129,8 @@ sqldelight {
         create("AgenticDb") {
             packageName.set("de.chennemann.agentic.db")
             verifyMigrations = false
-            generateAsync.set(true)
-            deriveSchemaFromMigrations.set(true)
+            generateAsync.set(false)
+            deriveSchemaFromMigrations.set(false)
         }
     }
 }

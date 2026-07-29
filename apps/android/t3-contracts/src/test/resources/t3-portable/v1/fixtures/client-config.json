@@ -1,0 +1,65 @@
+{
+  "auth": {
+    "bootstrapMethods": ["one-time-token"],
+    "policy": "remote-reachable",
+    "sessionCookieName": "t3-session",
+    "sessionMethods": ["bearer-access-token"]
+  },
+  "environment": {
+    "capabilities": {
+      "connectionProbe": true,
+      "portableClientProtocol": 1,
+      "repositoryIdentity": true,
+      "threadSettlement": true,
+      "threadSnooze": true
+    },
+    "environmentId": "environment-golden",
+    "label": "Golden environment",
+    "platform": {
+      "arch": "x64",
+      "os": "linux"
+    },
+    "serverVersion": "0.0.0-golden"
+  },
+  "protocolVersion": 1,
+  "providers": [
+    {
+      "auth": {
+        "status": "authenticated"
+      },
+      "availability": "available",
+      "checkedAt": "2026-01-01T00:00:00.000Z",
+      "displayName": "Golden provider",
+      "driver": "codex",
+      "enabled": true,
+      "installed": true,
+      "instanceId": "provider-golden",
+      "models": [
+        {
+          "capabilities": {
+            "optionDescriptors": []
+          },
+          "isCustom": false,
+          "isDefault": true,
+          "name": "Golden model",
+          "slug": "model-golden"
+        }
+      ],
+      "showInteractionModeToggle": true,
+      "skills": [],
+      "slashCommands": [
+        {
+          "description": "Review the current changes",
+          "input": {
+            "hint": "optional focus"
+          },
+          "name": "review"
+        }
+      ],
+      "status": "ready",
+      "version": null
+    }
+  ],
+  "shellResumeCompletionMarker": true,
+  "threadResumeCompletionMarker": true
+}

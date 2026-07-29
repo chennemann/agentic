@@ -45,28 +45,29 @@ Before working in either repository:
 
 The integration owner should update only this ledger as packages land:
 
-- [ ] S1 - T3 portable protocol
-- [ ] A1 - Android contracts, authentication, and transport
-- [ ] A2 - Android projection runtime and fresh persistence
-- [ ] U1 - Chat-first Compose UI
-- [ ] I1 - Hard cutover and integration
+- [x] S1 - T3 portable protocol
+- [x] A1 - Android contracts, authentication, and transport
+- [x] A2 - Android projection runtime and fresh persistence
+- [x] U1 - Chat-first Compose UI
+- [x] I1 - Hard cutover and integration
 
 Recorded S1 contract:
 
 ```text
-T3 commit:
-portable protocol version:
-OpenAPI artifact:
-fixture artifact/checksum:
+T3 commit: 0ed054375c12940436df680807a05fd4aa3be5f6
+portable protocol version: t3-portable-client v1
+OpenAPI artifact: packages/contracts/portable/v1/openapi.json
+fixture artifact/checksum: packages/contracts/portable/v1/fixture-manifest.json;
+  c594f7fe3fc3c93cbcaed5931fe4791de1233073a9a0a79941c802a3ae323f44
 ```
 
 Recorded final integration:
 
 ```text
-Agentic commit:
-T3 commit tested:
-Android device/emulator:
-quality-gate result:
+Agentic commit: the integration commit containing this ledger (exact SHA in the final report)
+T3 commit tested: 0ed054375c12940436df680807a05fd4aa3be5f6
+Android device/emulator: Pixel 6 - Android 17; debug APK installed and MainActivity resumed
+quality-gate result: ktlintFormat, ktlintCheck, and build passed
 ```
 
 Recommended assignment prompt:

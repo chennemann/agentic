@@ -1,0 +1,142 @@
+[
+  {
+    "kind": "snapshot",
+    "snapshot": {
+      "projects": [
+        {
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "defaultModelSelection": {
+            "instanceId": "provider-golden",
+            "model": "model-golden"
+          },
+          "id": "project-golden",
+          "scripts": [],
+          "title": "Golden project",
+          "updatedAt": "2026-01-01T00:00:00.000Z",
+          "workspaceRoot": "/workspace/golden"
+        }
+      ],
+      "snapshotSequence": 40,
+      "threads": [
+        {
+          "archivedAt": null,
+          "branch": null,
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "hasActionableProposedPlan": true,
+          "hasPendingApprovals": true,
+          "hasPendingUserInput": true,
+          "id": "thread-golden",
+          "interactionMode": "plan",
+          "latestTurn": {
+            "assistantMessageId": "message-assistant",
+            "completedAt": null,
+            "requestedAt": "2026-01-01T00:00:00.000Z",
+            "startedAt": "2026-01-01T00:00:00.000Z",
+            "state": "running",
+            "turnId": "turn-golden"
+          },
+          "latestUserMessageAt": "2026-01-01T00:00:00.000Z",
+          "modelSelection": {
+            "instanceId": "provider-golden",
+            "model": "model-golden"
+          },
+          "projectId": "project-golden",
+          "runtimeMode": "approval-required",
+          "session": {
+            "activeTurnId": "turn-golden",
+            "lastError": null,
+            "providerInstanceId": "provider-golden",
+            "providerName": "Golden provider",
+            "runtimeMode": "approval-required",
+            "status": "running",
+            "threadId": "thread-golden",
+            "updatedAt": "2026-01-01T00:00:01.000Z"
+          },
+          "settledAt": null,
+          "settledOverride": null,
+          "snoozedAt": null,
+          "snoozedUntil": null,
+          "title": "Golden thread",
+          "updatedAt": "2026-01-01T00:00:01.000Z",
+          "worktreePath": null
+        }
+      ],
+      "updatedAt": "2026-01-01T00:00:01.000Z"
+    }
+  },
+  {
+    "kind": "project-upserted",
+    "project": {
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "defaultModelSelection": {
+        "instanceId": "provider-golden",
+        "model": "model-golden"
+      },
+      "id": "project-golden",
+      "scripts": [],
+      "title": "Golden project",
+      "updatedAt": "2026-01-01T00:00:01.000Z",
+      "workspaceRoot": "/workspace/golden"
+    },
+    "sequence": 41
+  },
+  {
+    "kind": "project-removed",
+    "projectId": "project-golden",
+    "sequence": 42
+  },
+  {
+    "kind": "thread-upserted",
+    "sequence": 43,
+    "thread": {
+      "archivedAt": null,
+      "branch": null,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "hasActionableProposedPlan": true,
+      "hasPendingApprovals": true,
+      "hasPendingUserInput": true,
+      "id": "thread-golden",
+      "interactionMode": "plan",
+      "latestTurn": {
+        "assistantMessageId": "message-assistant",
+        "completedAt": null,
+        "requestedAt": "2026-01-01T00:00:00.000Z",
+        "startedAt": "2026-01-01T00:00:00.000Z",
+        "state": "running",
+        "turnId": "turn-golden"
+      },
+      "latestUserMessageAt": "2026-01-01T00:00:00.000Z",
+      "modelSelection": {
+        "instanceId": "provider-golden",
+        "model": "model-golden"
+      },
+      "projectId": "project-golden",
+      "runtimeMode": "approval-required",
+      "session": {
+        "activeTurnId": "turn-golden",
+        "lastError": null,
+        "providerInstanceId": "provider-golden",
+        "providerName": "Golden provider",
+        "runtimeMode": "approval-required",
+        "status": "running",
+        "threadId": "thread-golden",
+        "updatedAt": "2026-01-01T00:00:01.000Z"
+      },
+      "settledAt": null,
+      "settledOverride": null,
+      "snoozedAt": null,
+      "snoozedUntil": null,
+      "title": "Golden thread",
+      "updatedAt": "2026-01-01T00:00:01.000Z",
+      "worktreePath": null
+    }
+  },
+  {
+    "kind": "thread-removed",
+    "sequence": 44,
+    "threadId": "thread-golden"
+  },
+  {
+    "kind": "synchronized"
+  }
+]

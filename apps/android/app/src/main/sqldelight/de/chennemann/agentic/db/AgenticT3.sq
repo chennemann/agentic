@@ -1,0 +1,90 @@
+CREATE TABLE environment_entity (
+    environment_id TEXT NOT NULL PRIMARY KEY,
+    label TEXT NOT NULL,
+    base_url TEXT NOT NULL,
+    platform_os TEXT NOT NULL,
+    platform_arch TEXT NOT NULL,
+    server_version TEXT NOT NULL,
+    active INTEGER NOT NULL DEFAULT 0,
+    last_connected_at INTEGER
+);
+
+CREATE TABLE projection_cache (
+    environment_id TEXT NOT NULL,
+    cache_kind TEXT NOT NULL,
+    cache_key TEXT NOT NULL,
+    schema_version INTEGER NOT NULL,
+    sequence INTEGER,
+    payload_json TEXT NOT NULL,
+    updated_at INTEGER NOT NULL,
+    PRIMARY KEY (environment_id, cache_kind, cache_key)
+);
+
+CREATE TABLE local_preference (
+    environment_id TEXT NOT NULL,
+    preference_key TEXT NOT NULL,
+    payload_json TEXT NOT NULL,
+    PRIMARY KEY (environment_id, preference_key)
+);
+
+selectAllEnvironments:
+SELECT * FROM environment_entity ORDER BY label COLLATE NOCASE, environment_id;
+
+selectActiveEnvironment:
+SELECT * FROM environment_entity WHERE active = 1 LIMIT 1;
+
+upsertEnvironment:
+INSERT OR REPLACE INTO environment_entity(
+    environment_id,
+    label,
+    base_url,
+    platform_os,
+    platform_arch,
+    server_version,
+    active,
+    last_connected_at
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?);
+
+clearActiveEnvironment:
+UPDATE environment_entity SET active = 0;
+
+setActiveEnvironment:
+UPDATE environment_entity SET active = 1 WHERE environment_id = ?;
+
+deleteEnvironment:
+DELETE FROM environment_entity WHERE environment_id = ?;
+
+selectProjection:
+SELECT * FROM projection_cache
+WHERE environment_id = ? AND cache_kind = ? AND cache_key = ?
+LIMIT 1;
+
+upsertProjection:
+INSERT OR REPLACE INTO projection_cache(
+    environment_id,
+    cache_kind,
+    cache_key,
+    schema_version,
+    sequence,
+    payload_json,
+    updated_at
+) VALUES (?, ?, ?, ?, ?, ?, ?);
+
+deleteEnvironmentProjections:
+DELETE FROM projection_cache WHERE environment_id = ?;
+
+deleteProjection:
+DELETE FROM projection_cache
+WHERE environment_id = ? AND cache_kind = ? AND cache_key = ?;
+
+selectPreference:
+SELECT payload_json FROM local_preference
+WHERE environment_id = ? AND preference_key = ?
+LIMIT 1;
+
+upsertPreference:
+INSERT OR REPLACE INTO local_preference(environment_id, preference_key, payload_json)
+VALUES (?, ?, ?);
+
+deleteEnvironmentPreferences:
+DELETE FROM local_preference WHERE environment_id = ?;

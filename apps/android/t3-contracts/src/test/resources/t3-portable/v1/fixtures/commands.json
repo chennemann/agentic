@@ -1,0 +1,112 @@
+[
+  {
+    "commandId": "command-start-existing",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "interactionMode": "plan",
+    "message": {
+      "attachments": [],
+      "messageId": "message-existing",
+      "role": "user",
+      "text": "Continue the portable fixture"
+    },
+    "modelSelection": {
+      "instanceId": "provider-golden",
+      "model": "model-golden"
+    },
+    "runtimeMode": "approval-required",
+    "threadId": "thread-golden",
+    "type": "thread.turn.start"
+  },
+  {
+    "bootstrap": {
+      "createThread": {
+        "branch": null,
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "interactionMode": "default",
+        "modelSelection": {
+          "instanceId": "provider-golden",
+          "model": "model-golden"
+        },
+        "projectId": "project-golden",
+        "runtimeMode": "full-access",
+        "title": "Start a portable thread",
+        "worktreePath": null
+      }
+    },
+    "commandId": "command-start-new",
+    "createdAt": "2026-01-01T00:00:00.000Z",
+    "interactionMode": "default",
+    "message": {
+      "attachments": [],
+      "messageId": "message-new",
+      "role": "user",
+      "text": "Start a portable thread"
+    },
+    "modelSelection": {
+      "instanceId": "provider-golden",
+      "model": "model-golden"
+    },
+    "runtimeMode": "full-access",
+    "threadId": "thread-new",
+    "type": "thread.turn.start"
+  },
+  {
+    "commandId": "command-interrupt",
+    "createdAt": "2026-01-01T00:00:01.000Z",
+    "threadId": "thread-golden",
+    "turnId": "turn-golden",
+    "type": "thread.turn.interrupt"
+  },
+  {
+    "commandId": "command-rename",
+    "modelSelection": {
+      "instanceId": "provider-golden",
+      "model": "model-golden"
+    },
+    "threadId": "thread-golden",
+    "title": "Renamed golden thread",
+    "type": "thread.meta.update"
+  },
+  {
+    "commandId": "command-archive",
+    "threadId": "thread-golden",
+    "type": "thread.archive"
+  },
+  {
+    "commandId": "command-unarchive",
+    "threadId": "thread-golden",
+    "type": "thread.unarchive"
+  },
+  {
+    "commandId": "command-runtime-mode",
+    "createdAt": "2026-01-01T00:00:01.000Z",
+    "runtimeMode": "approval-required",
+    "threadId": "thread-golden",
+    "type": "thread.runtime-mode.set"
+  },
+  {
+    "commandId": "command-interaction-mode",
+    "createdAt": "2026-01-01T00:00:01.000Z",
+    "interactionMode": "plan",
+    "threadId": "thread-golden",
+    "type": "thread.interaction-mode.set"
+  },
+  {
+    "commandId": "command-approval",
+    "createdAt": "2026-01-01T00:00:01.000Z",
+    "decision": "acceptForSession",
+    "requestId": "approval-golden",
+    "threadId": "thread-golden",
+    "type": "thread.approval.respond"
+  },
+  {
+    "answers": {
+      "target": "debug"
+    },
+    "commandId": "command-user-input",
+    "createdAt": "2026-01-01T00:00:01.000Z",
+    "requestId": "input-golden",
+    "threadId": "thread-golden",
+    "type": "thread.user-input.respond"
+  }
+]

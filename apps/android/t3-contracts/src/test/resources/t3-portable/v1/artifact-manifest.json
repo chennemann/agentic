@@ -1,0 +1,59 @@
+{
+  "algorithm": "sha256",
+  "checksum": "c594f7fe3fc3c93cbcaed5931fe4791de1233073a9a0a79941c802a3ae323f44",
+  "files": [
+    {
+      "path": "fixture-manifest.json",
+      "sha256": "31d9bbb387df0b4f17246f14f75eb606740df128156a72e6bf2ea2cb79cbe1d9"
+    },
+    {
+      "path": "fixtures/client-config.json",
+      "sha256": "5b0ff09c09081e4d5f931491e0041ac32c3386f7eaa3fc7f2cd952bcf5971d74"
+    },
+    {
+      "path": "fixtures/commands.json",
+      "sha256": "01893f23bc650c3cf73e5d90414084e9d0799f641a6ea16bd777c07261b4cf96"
+    },
+    {
+      "path": "fixtures/shell-stream-items.json",
+      "sha256": "11e507a5021375ced735f4c889f12ade7af6c584bc0372228cf020602982b215"
+    },
+    {
+      "path": "fixtures/thread-stream-items.json",
+      "sha256": "d48213256097d0fa54673d1942516fffa2c474a1a4d3f73d5f255e6a7ecb0982"
+    },
+    {
+      "path": "openapi.json",
+      "sha256": "0ab9541a808d9597a98fdedf6a4766a4a0df6f2a1a9056f9428e34da55c2b240"
+    },
+    {
+      "path": "protocol-version.json",
+      "sha256": "de334ee97609f889faa63e68c72fce3cb362ed34ec1d9a41d309b6859552d41f"
+    },
+    {
+      "path": "schemas/client-config.schema.json",
+      "sha256": "8d7419d7091b0ceb7042913ed5dd3e401962eac954188d2a22a7af9e3901a0fa"
+    },
+    {
+      "path": "schemas/orchestration-command.schema.json",
+      "sha256": "2cef2b969522cfbe7b06e41ccfc8f195ca72f383f9780c97473ce6a6ad0e6693"
+    },
+    {
+      "path": "schemas/shell-snapshot.schema.json",
+      "sha256": "7733e577306185ae73fe2e1d3b2ac7e0b1e705ffb075452b4c22ada656ee1a85"
+    },
+    {
+      "path": "schemas/shell-stream-item.schema.json",
+      "sha256": "8873e96f19aa717646fc52d12ad8e22948562da8672f000eb80d72a74693d24d"
+    },
+    {
+      "path": "schemas/thread-snapshot.schema.json",
+      "sha256": "0a9059e171b4d1888fb497f391cd2bd64e7545dd0a9c974fb36d9209a81776ae"
+    },
+    {
+      "path": "schemas/thread-stream-item.schema.json",
+      "sha256": "82f241977d4375d2d9f4d6126bcd1123f36b3385f429df6b1630bb3688df4129"
+    }
+  ],
+  "protocolVersion": 1
+}

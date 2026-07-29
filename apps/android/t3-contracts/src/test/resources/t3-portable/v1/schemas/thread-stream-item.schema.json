@@ -1,0 +1,3918 @@
+{
+  "definitions": {
+    "Objects_": {
+      "additionalProperties": false,
+      "properties": {
+        "instanceId": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {},
+        "options": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["model"],
+      "type": "object"
+    },
+    "Objects_1": {
+      "additionalProperties": false,
+      "properties": {
+        "planId": {
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        }
+      },
+      "required": ["threadId", "planId"],
+      "type": "object"
+    },
+    "Objects_2": {
+      "additionalProperties": false,
+      "properties": {
+        "createdAt": {
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "payload": {},
+        "sequence": {
+          "anyOf": [
+            {
+              "allOf": [
+                {
+                  "minimum": 0
+                }
+              ],
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "summary": {
+          "type": "string"
+        },
+        "tone": {
+          "enum": ["info", "tool", "approval", "error"],
+          "type": "string"
+        },
+        "turnId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["id", "tone", "kind", "summary", "payload", "turnId", "createdAt"],
+      "type": "object"
+    },
+    "Objects_3": {
+      "additionalProperties": false,
+      "properties": {
+        "additions": {
+          "allOf": [
+            {
+              "minimum": 0
+            }
+          ],
+          "type": "integer"
+        },
+        "deletions": {
+          "allOf": [
+            {
+              "minimum": 0
+            }
+          ],
+          "type": "integer"
+        },
+        "kind": {
+          "type": "string"
+        },
+        "path": {
+          "type": "string"
+        }
+      },
+      "required": ["path", "kind", "additions", "deletions"],
+      "type": "object"
+    },
+    "Objects_4": {
+      "additionalProperties": false,
+      "properties": {
+        "activeTurnId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "lastError": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "providerInstanceId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "providerName": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runtimeMode": {
+          "anyOf": [
+            {
+              "enum": ["approval-required", "auto-accept-edits", "auto", "full-access"],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "status": {
+          "enum": ["idle", "starting", "running", "ready", "interrupted", "stopped", "error"],
+          "type": "string"
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "updatedAt": {
+          "type": "string"
+        }
+      },
+      "required": ["threadId", "status", "providerName", "activeTurnId", "lastError", "updatedAt"],
+      "type": "object"
+    },
+    "Objects_5": {
+      "additionalProperties": false,
+      "properties": {
+        "adapterKey": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "ingestedAt": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "providerItemId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "providerTurnId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "requestId": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    "Objects_6": {
+      "additionalProperties": false,
+      "properties": {
+        "canonicalKey": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "locator": {
+          "additionalProperties": false,
+          "properties": {
+            "remoteName": {
+              "type": "string"
+            },
+            "remoteUrl": {
+              "type": "string"
+            },
+            "source": {
+              "enum": ["git-remote"],
+              "type": "string"
+            }
+          },
+          "required": ["source", "remoteName", "remoteUrl"],
+          "type": "object"
+        },
+        "name": {
+          "type": "string"
+        },
+        "owner": {
+          "type": "string"
+        },
+        "provider": {
+          "type": "string"
+        },
+        "rootPath": {
+          "type": "string"
+        }
+      },
+      "required": ["canonicalKey", "locator"],
+      "type": "object"
+    },
+    "Objects_7": {
+      "additionalProperties": false,
+      "properties": {
+        "autoOpenPreview": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "command": {
+          "type": "string"
+        },
+        "icon": {
+          "enum": ["play", "test", "lint", "configure", "build", "debug"],
+          "type": "string"
+        },
+        "id": {
+          "type": "string"
+        },
+        "name": {
+          "type": "string"
+        },
+        "previewUrl": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runOnWorktreeCreate": {
+          "type": "boolean"
+        }
+      },
+      "required": ["id", "name", "command", "icon", "runOnWorktreeCreate"],
+      "type": "object"
+    },
+    "Union_": {
+      "anyOf": [
+        {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "type": "string"
+            },
+            "mimeType": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "sizeBytes": {
+              "allOf": [
+                {
+                  "minimum": 0
+                },
+                {
+                  "maximum": 10485760
+                }
+              ],
+              "type": "integer"
+            },
+            "type": {
+              "enum": ["image"],
+              "type": "string"
+            }
+          },
+          "required": ["type", "id", "name", "mimeType", "sizeBytes"],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "dialect": "draft-2020-12",
+  "schema": {
+    "anyOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": ["synchronized"],
+            "type": "string"
+          }
+        },
+        "required": ["kind"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": ["snapshot"],
+            "type": "string"
+          },
+          "snapshot": {
+            "additionalProperties": false,
+            "properties": {
+              "snapshotSequence": {
+                "allOf": [
+                  {
+                    "minimum": 0
+                  }
+                ],
+                "type": "integer"
+              },
+              "thread": {
+                "additionalProperties": false,
+                "properties": {
+                  "activities": {
+                    "items": {
+                      "$ref": "#/$defs/Objects_2"
+                    },
+                    "type": "array"
+                  },
+                  "archivedAt": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "branch": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "checkpoints": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "assistantMessageId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "checkpointRef": {
+                          "type": "string"
+                        },
+                        "checkpointTurnCount": {
+                          "allOf": [
+                            {
+                              "minimum": 0
+                            }
+                          ],
+                          "type": "integer"
+                        },
+                        "completedAt": {
+                          "type": "string"
+                        },
+                        "files": {
+                          "items": {
+                            "$ref": "#/$defs/Objects_3"
+                          },
+                          "type": "array"
+                        },
+                        "status": {
+                          "enum": ["ready", "missing", "error"],
+                          "type": "string"
+                        },
+                        "turnId": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "turnId",
+                        "checkpointTurnCount",
+                        "checkpointRef",
+                        "status",
+                        "files",
+                        "assistantMessageId",
+                        "completedAt"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "createdAt": {
+                    "type": "string"
+                  },
+                  "deletedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "interactionMode": {
+                    "anyOf": [
+                      {
+                        "enum": ["default", "plan"],
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "latestTurn": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "assistantMessageId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "completedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "requestedAt": {
+                            "type": "string"
+                          },
+                          "sourceProposedPlan": {
+                            "anyOf": [
+                              {
+                                "$ref": "#/$defs/Objects_1"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "startedAt": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "state": {
+                            "enum": ["running", "interrupted", "completed", "error"],
+                            "type": "string"
+                          },
+                          "turnId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": [
+                          "turnId",
+                          "state",
+                          "requestedAt",
+                          "startedAt",
+                          "completedAt",
+                          "assistantMessageId"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "messages": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "attachments": {
+                          "anyOf": [
+                            {
+                              "items": {
+                                "$ref": "#/$defs/Union_"
+                              },
+                              "type": "array"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "createdAt": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        },
+                        "role": {
+                          "enum": ["user", "assistant", "system"],
+                          "type": "string"
+                        },
+                        "streaming": {
+                          "type": "boolean"
+                        },
+                        "text": {
+                          "type": "string"
+                        },
+                        "turnId": {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "id",
+                        "role",
+                        "text",
+                        "turnId",
+                        "streaming",
+                        "createdAt",
+                        "updatedAt"
+                      ],
+                      "type": "object"
+                    },
+                    "type": "array"
+                  },
+                  "modelSelection": {
+                    "$ref": "#/$defs/Objects_"
+                  },
+                  "projectId": {
+                    "type": "string"
+                  },
+                  "proposedPlans": {
+                    "anyOf": [
+                      {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "createdAt": {
+                              "type": "string"
+                            },
+                            "id": {
+                              "type": "string"
+                            },
+                            "implementationThreadId": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "implementedAt": {
+                              "anyOf": [
+                                {
+                                  "anyOf": [
+                                    {
+                                      "type": "string"
+                                    },
+                                    {
+                                      "type": "null"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "planMarkdown": {
+                              "type": "string"
+                            },
+                            "turnId": {
+                              "anyOf": [
+                                {
+                                  "type": "string"
+                                },
+                                {
+                                  "type": "null"
+                                }
+                              ]
+                            },
+                            "updatedAt": {
+                              "type": "string"
+                            }
+                          },
+                          "required": ["id", "turnId", "planMarkdown", "createdAt", "updatedAt"],
+                          "type": "object"
+                        },
+                        "type": "array"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "runtimeMode": {
+                    "enum": ["approval-required", "auto-accept-edits", "auto", "full-access"],
+                    "type": "string"
+                  },
+                  "session": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/$defs/Objects_4"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "settledAt": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "settledOverride": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "enum": ["settled", "active"],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "snoozedAt": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "snoozedUntil": {
+                    "anyOf": [
+                      {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "title": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  },
+                  "worktreePath": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "id",
+                  "projectId",
+                  "title",
+                  "modelSelection",
+                  "runtimeMode",
+                  "branch",
+                  "worktreePath",
+                  "latestTurn",
+                  "createdAt",
+                  "updatedAt",
+                  "deletedAt",
+                  "messages",
+                  "activities",
+                  "checkpoints",
+                  "session"
+                ],
+                "type": "object"
+              }
+            },
+            "required": ["snapshotSequence", "thread"],
+            "type": "object"
+          }
+        },
+        "required": ["kind", "snapshot"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "event": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "defaultModelSelection": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/Objects_"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "projectId": {
+                        "type": "string"
+                      },
+                      "repositoryIdentity": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "$ref": "#/$defs/Objects_6"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "scripts": {
+                        "items": {
+                          "$ref": "#/$defs/Objects_7"
+                        },
+                        "type": "array"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      },
+                      "workspaceRoot": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "projectId",
+                      "title",
+                      "workspaceRoot",
+                      "defaultModelSelection",
+                      "scripts",
+                      "createdAt",
+                      "updatedAt"
+                    ],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["project.created"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "defaultModelSelection": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "$ref": "#/$defs/Objects_"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "projectId": {
+                        "type": "string"
+                      },
+                      "repositoryIdentity": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "$ref": "#/$defs/Objects_6"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "scripts": {
+                        "anyOf": [
+                          {
+                            "items": {
+                              "$ref": "#/$defs/Objects_7"
+                            },
+                            "type": "array"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "title": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      },
+                      "workspaceRoot": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["projectId", "updatedAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["project.meta-updated"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "deletedAt": {
+                        "type": "string"
+                      },
+                      "projectId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["projectId", "deletedAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["project.deleted"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "branch": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "interactionMode": {
+                        "anyOf": [
+                          {
+                            "enum": ["default", "plan"],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "modelSelection": {
+                        "$ref": "#/$defs/Objects_"
+                      },
+                      "projectId": {
+                        "type": "string"
+                      },
+                      "runtimeMode": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "approval-required",
+                              "auto-accept-edits",
+                              "auto",
+                              "full-access"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "threadId": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      },
+                      "worktreePath": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": [
+                      "threadId",
+                      "projectId",
+                      "title",
+                      "modelSelection",
+                      "branch",
+                      "worktreePath",
+                      "createdAt",
+                      "updatedAt"
+                    ],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.created"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "deletedAt": {
+                        "type": "string"
+                      },
+                      "threadId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["threadId", "deletedAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.deleted"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "archivedAt": {
+                        "type": "string"
+                      },
+                      "threadId": {
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["threadId", "archivedAt", "updatedAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.archived"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "threadId": {
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["threadId", "updatedAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.unarchived"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "settledAt": {
+                        "type": "string"
+                      },
+                      "threadId": {
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["threadId", "settledAt", "updatedAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.settled"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "reason": {
+                        "enum": ["user", "activity"],
+                        "type": "string"
+                      },
+                      "threadId": {
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["threadId", "reason", "updatedAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.unsettled"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "snoozedAt": {
+                        "type": "string"
+                      },
+                      "snoozedUntil": {
+                        "type": "string"
+                      },
+                      "threadId": {
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["threadId", "snoozedUntil", "snoozedAt", "updatedAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.snoozed"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "reason": {
+                        "enum": ["user", "activity"],
+                        "type": "string"
+                      },
+                      "threadId": {
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["threadId", "reason", "updatedAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.unsnoozed"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "branch": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "modelSelection": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/Objects_"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "threadId": {
+                        "type": "string"
+                      },
+                      "title": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      },
+                      "worktreePath": {
+                        "anyOf": [
+                          {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["threadId", "updatedAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.meta-updated"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "runtimeMode": {
+                        "enum": ["approval-required", "auto-accept-edits", "auto", "full-access"],
+                        "type": "string"
+                      },
+                      "threadId": {
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["threadId", "runtimeMode", "updatedAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.runtime-mode-set"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "interactionMode": {
+                        "anyOf": [
+                          {
+                            "enum": ["default", "plan"],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "threadId": {
+                        "type": "string"
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["threadId", "updatedAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.interaction-mode-set"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "attachments": {
+                        "anyOf": [
+                          {
+                            "items": {
+                              "$ref": "#/$defs/Union_"
+                            },
+                            "type": "array"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "messageId": {
+                        "type": "string"
+                      },
+                      "role": {
+                        "enum": ["user", "assistant", "system"],
+                        "type": "string"
+                      },
+                      "streaming": {
+                        "type": "boolean"
+                      },
+                      "text": {
+                        "type": "string"
+                      },
+                      "threadId": {
+                        "type": "string"
+                      },
+                      "turnId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "updatedAt": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "threadId",
+                      "messageId",
+                      "role",
+                      "text",
+                      "turnId",
+                      "streaming",
+                      "createdAt",
+                      "updatedAt"
+                    ],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.message-sent"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "interactionMode": {
+                        "anyOf": [
+                          {
+                            "enum": ["default", "plan"],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "messageId": {
+                        "type": "string"
+                      },
+                      "modelSelection": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/Objects_"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "runtimeMode": {
+                        "anyOf": [
+                          {
+                            "enum": [
+                              "approval-required",
+                              "auto-accept-edits",
+                              "auto",
+                              "full-access"
+                            ],
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "sourceProposedPlan": {
+                        "anyOf": [
+                          {
+                            "$ref": "#/$defs/Objects_1"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "threadId": {
+                        "type": "string"
+                      },
+                      "titleSeed": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["threadId", "messageId", "createdAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.turn-start-requested"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "threadId": {
+                        "type": "string"
+                      },
+                      "turnId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      }
+                    },
+                    "required": ["threadId", "createdAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.turn-interrupt-requested"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "decision": {
+                        "enum": ["accept", "acceptForSession", "decline", "cancel"],
+                        "type": "string"
+                      },
+                      "requestId": {
+                        "type": "string"
+                      },
+                      "threadId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["threadId", "requestId", "decision", "createdAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.approval-response-requested"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "answers": {
+                        "type": "object"
+                      },
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "requestId": {
+                        "type": "string"
+                      },
+                      "threadId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["threadId", "requestId", "answers", "createdAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.user-input-response-requested"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "threadId": {
+                        "type": "string"
+                      },
+                      "turnCount": {
+                        "allOf": [
+                          {
+                            "minimum": 0
+                          }
+                        ],
+                        "type": "integer"
+                      }
+                    },
+                    "required": ["threadId", "turnCount", "createdAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.checkpoint-revert-requested"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "threadId": {
+                        "type": "string"
+                      },
+                      "turnCount": {
+                        "allOf": [
+                          {
+                            "minimum": 0
+                          }
+                        ],
+                        "type": "integer"
+                      }
+                    },
+                    "required": ["threadId", "turnCount"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.reverted"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "createdAt": {
+                        "type": "string"
+                      },
+                      "threadId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["threadId", "createdAt"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.session-stop-requested"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "session": {
+                        "$ref": "#/$defs/Objects_4"
+                      },
+                      "threadId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["threadId", "session"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.session-set"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "proposedPlan": {
+                        "additionalProperties": false,
+                        "properties": {
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "id": {
+                            "type": "string"
+                          },
+                          "implementationThreadId": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "implementedAt": {
+                            "anyOf": [
+                              {
+                                "anyOf": [
+                                  {
+                                    "type": "string"
+                                  },
+                                  {
+                                    "type": "null"
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "planMarkdown": {
+                            "type": "string"
+                          },
+                          "turnId": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "updatedAt": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["id", "turnId", "planMarkdown", "createdAt", "updatedAt"],
+                        "type": "object"
+                      },
+                      "threadId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["threadId", "proposedPlan"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.proposed-plan-upserted"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "assistantMessageId": {
+                        "anyOf": [
+                          {
+                            "type": "string"
+                          },
+                          {
+                            "type": "null"
+                          }
+                        ]
+                      },
+                      "checkpointRef": {
+                        "type": "string"
+                      },
+                      "checkpointTurnCount": {
+                        "allOf": [
+                          {
+                            "minimum": 0
+                          }
+                        ],
+                        "type": "integer"
+                      },
+                      "completedAt": {
+                        "type": "string"
+                      },
+                      "files": {
+                        "items": {
+                          "$ref": "#/$defs/Objects_3"
+                        },
+                        "type": "array"
+                      },
+                      "status": {
+                        "enum": ["ready", "missing", "error"],
+                        "type": "string"
+                      },
+                      "threadId": {
+                        "type": "string"
+                      },
+                      "turnId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "threadId",
+                      "turnId",
+                      "checkpointTurnCount",
+                      "checkpointRef",
+                      "status",
+                      "files",
+                      "assistantMessageId",
+                      "completedAt"
+                    ],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.turn-diff-completed"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "aggregateId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "string"
+                      }
+                    ]
+                  },
+                  "aggregateKind": {
+                    "enum": ["project", "thread"],
+                    "type": "string"
+                  },
+                  "causationEventId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "commandId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "correlationId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "eventId": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "$ref": "#/$defs/Objects_5"
+                  },
+                  "occurredAt": {
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "activity": {
+                        "$ref": "#/$defs/Objects_2"
+                      },
+                      "threadId": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["threadId", "activity"],
+                    "type": "object"
+                  },
+                  "sequence": {
+                    "allOf": [
+                      {
+                        "minimum": 0
+                      }
+                    ],
+                    "type": "integer"
+                  },
+                  "type": {
+                    "enum": ["thread.activity-appended"],
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "sequence",
+                  "eventId",
+                  "aggregateKind",
+                  "aggregateId",
+                  "occurredAt",
+                  "commandId",
+                  "causationEventId",
+                  "correlationId",
+                  "metadata",
+                  "type",
+                  "payload"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "kind": {
+            "enum": ["event"],
+            "type": "string"
+          }
+        },
+        "required": ["kind", "event"],
+        "type": "object"
+      }
+    ]
+  }
+}

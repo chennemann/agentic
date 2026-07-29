@@ -1,0 +1,602 @@
+[
+  {
+    "kind": "snapshot",
+    "snapshot": {
+      "snapshotSequence": 40,
+      "thread": {
+        "activities": [
+          {
+            "createdAt": "2026-01-01T00:00:01.000Z",
+            "id": "activity-info",
+            "kind": "status.updated",
+            "payload": {
+              "phase": "analysis"
+            },
+            "sequence": 46,
+            "summary": "Inspecting the project",
+            "tone": "info",
+            "turnId": "turn-golden"
+          },
+          {
+            "createdAt": "2026-01-01T00:00:01.000Z",
+            "id": "activity-tool",
+            "kind": "tool.completed",
+            "payload": {
+              "paths": ["README.md"],
+              "toolName": "read"
+            },
+            "sequence": 47,
+            "summary": "Read project files",
+            "tone": "tool",
+            "turnId": "turn-golden"
+          },
+          {
+            "createdAt": "2026-01-01T00:00:01.000Z",
+            "id": "activity-approval",
+            "kind": "approval.requested",
+            "payload": {
+              "command": "vp test run",
+              "decisions": ["accept", "acceptForSession", "decline", "cancel"],
+              "requestId": "approval-golden",
+              "requestKind": "command"
+            },
+            "sequence": 48,
+            "summary": "Command approval requested",
+            "tone": "approval",
+            "turnId": "turn-golden"
+          },
+          {
+            "createdAt": "2026-01-01T00:00:01.000Z",
+            "id": "activity-user-input",
+            "kind": "user-input.requested",
+            "payload": {
+              "questions": [
+                {
+                  "id": "target",
+                  "options": ["debug", "release"],
+                  "prompt": "Which target should be used?"
+                }
+              ],
+              "requestId": "input-golden"
+            },
+            "sequence": 49,
+            "summary": "More information is required",
+            "tone": "approval",
+            "turnId": "turn-golden"
+          },
+          {
+            "createdAt": "2026-01-01T00:00:01.000Z",
+            "id": "activity-error",
+            "kind": "provider.error",
+            "payload": {
+              "detail": "fixture error"
+            },
+            "sequence": 50,
+            "summary": "A recoverable provider error occurred",
+            "tone": "error",
+            "turnId": "turn-golden"
+          },
+          {
+            "createdAt": "2026-01-01T00:00:01.000Z",
+            "id": "activity-unknown",
+            "kind": "future.additive-activity",
+            "payload": {
+              "futureField": 1,
+              "nested": {
+                "safe": true
+              }
+            },
+            "sequence": 51,
+            "summary": "Unknown additive activity",
+            "tone": "info",
+            "turnId": "turn-golden"
+          }
+        ],
+        "archivedAt": null,
+        "branch": null,
+        "checkpoints": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "deletedAt": null,
+        "id": "thread-golden",
+        "interactionMode": "plan",
+        "latestTurn": {
+          "assistantMessageId": "message-assistant",
+          "completedAt": null,
+          "requestedAt": "2026-01-01T00:00:00.000Z",
+          "startedAt": "2026-01-01T00:00:00.000Z",
+          "state": "running",
+          "turnId": "turn-golden"
+        },
+        "messages": [
+          {
+            "attachments": [],
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "id": "message-user",
+            "role": "user",
+            "streaming": false,
+            "text": "Create the portable fixture",
+            "turnId": "turn-golden",
+            "updatedAt": "2026-01-01T00:00:00.000Z"
+          },
+          {
+            "attachments": [],
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "id": "message-assistant",
+            "role": "assistant",
+            "streaming": true,
+            "text": "Generating",
+            "turnId": "turn-golden",
+            "updatedAt": "2026-01-01T00:00:01.000Z"
+          }
+        ],
+        "modelSelection": {
+          "instanceId": "provider-golden",
+          "model": "model-golden"
+        },
+        "projectId": "project-golden",
+        "proposedPlans": [
+          {
+            "createdAt": "2026-01-01T00:00:00.000Z",
+            "id": "plan-golden",
+            "implementationThreadId": null,
+            "implementedAt": null,
+            "planMarkdown": "1. Generate the protocol artifacts.",
+            "turnId": "turn-golden",
+            "updatedAt": "2026-01-01T00:00:01.000Z"
+          }
+        ],
+        "runtimeMode": "approval-required",
+        "session": {
+          "activeTurnId": "turn-golden",
+          "lastError": null,
+          "providerInstanceId": "provider-golden",
+          "providerName": "Golden provider",
+          "runtimeMode": "approval-required",
+          "status": "running",
+          "threadId": "thread-golden",
+          "updatedAt": "2026-01-01T00:00:01.000Z"
+        },
+        "settledAt": null,
+        "settledOverride": null,
+        "snoozedAt": null,
+        "snoozedUntil": null,
+        "title": "Golden thread",
+        "updatedAt": "2026-01-01T00:00:01.000Z",
+        "worktreePath": null
+      }
+    }
+  },
+  {
+    "event": {
+      "aggregateId": "thread-golden",
+      "aggregateKind": "thread",
+      "causationEventId": null,
+      "commandId": "command-41",
+      "correlationId": "command-41",
+      "eventId": "event-41",
+      "metadata": {},
+      "occurredAt": "2026-01-01T00:00:01.000Z",
+      "payload": {
+        "modelSelection": {
+          "instanceId": "provider-golden",
+          "model": "model-golden"
+        },
+        "threadId": "thread-golden",
+        "title": "Renamed golden thread",
+        "updatedAt": "2026-01-01T00:00:01.000Z"
+      },
+      "sequence": 41,
+      "type": "thread.meta-updated"
+    },
+    "kind": "event"
+  },
+  {
+    "event": {
+      "aggregateId": "thread-golden",
+      "aggregateKind": "thread",
+      "causationEventId": null,
+      "commandId": "command-42",
+      "correlationId": "command-42",
+      "eventId": "event-42",
+      "metadata": {},
+      "occurredAt": "2026-01-01T00:00:01.000Z",
+      "payload": {
+        "runtimeMode": "approval-required",
+        "threadId": "thread-golden",
+        "updatedAt": "2026-01-01T00:00:01.000Z"
+      },
+      "sequence": 42,
+      "type": "thread.runtime-mode-set"
+    },
+    "kind": "event"
+  },
+  {
+    "event": {
+      "aggregateId": "thread-golden",
+      "aggregateKind": "thread",
+      "causationEventId": null,
+      "commandId": "command-43",
+      "correlationId": "command-43",
+      "eventId": "event-43",
+      "metadata": {},
+      "occurredAt": "2026-01-01T00:00:01.000Z",
+      "payload": {
+        "interactionMode": "plan",
+        "threadId": "thread-golden",
+        "updatedAt": "2026-01-01T00:00:01.000Z"
+      },
+      "sequence": 43,
+      "type": "thread.interaction-mode-set"
+    },
+    "kind": "event"
+  },
+  {
+    "event": {
+      "aggregateId": "thread-golden",
+      "aggregateKind": "thread",
+      "causationEventId": null,
+      "commandId": "command-44",
+      "correlationId": "command-44",
+      "eventId": "event-44",
+      "metadata": {},
+      "occurredAt": "2026-01-01T00:00:01.000Z",
+      "payload": {
+        "attachments": [],
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "messageId": "message-assistant",
+        "role": "assistant",
+        "streaming": true,
+        "text": "Generating",
+        "threadId": "thread-golden",
+        "turnId": "turn-golden",
+        "updatedAt": "2026-01-01T00:00:01.000Z"
+      },
+      "sequence": 44,
+      "type": "thread.message-sent"
+    },
+    "kind": "event"
+  },
+  {
+    "event": {
+      "aggregateId": "thread-golden",
+      "aggregateKind": "thread",
+      "causationEventId": null,
+      "commandId": "command-45",
+      "correlationId": "command-45",
+      "eventId": "event-45",
+      "metadata": {},
+      "occurredAt": "2026-01-01T00:00:01.000Z",
+      "payload": {
+        "createdAt": "2026-01-01T00:00:00.000Z",
+        "interactionMode": "plan",
+        "messageId": "message-user",
+        "modelSelection": {
+          "instanceId": "provider-golden",
+          "model": "model-golden"
+        },
+        "runtimeMode": "approval-required",
+        "threadId": "thread-golden",
+        "titleSeed": "Create the portable fixture"
+      },
+      "sequence": 45,
+      "type": "thread.turn-start-requested"
+    },
+    "kind": "event"
+  },
+  {
+    "event": {
+      "aggregateId": "thread-golden",
+      "aggregateKind": "thread",
+      "causationEventId": null,
+      "commandId": "command-46",
+      "correlationId": "command-46",
+      "eventId": "event-46",
+      "metadata": {},
+      "occurredAt": "2026-01-01T00:00:01.000Z",
+      "payload": {
+        "createdAt": "2026-01-01T00:00:01.000Z",
+        "threadId": "thread-golden",
+        "turnId": "turn-golden"
+      },
+      "sequence": 46,
+      "type": "thread.turn-interrupt-requested"
+    },
+    "kind": "event"
+  },
+  {
+    "event": {
+      "aggregateId": "thread-golden",
+      "aggregateKind": "thread",
+      "causationEventId": null,
+      "commandId": "command-47",
+      "correlationId": "command-47",
+      "eventId": "event-47",
+      "metadata": {},
+      "occurredAt": "2026-01-01T00:00:01.000Z",
+      "payload": {
+        "createdAt": "2026-01-01T00:00:01.000Z",
+        "decision": "accept",
+        "requestId": "approval-golden",
+        "threadId": "thread-golden"
+      },
+      "sequence": 47,
+      "type": "thread.approval-response-requested"
+    },
+    "kind": "event"
+  },
+  {
+    "event": {
+      "aggregateId": "thread-golden",
+      "aggregateKind": "thread",
+      "causationEventId": null,
+      "commandId": "command-48",
+      "correlationId": "command-48",
+      "eventId": "event-48",
+      "metadata": {},
+      "occurredAt": "2026-01-01T00:00:01.000Z",
+      "payload": {
+        "answers": {
+          "target": "debug"
+        },
+        "createdAt": "2026-01-01T00:00:01.000Z",
+        "requestId": "input-golden",
+        "threadId": "thread-golden"
+      },
+      "sequence": 48,
+      "type": "thread.user-input-response-requested"
+    },
+    "kind": "event"
+  },
+  {
+    "event": {
+      "aggregateId": "thread-golden",
+      "aggregateKind": "thread",
+      "causationEventId": null,
+      "commandId": "command-49",
+      "correlationId": "command-49",
+      "eventId": "event-49",
+      "metadata": {},
+      "occurredAt": "2026-01-01T00:00:01.000Z",
+      "payload": {
+        "session": {
+          "activeTurnId": "turn-golden",
+          "lastError": null,
+          "providerInstanceId": "provider-golden",
+          "providerName": "Golden provider",
+          "runtimeMode": "approval-required",
+          "status": "running",
+          "threadId": "thread-golden",
+          "updatedAt": "2026-01-01T00:00:01.000Z"
+        },
+        "threadId": "thread-golden"
+      },
+      "sequence": 49,
+      "type": "thread.session-set"
+    },
+    "kind": "event"
+  },
+  {
+    "event": {
+      "aggregateId": "thread-golden",
+      "aggregateKind": "thread",
+      "causationEventId": null,
+      "commandId": "command-50",
+      "correlationId": "command-50",
+      "eventId": "event-50",
+      "metadata": {},
+      "occurredAt": "2026-01-01T00:00:01.000Z",
+      "payload": {
+        "proposedPlan": {
+          "createdAt": "2026-01-01T00:00:00.000Z",
+          "id": "plan-golden",
+          "implementationThreadId": null,
+          "implementedAt": null,
+          "planMarkdown": "1. Generate the protocol artifacts.",
+          "turnId": "turn-golden",
+          "updatedAt": "2026-01-01T00:00:01.000Z"
+        },
+        "threadId": "thread-golden"
+      },
+      "sequence": 50,
+      "type": "thread.proposed-plan-upserted"
+    },
+    "kind": "event"
+  },
+  {
+    "event": {
+      "aggregateId": "thread-golden",
+      "aggregateKind": "thread",
+      "causationEventId": null,
+      "commandId": "command-51",
+      "correlationId": "command-51",
+      "eventId": "event-51",
+      "metadata": {},
+      "occurredAt": "2026-01-01T00:00:01.000Z",
+      "payload": {
+        "activity": {
+          "createdAt": "2026-01-01T00:00:01.000Z",
+          "id": "activity-info",
+          "kind": "status.updated",
+          "payload": {
+            "phase": "analysis"
+          },
+          "sequence": 51,
+          "summary": "Inspecting the project",
+          "tone": "info",
+          "turnId": "turn-golden"
+        },
+        "threadId": "thread-golden"
+      },
+      "sequence": 51,
+      "type": "thread.activity-appended"
+    },
+    "kind": "event"
+  },
+  {
+    "event": {
+      "aggregateId": "thread-golden",
+      "aggregateKind": "thread",
+      "causationEventId": null,
+      "commandId": "command-52",
+      "correlationId": "command-52",
+      "eventId": "event-52",
+      "metadata": {},
+      "occurredAt": "2026-01-01T00:00:01.000Z",
+      "payload": {
+        "activity": {
+          "createdAt": "2026-01-01T00:00:01.000Z",
+          "id": "activity-tool",
+          "kind": "tool.completed",
+          "payload": {
+            "paths": ["README.md"],
+            "toolName": "read"
+          },
+          "sequence": 52,
+          "summary": "Read project files",
+          "tone": "tool",
+          "turnId": "turn-golden"
+        },
+        "threadId": "thread-golden"
+      },
+      "sequence": 52,
+      "type": "thread.activity-appended"
+    },
+    "kind": "event"
+  },
+  {
+    "event": {
+      "aggregateId": "thread-golden",
+      "aggregateKind": "thread",
+      "causationEventId": null,
+      "commandId": "command-53",
+      "correlationId": "command-53",
+      "eventId": "event-53",
+      "metadata": {},
+      "occurredAt": "2026-01-01T00:00:01.000Z",
+      "payload": {
+        "activity": {
+          "createdAt": "2026-01-01T00:00:01.000Z",
+          "id": "activity-approval",
+          "kind": "approval.requested",
+          "payload": {
+            "command": "vp test run",
+            "decisions": ["accept", "acceptForSession", "decline", "cancel"],
+            "requestId": "approval-golden",
+            "requestKind": "command"
+          },
+          "sequence": 53,
+          "summary": "Command approval requested",
+          "tone": "approval",
+          "turnId": "turn-golden"
+        },
+        "threadId": "thread-golden"
+      },
+      "sequence": 53,
+      "type": "thread.activity-appended"
+    },
+    "kind": "event"
+  },
+  {
+    "event": {
+      "aggregateId": "thread-golden",
+      "aggregateKind": "thread",
+      "causationEventId": null,
+      "commandId": "command-54",
+      "correlationId": "command-54",
+      "eventId": "event-54",
+      "metadata": {},
+      "occurredAt": "2026-01-01T00:00:01.000Z",
+      "payload": {
+        "activity": {
+          "createdAt": "2026-01-01T00:00:01.000Z",
+          "id": "activity-user-input",
+          "kind": "user-input.requested",
+          "payload": {
+            "questions": [
+              {
+                "id": "target",
+                "options": ["debug", "release"],
+                "prompt": "Which target should be used?"
+              }
+            ],
+            "requestId": "input-golden"
+          },
+          "sequence": 54,
+          "summary": "More information is required",
+          "tone": "approval",
+          "turnId": "turn-golden"
+        },
+        "threadId": "thread-golden"
+      },
+      "sequence": 54,
+      "type": "thread.activity-appended"
+    },
+    "kind": "event"
+  },
+  {
+    "event": {
+      "aggregateId": "thread-golden",
+      "aggregateKind": "thread",
+      "causationEventId": null,
+      "commandId": "command-55",
+      "correlationId": "command-55",
+      "eventId": "event-55",
+      "metadata": {},
+      "occurredAt": "2026-01-01T00:00:01.000Z",
+      "payload": {
+        "activity": {
+          "createdAt": "2026-01-01T00:00:01.000Z",
+          "id": "activity-error",
+          "kind": "provider.error",
+          "payload": {
+            "detail": "fixture error"
+          },
+          "sequence": 55,
+          "summary": "A recoverable provider error occurred",
+          "tone": "error",
+          "turnId": "turn-golden"
+        },
+        "threadId": "thread-golden"
+      },
+      "sequence": 55,
+      "type": "thread.activity-appended"
+    },
+    "kind": "event"
+  },
+  {
+    "event": {
+      "aggregateId": "thread-golden",
+      "aggregateKind": "thread",
+      "causationEventId": null,
+      "commandId": "command-56",
+      "correlationId": "command-56",
+      "eventId": "event-56",
+      "metadata": {},
+      "occurredAt": "2026-01-01T00:00:01.000Z",
+      "payload": {
+        "activity": {
+          "createdAt": "2026-01-01T00:00:01.000Z",
+          "id": "activity-unknown",
+          "kind": "future.additive-activity",
+          "payload": {
+            "futureField": 1,
+            "nested": {
+              "safe": true
+            }
+          },
+          "sequence": 56,
+          "summary": "Unknown additive activity",
+          "tone": "info",
+          "turnId": "turn-golden"
+        },
+        "threadId": "thread-golden"
+      },
+      "sequence": 56,
+      "type": "thread.activity-appended"
+    },
+    "kind": "event"
+  },
+  {
+    "kind": "synchronized"
+  }
+]

@@ -3,185 +3,75 @@ package de.chennemann.agentic.navigation
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation3.runtime.NavEntry
-import androidx.navigation3.runtime.NavKey
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
-import androidx.navigation3.ui.defaultPopTransitionSpec
-import androidx.navigation3.ui.defaultTransitionSpec
-import de.chennemann.agentic.ui.chat.AgentChatScreen
-import de.chennemann.agentic.ui.chat.ConversationViewModel
-import de.chennemann.agentic.ui.chat.SessionSelectionBottomSheet
-import de.chennemann.agentic.ui.chat.SessionSelectionViewModel
-import de.chennemann.agentic.ui.logs.LogsScreen
-import de.chennemann.agentic.ui.logs.LogsViewModel
-import de.chennemann.agentic.ui.manage.ManageScreen
-import de.chennemann.agentic.ui.manage.ManageViewModel
-import kotlinx.coroutines.flow.Flow
+import de.chennemann.agentic.domain.environment.EnvironmentRepository
+import de.chennemann.agentic.ui.chat.ChatViewModel
+import de.chennemann.agentic.ui.chat.ChatUiEvent
+import de.chennemann.agentic.ui.chat.T3ChatScreen
+import de.chennemann.agentic.ui.onboarding.OnboardingViewModel
+import de.chennemann.agentic.ui.onboarding.OnboardingUiEvent
+import de.chennemann.agentic.ui.onboarding.T3OnboardingScreen
 import org.koin.androidx.compose.koinViewModel
-import org.koin.core.parameter.parametersOf
+import org.koin.core.context.GlobalContext
 
 @Composable
-@OptIn(ExperimentalMaterial3Api::class)
 fun AppNavHost() {
-    val stack = rememberNavBackStack(AgentChatRoute)
-    val owner = checkNotNull(LocalViewModelStoreOwner.current)
+    val environments: EnvironmentRepository = GlobalContext.get().get()
+    val activeEnvironment by environments.activeEnvironment.collectAsStateWithLifecycle()
+    val stack = rememberNavBackStack(OnboardingRoute)
+    var manualOnboarding by remember { mutableStateOf(false) }
+    val target = if (activeEnvironment == null || manualOnboarding) OnboardingRoute else ChatRoute
+
+    LaunchedEffect(target) {
+        if (stack.lastOrNull() != target) {
+            stack.clear()
+            stack.add(target)
+        }
+    }
 
     NavDisplay(
         backStack = stack,
-        sceneStrategy = BottomSheetSceneStrategy(),
-        transitionSpec = {
-            if (initialState.key == AgentChatRoute && targetState.key == WorkspaceHubRoute) {
-                slideInHorizontally(
-                    animationSpec = tween(durationMillis = 220),
-                    initialOffsetX = { -it },
-                ) togetherWith slideOutHorizontally(
-                    animationSpec = tween(durationMillis = 220),
-                    targetOffsetX = { it },
-                )
-            } else {
-                defaultTransitionSpec<NavKey>().invoke(this)
-            }
-        },
-        popTransitionSpec = {
-            if (initialState.key == WorkspaceHubRoute && targetState.key == AgentChatRoute) {
-                slideInHorizontally(
-                    animationSpec = tween(durationMillis = 220),
-                    initialOffsetX = { it },
-                ) togetherWith slideOutHorizontally(
-                    animationSpec = tween(durationMillis = 220),
-                    targetOffsetX = { -it },
-                )
-            } else {
-                defaultPopTransitionSpec<NavKey>().invoke(this)
-            }
-        },
-        onBack = {
-            dispatchNavAction(
-                stack = stack,
-                action = NavEvent.NavigateBack,
-            )
-        },
-        entryProvider = { key ->
-            when (key) {
-                is AgentChatRoute -> NavEntry(key) {
-                    val conversationModel: ConversationViewModel = koinViewModel(viewModelStoreOwner = owner)
-                    val conversationState by conversationModel.state.collectAsStateWithLifecycle()
-
-                    CollectNavigation(conversationModel.nav) {
-                        dispatchNavAction(stack, it)
-                    }
-
-                    AgentChatScreen(
-                        state = conversationState,
-                        onEvent = conversationModel::onEvent,
-                    )
-                }
-
-                is SessionSelectionBottomSheetRoute -> NavEntry(
-                    key = key,
-                    metadata = BottomSheetSceneStrategy.bottomSheet(),
-                ) {
-                    val model: SessionSelectionViewModel = koinViewModel(
-                        key = "quick-switch-${key.projectKey}",
-                        viewModelStoreOwner = owner,
-                        parameters = { parametersOf(key.projectKey) },
-                    )
-                    val menu by model.state.collectAsStateWithLifecycle()
-                    LaunchedEffect(model) {
-                        model.refresh()
-                    }
-                    CollectNavigation(model.nav) {
-                        dispatchNavAction(stack, it)
-                    }
-                    SessionSelectionBottomSheet(
-                        menu = menu,
-                        onEvent = model::onEvent,
-                    )
-                }
-
-                is WorkspaceHubRoute -> NavEntry(key) {
-                    val model: ManageViewModel = koinViewModel()
-                    val state by model.state.collectAsStateWithLifecycle()
-                    CollectNavigation(model.nav) {
-                        dispatchNavAction(stack, it)
-                    }
-                    ManageScreen(
+        onBack = {},
+        entryProvider = { route ->
+            when (route) {
+                OnboardingRoute -> NavEntry(route) {
+                    val viewModel: OnboardingViewModel = koinViewModel()
+                    val state by viewModel.state.collectAsStateWithLifecycle()
+                    T3OnboardingScreen(
                         state = state,
-                        onEvent = model::onEvent,
+                        onEvent = {
+                            if (it == OnboardingUiEvent.CloseRequested) {
+                                manualOnboarding = false
+                            } else {
+                                viewModel.onEvent(it)
+                            }
+                        },
                     )
                 }
 
-                is LogsRoute -> NavEntry(key) {
-                    val model: LogsViewModel = koinViewModel()
-                    val state by model.state.collectAsStateWithLifecycle()
-                    CollectNavigation(model.nav) {
-                        dispatchNavAction(stack, it)
-                    }
-                    LogsScreen(
+                ChatRoute -> NavEntry(route) {
+                    val viewModel: ChatViewModel = koinViewModel()
+                    val state by viewModel.state.collectAsStateWithLifecycle()
+                    T3ChatScreen(
                         state = state,
-                        onEvent = model::onEvent,
+                        onEvent = {
+                            if (it == ChatUiEvent.PairEnvironmentRequested) {
+                                manualOnboarding = true
+                            } else {
+                                viewModel.onEvent(it)
+                            }
+                        },
                     )
                 }
 
-                else -> error("Unknown route: $key")
+                else -> error("Unknown application route")
             }
         },
     )
-}
-
-@Composable
-private fun CollectNavigation(
-    navEvents: Flow<NavEvent>,
-    onAction: (NavEvent) -> Unit,
-) {
-    LaunchedEffect(navEvents) {
-        navEvents.collect(onAction)
-    }
-}
-
-internal fun dispatchNavAction(
-    stack: MutableList<NavKey>,
-    action: NavEvent,
-) {
-    when (action) {
-        is NavEvent.NavigateTo -> {
-            when (action.route) {
-                AgentChatRoute -> returnToAgentChatRoot(stack)
-                WorkspaceHubRoute -> stack.add(WorkspaceHubRoute)
-                LogsRoute -> stack.add(LogsRoute)
-                is SessionSelectionBottomSheetRoute -> {
-                    val sheet = action.route
-                    val current = stack.lastOrNull()
-                    if (current is SessionSelectionBottomSheetRoute && current.projectKey == sheet.projectKey) {
-                        return
-                    }
-                    if (current is SessionSelectionBottomSheetRoute) {
-                        stack.removeLastOrNull()
-                    }
-                    stack.add(sheet)
-                }
-            }
-        }
-
-        NavEvent.NavigateBack -> {
-            stack.removeLastOrNull()
-        }
-    }
-}
-
-internal fun returnToAgentChatRoot(stack: MutableList<NavKey>) {
-    while (stack.isNotEmpty() && stack.lastOrNull() != AgentChatRoute) {
-        stack.removeLastOrNull()
-    }
-    if (stack.isEmpty()) {
-        stack.add(AgentChatRoute)
-    }
 }

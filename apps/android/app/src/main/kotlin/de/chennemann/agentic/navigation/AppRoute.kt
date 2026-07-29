@@ -7,13 +7,7 @@ import kotlinx.serialization.Serializable
 sealed interface AppRoute : NavKey
 
 @Serializable
-data object AgentChatRoute : AppRoute
+data object OnboardingRoute : AppRoute
 
 @Serializable
-data object WorkspaceHubRoute : AppRoute
-
-@Serializable
-data object LogsRoute : AppRoute
-
-@Serializable
-data class SessionSelectionBottomSheetRoute(val projectKey: String) : AppRoute
+data object ChatRoute : AppRoute

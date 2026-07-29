@@ -1,0 +1,22 @@
+{
+  "algorithm": "sha256",
+  "checksum": "384da4cb1dbba7f64d57e900ab99fb9722800b082cd1b0cfe0321a4ab61e36b1",
+  "files": [
+    {
+      "path": "fixtures/client-config.json",
+      "sha256": "5b0ff09c09081e4d5f931491e0041ac32c3386f7eaa3fc7f2cd952bcf5971d74"
+    },
+    {
+      "path": "fixtures/commands.json",
+      "sha256": "01893f23bc650c3cf73e5d90414084e9d0799f641a6ea16bd777c07261b4cf96"
+    },
+    {
+      "path": "fixtures/shell-stream-items.json",
+      "sha256": "11e507a5021375ced735f4c889f12ade7af6c584bc0372228cf020602982b215"
+    },
+    {
+      "path": "fixtures/thread-stream-items.json",
+      "sha256": "d48213256097d0fa54673d1942516fffa2c474a1a4d3f73d5f255e6a7ecb0982"
+    }
+  ]
+}

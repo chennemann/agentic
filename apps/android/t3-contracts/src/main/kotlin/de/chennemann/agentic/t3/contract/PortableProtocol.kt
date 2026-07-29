@@ -1,0 +1,405 @@
+package de.chennemann.agentic.t3.contract
+
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonClassDiscriminator
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+
+const val T3_PORTABLE_PROTOCOL_NAME = "t3-portable-client"
+const val T3_PORTABLE_PROTOCOL_VERSION = 1
+const val T3_SOURCE_COMMIT = "0ed054375c12940436df680807a05fd4aa3be5f6"
+const val T3_ARTIFACT_CHECKSUM = "c594f7fe3fc3c93cbcaed5931fe4791de1233073a9a0a79941c802a3ae323f44"
+
+@OptIn(ExperimentalSerializationApi::class)
+val PortableJson = Json {
+    ignoreUnknownKeys = true
+    explicitNulls = false
+    prettyPrint = false
+}
+
+@Serializable
+data class ExecutionEnvironmentDescriptor(
+    val environmentId: String,
+    val label: String,
+    val platform: EnvironmentPlatform,
+    val serverVersion: String,
+    val capabilities: ExecutionEnvironmentCapabilities
+)
+
+@Serializable
+data class EnvironmentPlatform(val os: String, val arch: String)
+
+@Serializable
+data class ExecutionEnvironmentCapabilities(
+    val portableClientProtocol: Int? = null,
+    val connectionProbe: Boolean = false,
+    val repositoryIdentity: Boolean = false,
+    val threadSettlement: Boolean = false,
+    val threadSnooze: Boolean = false
+)
+
+@Serializable
+data class ServerAuthDescriptor(
+    val policy: String,
+    val bootstrapMethods: List<String>,
+    val sessionMethods: List<String>,
+    val sessionCookieName: String
+)
+
+@Serializable
+data class AuthSession(
+    val authenticated: Boolean,
+    val auth: ServerAuthDescriptor,
+    val sessionMethod: String? = null,
+    val scopes: List<String> = emptyList(),
+    val expiresAt: String? = null
+)
+
+@Serializable
+data class TokenExchangeResponse(
+    @SerialName("access_token")
+    val accessToken: String,
+    @SerialName("issued_token_type")
+    val issuedTokenType: String,
+    @SerialName("token_type")
+    val tokenType: String,
+    @SerialName("expires_in")
+    val expiresIn: JsonElement,
+    val scope: String
+)
+
+@Serializable
+data class EnvironmentClientConfig(
+    val environment: ExecutionEnvironmentDescriptor,
+    val auth: ServerAuthDescriptor,
+    val providers: List<ProviderInstance>,
+    val shellResumeCompletionMarker: Boolean,
+    val threadResumeCompletionMarker: Boolean,
+    val protocolVersion: Int
+)
+
+@Serializable
+data class ProviderInstance(
+    val instanceId: String,
+    val displayName: String,
+    val driver: String? = null,
+    val enabled: Boolean = true,
+    val installed: Boolean = true,
+    val availability: String? = null,
+    val status: String? = null,
+    val models: List<ProviderModel> = emptyList(),
+    val showInteractionModeToggle: Boolean = true,
+    val slashCommands: List<SlashCommand> = emptyList(),
+    val skills: List<JsonElement> = emptyList()
+)
+
+@Serializable
+data class ProviderModel(
+    val slug: String,
+    val name: String,
+    val isDefault: Boolean = false,
+    val isCustom: Boolean = false,
+    val capabilities: JsonObject = JsonObject(emptyMap())
+)
+
+@Serializable
+data class SlashCommand(val name: String, val description: String? = null, val input: JsonObject? = null)
+
+@Serializable
+data class ModelSelection(val instanceId: String, val model: String, val options: JsonObject? = null)
+
+@Serializable
+data class OrchestrationProject(
+    val id: String,
+    val title: String,
+    val workspaceRoot: String,
+    val defaultModelSelection: ModelSelection? = null,
+    val createdAt: String,
+    val updatedAt: String,
+    val scripts: List<JsonElement> = emptyList()
+)
+
+@Serializable
+data class OrchestrationThreadShell(
+    val id: String,
+    val projectId: String,
+    val title: String,
+    val modelSelection: ModelSelection? = null,
+    val interactionMode: String? = null,
+    val runtimeMode: String? = null,
+    val branch: String? = null,
+    val worktreePath: String? = null,
+    val archivedAt: String? = null,
+    val createdAt: String,
+    val updatedAt: String,
+    val latestUserMessageAt: String? = null,
+    val latestTurn: LatestTurn? = null,
+    val session: ThreadSession? = null,
+    val hasPendingApprovals: Boolean = false,
+    val hasPendingUserInput: Boolean = false,
+    val hasActionableProposedPlan: Boolean = false
+)
+
+@Serializable
+data class LatestTurn(
+    val turnId: String,
+    val state: String,
+    val assistantMessageId: String? = null,
+    val requestedAt: String,
+    val startedAt: String? = null,
+    val completedAt: String? = null
+)
+
+@Serializable
+data class ThreadSession(
+    val threadId: String,
+    val status: String,
+    val providerName: String? = null,
+    val providerInstanceId: String? = null,
+    val activeTurnId: String? = null,
+    val runtimeMode: String? = null,
+    val lastError: String? = null,
+    val updatedAt: String
+)
+
+@Serializable
+data class OrchestrationShellSnapshot(
+    val projects: List<OrchestrationProject>,
+    val threads: List<OrchestrationThreadShell>,
+    val snapshotSequence: Long,
+    val updatedAt: String
+)
+
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+@JsonClassDiscriminator("kind")
+sealed interface OrchestrationShellStreamItem {
+    @Serializable
+    @SerialName("snapshot")
+    data class Snapshot(val snapshot: OrchestrationShellSnapshot) : OrchestrationShellStreamItem
+
+    @Serializable
+    @SerialName("project-upserted")
+    data class ProjectUpserted(val sequence: Long, val project: OrchestrationProject) : OrchestrationShellStreamItem
+
+    @Serializable
+    @SerialName("project-removed")
+    data class ProjectRemoved(val sequence: Long, val projectId: String) : OrchestrationShellStreamItem
+
+    @Serializable
+    @SerialName("thread-upserted")
+    data class ThreadUpserted(val sequence: Long, val thread: OrchestrationThreadShell) : OrchestrationShellStreamItem
+
+    @Serializable
+    @SerialName("thread-removed")
+    data class ThreadRemoved(val sequence: Long, val threadId: String) : OrchestrationShellStreamItem
+
+    @Serializable
+    @SerialName("synchronized")
+    data object Synchronized : OrchestrationShellStreamItem
+}
+
+@Serializable
+data class OrchestrationThreadDetailSnapshot(val snapshotSequence: Long, val thread: OrchestrationThreadDetail)
+
+@Serializable
+data class OrchestrationThreadDetail(
+    val id: String,
+    val projectId: String,
+    val title: String,
+    val modelSelection: ModelSelection? = null,
+    val interactionMode: String? = null,
+    val runtimeMode: String? = null,
+    val branch: String? = null,
+    val worktreePath: String? = null,
+    val archivedAt: String? = null,
+    val deletedAt: String? = null,
+    val createdAt: String,
+    val updatedAt: String,
+    val latestTurn: LatestTurn? = null,
+    val session: ThreadSession? = null,
+    val messages: List<OrchestrationMessage> = emptyList(),
+    val activities: List<OrchestrationActivity> = emptyList(),
+    val proposedPlans: List<ProposedPlan> = emptyList(),
+    val checkpoints: List<JsonElement> = emptyList()
+)
+
+@Serializable
+data class OrchestrationMessage(
+    val id: String,
+    val turnId: String? = null,
+    val role: String,
+    val text: String,
+    val streaming: Boolean = false,
+    val createdAt: String,
+    val updatedAt: String,
+    val attachments: List<JsonElement> = emptyList()
+)
+
+@Serializable
+data class OrchestrationActivity(
+    val id: String,
+    val turnId: String? = null,
+    val sequence: Long,
+    val kind: String,
+    val tone: String,
+    val summary: String,
+    val payload: JsonObject,
+    val createdAt: String
+)
+
+@Serializable
+data class ProposedPlan(
+    val id: String,
+    val turnId: String,
+    val planMarkdown: String,
+    val implementationThreadId: String? = null,
+    val implementedAt: String? = null,
+    val createdAt: String,
+    val updatedAt: String
+)
+
+@Serializable
+data class OrchestrationEvent(
+    val aggregateId: String,
+    val aggregateKind: String,
+    val eventId: String,
+    val commandId: String,
+    val correlationId: String,
+    val causationEventId: String? = null,
+    val sequence: Long,
+    val type: String,
+    val payload: JsonObject,
+    val metadata: JsonObject = JsonObject(emptyMap()),
+    val occurredAt: String
+)
+
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+@JsonClassDiscriminator("kind")
+sealed interface OrchestrationThreadStreamItem {
+    @Serializable
+    @SerialName("snapshot")
+    data class Snapshot(val snapshot: OrchestrationThreadDetailSnapshot) : OrchestrationThreadStreamItem
+
+    @Serializable
+    @SerialName("event")
+    data class Event(val event: OrchestrationEvent) : OrchestrationThreadStreamItem
+
+    @Serializable
+    @SerialName("synchronized")
+    data object Synchronized : OrchestrationThreadStreamItem
+}
+
+@Serializable
+data class DispatchResult(val sequence: Long)
+
+@Serializable
+data class TurnMessageInput(
+    val messageId: String,
+    val role: String = "user",
+    val text: String,
+    val attachments: List<JsonElement> = emptyList()
+)
+
+@Serializable
+data class NewThreadBootstrap(
+    val projectId: String,
+    val title: String,
+    val modelSelection: ModelSelection,
+    val interactionMode: String,
+    val runtimeMode: String,
+    val branch: String? = null,
+    val worktreePath: String? = null,
+    val createdAt: String
+)
+
+@Serializable
+data class StartTurnBootstrap(val createThread: NewThreadBootstrap)
+
+@OptIn(ExperimentalSerializationApi::class)
+@Serializable
+@JsonClassDiscriminator("type")
+sealed interface ClientOrchestrationCommand {
+    val commandId: String
+
+    @Serializable
+    @SerialName("thread.turn.start")
+    data class StartTurn(
+        override val commandId: String,
+        val threadId: String,
+        val message: TurnMessageInput,
+        val modelSelection: ModelSelection,
+        val interactionMode: String,
+        val runtimeMode: String,
+        val createdAt: String,
+        val bootstrap: StartTurnBootstrap? = null
+    ) : ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("thread.turn.interrupt")
+    data class InterruptTurn(
+        override val commandId: String,
+        val threadId: String,
+        val turnId: String,
+        val createdAt: String
+    ) : ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("thread.meta.update")
+    data class UpdateThreadMetadata(
+        override val commandId: String,
+        val threadId: String,
+        val title: String,
+        val modelSelection: ModelSelection
+    ) : ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("thread.archive")
+    data class ArchiveThread(override val commandId: String, val threadId: String) : ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("thread.unarchive")
+    data class UnarchiveThread(override val commandId: String, val threadId: String) : ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("thread.runtime-mode.set")
+    data class SetRuntimeMode(
+        override val commandId: String,
+        val threadId: String,
+        val runtimeMode: String,
+        val createdAt: String
+    ) : ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("thread.interaction-mode.set")
+    data class SetInteractionMode(
+        override val commandId: String,
+        val threadId: String,
+        val interactionMode: String,
+        val createdAt: String
+    ) : ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("thread.approval.respond")
+    data class RespondToApproval(
+        override val commandId: String,
+        val threadId: String,
+        val requestId: String,
+        val decision: String,
+        val createdAt: String
+    ) : ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("thread.user-input.respond")
+    data class RespondToUserInput(
+        override val commandId: String,
+        val threadId: String,
+        val requestId: String,
+        val answers: JsonObject,
+        val createdAt: String
+    ) : ClientOrchestrationCommand
+}

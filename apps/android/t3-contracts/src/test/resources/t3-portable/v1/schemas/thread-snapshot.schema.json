@@ -1,0 +1,681 @@
+{
+  "definitions": {},
+  "dialect": "draft-2020-12",
+  "schema": {
+    "additionalProperties": false,
+    "properties": {
+      "snapshotSequence": {
+        "allOf": [
+          {
+            "minimum": 0
+          }
+        ],
+        "type": "integer"
+      },
+      "thread": {
+        "additionalProperties": false,
+        "properties": {
+          "activities": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "createdAt": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string"
+                },
+                "payload": {},
+                "sequence": {
+                  "anyOf": [
+                    {
+                      "allOf": [
+                        {
+                          "minimum": 0
+                        }
+                      ],
+                      "type": "integer"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "summary": {
+                  "type": "string"
+                },
+                "tone": {
+                  "enum": ["info", "tool", "approval", "error"],
+                  "type": "string"
+                },
+                "turnId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                }
+              },
+              "required": ["id", "tone", "kind", "summary", "payload", "turnId", "createdAt"],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "archivedAt": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "checkpoints": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "assistantMessageId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "checkpointRef": {
+                  "type": "string"
+                },
+                "checkpointTurnCount": {
+                  "allOf": [
+                    {
+                      "minimum": 0
+                    }
+                  ],
+                  "type": "integer"
+                },
+                "completedAt": {
+                  "type": "string"
+                },
+                "files": {
+                  "items": {
+                    "additionalProperties": false,
+                    "properties": {
+                      "additions": {
+                        "allOf": [
+                          {
+                            "minimum": 0
+                          }
+                        ],
+                        "type": "integer"
+                      },
+                      "deletions": {
+                        "allOf": [
+                          {
+                            "minimum": 0
+                          }
+                        ],
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "type": "string"
+                      },
+                      "path": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["path", "kind", "additions", "deletions"],
+                    "type": "object"
+                  },
+                  "type": "array"
+                },
+                "status": {
+                  "enum": ["ready", "missing", "error"],
+                  "type": "string"
+                },
+                "turnId": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "turnId",
+                "checkpointTurnCount",
+                "checkpointRef",
+                "status",
+                "files",
+                "assistantMessageId",
+                "completedAt"
+              ],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "deletedAt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "interactionMode": {
+            "anyOf": [
+              {
+                "enum": ["default", "plan"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "latestTurn": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "assistantMessageId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "completedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "requestedAt": {
+                    "type": "string"
+                  },
+                  "sourceProposedPlan": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "planId": {
+                            "type": "string"
+                          },
+                          "threadId": {
+                            "type": "string"
+                          }
+                        },
+                        "required": ["threadId", "planId"],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "startedAt": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "state": {
+                    "enum": ["running", "interrupted", "completed", "error"],
+                    "type": "string"
+                  },
+                  "turnId": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "turnId",
+                  "state",
+                  "requestedAt",
+                  "startedAt",
+                  "completedAt",
+                  "assistantMessageId"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "messages": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "attachments": {
+                  "anyOf": [
+                    {
+                      "items": {
+                        "anyOf": [
+                          {
+                            "additionalProperties": false,
+                            "properties": {
+                              "id": {
+                                "type": "string"
+                              },
+                              "mimeType": {
+                                "type": "string"
+                              },
+                              "name": {
+                                "type": "string"
+                              },
+                              "sizeBytes": {
+                                "allOf": [
+                                  {
+                                    "minimum": 0
+                                  },
+                                  {
+                                    "maximum": 10485760
+                                  }
+                                ],
+                                "type": "integer"
+                              },
+                              "type": {
+                                "enum": ["image"],
+                                "type": "string"
+                              }
+                            },
+                            "required": ["type", "id", "name", "mimeType", "sizeBytes"],
+                            "type": "object"
+                          }
+                        ]
+                      },
+                      "type": "array"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "createdAt": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "role": {
+                  "enum": ["user", "assistant", "system"],
+                  "type": "string"
+                },
+                "streaming": {
+                  "type": "boolean"
+                },
+                "text": {
+                  "type": "string"
+                },
+                "turnId": {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                "updatedAt": {
+                  "type": "string"
+                }
+              },
+              "required": ["id", "role", "text", "turnId", "streaming", "createdAt", "updatedAt"],
+              "type": "object"
+            },
+            "type": "array"
+          },
+          "modelSelection": {
+            "additionalProperties": false,
+            "properties": {
+              "instanceId": {
+                "anyOf": [
+                  {},
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "model": {},
+              "options": {
+                "anyOf": [
+                  {},
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "provider": {
+                "anyOf": [
+                  {},
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": ["model"],
+            "type": "object"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "proposedPlans": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "createdAt": {
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "implementationThreadId": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "implementedAt": {
+                      "anyOf": [
+                        {
+                          "anyOf": [
+                            {
+                              "type": "string"
+                            },
+                            {
+                              "type": "null"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "planMarkdown": {
+                      "type": "string"
+                    },
+                    "turnId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["id", "turnId", "planMarkdown", "createdAt", "updatedAt"],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runtimeMode": {
+            "enum": ["approval-required", "auto-accept-edits", "auto", "full-access"],
+            "type": "string"
+          },
+          "session": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "activeTurnId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "lastError": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "providerInstanceId": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "providerName": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "runtimeMode": {
+                    "anyOf": [
+                      {
+                        "enum": ["approval-required", "auto-accept-edits", "auto", "full-access"],
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "status": {
+                    "enum": [
+                      "idle",
+                      "starting",
+                      "running",
+                      "ready",
+                      "interrupted",
+                      "stopped",
+                      "error"
+                    ],
+                    "type": "string"
+                  },
+                  "threadId": {
+                    "type": "string"
+                  },
+                  "updatedAt": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "threadId",
+                  "status",
+                  "providerName",
+                  "activeTurnId",
+                  "lastError",
+                  "updatedAt"
+                ],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settledAt": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "settledOverride": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "enum": ["settled", "active"],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "snoozedAt": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "snoozedUntil": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "type": "string"
+          },
+          "updatedAt": {
+            "type": "string"
+          },
+          "worktreePath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "projectId",
+          "title",
+          "modelSelection",
+          "runtimeMode",
+          "branch",
+          "worktreePath",
+          "latestTurn",
+          "createdAt",
+          "updatedAt",
+          "deletedAt",
+          "messages",
+          "activities",
+          "checkpoints",
+          "session"
+        ],
+        "type": "object"
+      }
+    },
+    "required": ["snapshotSequence", "thread"],
+    "type": "object"
+  }
+}

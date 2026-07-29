@@ -21,5 +21,5 @@ dependencyResolutionManagement {
 
 rootProject.name = "mobile"
 include(":app")
-include(":api")
 include(":streaming-markdown")
+include(":t3-contracts")

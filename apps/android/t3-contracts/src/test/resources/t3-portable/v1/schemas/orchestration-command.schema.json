@@ -1,0 +1,962 @@
+{
+  "definitions": {
+    "Objects_": {
+      "additionalProperties": false,
+      "properties": {
+        "instanceId": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {},
+        "options": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["model"],
+      "type": "object"
+    }
+  },
+  "dialect": "draft-2020-12",
+  "schema": {
+    "anyOf": [
+      {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "createWorkspaceRootIfMissing": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "defaultModelSelection": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Objects_"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "enum": ["project.create"],
+            "type": "string"
+          },
+          "workspaceRoot": {
+            "type": "string"
+          }
+        },
+        "required": ["type", "commandId", "projectId", "title", "workspaceRoot", "createdAt"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "type": "string"
+          },
+          "defaultModelSelection": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Objects_"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "scripts": {
+            "anyOf": [
+              {
+                "items": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "autoOpenPreview": {
+                      "anyOf": [
+                        {
+                          "type": "boolean"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "command": {
+                      "type": "string"
+                    },
+                    "icon": {
+                      "enum": ["play", "test", "lint", "configure", "build", "debug"],
+                      "type": "string"
+                    },
+                    "id": {
+                      "type": "string"
+                    },
+                    "name": {
+                      "type": "string"
+                    },
+                    "previewUrl": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "runOnWorktreeCreate": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["id", "name", "command", "icon", "runOnWorktreeCreate"],
+                  "type": "object"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "enum": ["project.meta.update"],
+            "type": "string"
+          },
+          "workspaceRoot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["type", "commandId", "projectId"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "type": "string"
+          },
+          "force": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "type": {
+            "enum": ["project.delete"],
+            "type": "string"
+          }
+        },
+        "required": ["type", "commandId", "projectId"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "branch": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "commandId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "interactionMode": {
+            "anyOf": [
+              {
+                "enum": ["default", "plan"],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "modelSelection": {
+            "$ref": "#/$defs/Objects_"
+          },
+          "projectId": {
+            "type": "string"
+          },
+          "runtimeMode": {
+            "enum": ["approval-required", "auto-accept-edits", "auto", "full-access"],
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "type": {
+            "enum": ["thread.create"],
+            "type": "string"
+          },
+          "worktreePath": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "type",
+          "commandId",
+          "threadId",
+          "projectId",
+          "title",
+          "modelSelection",
+          "runtimeMode",
+          "branch",
+          "worktreePath",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "type": {
+            "enum": ["thread.delete"],
+            "type": "string"
+          }
+        },
+        "required": ["type", "commandId", "threadId"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "type": {
+            "enum": ["thread.archive"],
+            "type": "string"
+          }
+        },
+        "required": ["type", "commandId", "threadId"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "type": {
+            "enum": ["thread.unarchive"],
+            "type": "string"
+          }
+        },
+        "required": ["type", "commandId", "threadId"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "type": {
+            "enum": ["thread.settle"],
+            "type": "string"
+          }
+        },
+        "required": ["type", "commandId", "threadId"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "type": "string"
+          },
+          "reason": {
+            "enum": ["user"],
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "type": {
+            "enum": ["thread.unsettle"],
+            "type": "string"
+          }
+        },
+        "required": ["type", "commandId", "threadId", "reason"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "type": "string"
+          },
+          "snoozedUntil": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "type": {
+            "enum": ["thread.snooze"],
+            "type": "string"
+          }
+        },
+        "required": ["type", "commandId", "threadId", "snoozedUntil"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "type": "string"
+          },
+          "reason": {
+            "enum": ["user"],
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "type": {
+            "enum": ["thread.unsnooze"],
+            "type": "string"
+          }
+        },
+        "required": ["type", "commandId", "threadId", "reason"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "branch": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "commandId": {
+            "type": "string"
+          },
+          "expectedBranch": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "modelSelection": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Objects_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "enum": ["thread.meta.update"],
+            "type": "string"
+          },
+          "worktreePath": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": ["type", "commandId", "threadId"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "runtimeMode": {
+            "enum": ["approval-required", "auto-accept-edits", "auto", "full-access"],
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "type": {
+            "enum": ["thread.runtime-mode.set"],
+            "type": "string"
+          }
+        },
+        "required": ["type", "commandId", "threadId", "runtimeMode", "createdAt"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "interactionMode": {
+            "enum": ["default", "plan"],
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "type": {
+            "enum": ["thread.interaction-mode.set"],
+            "type": "string"
+          }
+        },
+        "required": ["type", "commandId", "threadId", "interactionMode", "createdAt"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "bootstrap": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "createThread": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "branch": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "createdAt": {
+                            "type": "string"
+                          },
+                          "interactionMode": {
+                            "enum": ["default", "plan"],
+                            "type": "string"
+                          },
+                          "modelSelection": {
+                            "$ref": "#/$defs/Objects_"
+                          },
+                          "projectId": {
+                            "type": "string"
+                          },
+                          "runtimeMode": {
+                            "enum": [
+                              "approval-required",
+                              "auto-accept-edits",
+                              "auto",
+                              "full-access"
+                            ],
+                            "type": "string"
+                          },
+                          "title": {
+                            "type": "string"
+                          },
+                          "worktreePath": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": [
+                          "projectId",
+                          "title",
+                          "modelSelection",
+                          "runtimeMode",
+                          "interactionMode",
+                          "branch",
+                          "worktreePath",
+                          "createdAt"
+                        ],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "prepareWorktree": {
+                    "anyOf": [
+                      {
+                        "additionalProperties": false,
+                        "properties": {
+                          "baseBranch": {
+                            "type": "string"
+                          },
+                          "branch": {
+                            "anyOf": [
+                              {
+                                "type": "string"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          },
+                          "projectCwd": {
+                            "type": "string"
+                          },
+                          "startFromOrigin": {
+                            "anyOf": [
+                              {
+                                "type": "boolean"
+                              },
+                              {
+                                "type": "null"
+                              }
+                            ]
+                          }
+                        },
+                        "required": ["projectCwd", "baseBranch"],
+                        "type": "object"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "runSetupScript": {
+                    "anyOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  }
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "commandId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "interactionMode": {
+            "enum": ["default", "plan"],
+            "type": "string"
+          },
+          "message": {
+            "additionalProperties": false,
+            "properties": {
+              "attachments": {
+                "items": {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "dataUrl": {
+                          "type": "string"
+                        },
+                        "mimeType": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "sizeBytes": {
+                          "allOf": [
+                            {
+                              "minimum": 0
+                            },
+                            {
+                              "maximum": 10485760
+                            }
+                          ],
+                          "type": "integer"
+                        },
+                        "type": {
+                          "enum": ["image"],
+                          "type": "string"
+                        }
+                      },
+                      "required": ["type", "name", "mimeType", "sizeBytes", "dataUrl"],
+                      "type": "object"
+                    }
+                  ]
+                },
+                "type": "array"
+              },
+              "messageId": {
+                "type": "string"
+              },
+              "role": {
+                "enum": ["user"],
+                "type": "string"
+              },
+              "text": {
+                "type": "string"
+              }
+            },
+            "required": ["messageId", "role", "text", "attachments"],
+            "type": "object"
+          },
+          "modelSelection": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/Objects_"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "runtimeMode": {
+            "enum": ["approval-required", "auto-accept-edits", "auto", "full-access"],
+            "type": "string"
+          },
+          "sourceProposedPlan": {
+            "anyOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "planId": {
+                    "type": "string"
+                  },
+                  "threadId": {
+                    "type": "string"
+                  }
+                },
+                "required": ["threadId", "planId"],
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "titleSeed": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "enum": ["thread.turn.start"],
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "commandId",
+          "threadId",
+          "message",
+          "runtimeMode",
+          "interactionMode",
+          "createdAt"
+        ],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "turnId": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "type": {
+            "enum": ["thread.turn.interrupt"],
+            "type": "string"
+          }
+        },
+        "required": ["type", "commandId", "threadId", "createdAt"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "decision": {
+            "enum": ["accept", "acceptForSession", "decline", "cancel"],
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "type": {
+            "enum": ["thread.approval.respond"],
+            "type": "string"
+          }
+        },
+        "required": ["type", "commandId", "threadId", "requestId", "decision", "createdAt"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "answers": {
+            "type": "object"
+          },
+          "commandId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "requestId": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "type": {
+            "enum": ["thread.user-input.respond"],
+            "type": "string"
+          }
+        },
+        "required": ["type", "commandId", "threadId", "requestId", "answers", "createdAt"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "turnCount": {
+            "allOf": [
+              {
+                "minimum": 0
+              }
+            ],
+            "type": "integer"
+          },
+          "type": {
+            "enum": ["thread.checkpoint.revert"],
+            "type": "string"
+          }
+        },
+        "required": ["type", "commandId", "threadId", "turnCount", "createdAt"],
+        "type": "object"
+      },
+      {
+        "additionalProperties": false,
+        "properties": {
+          "commandId": {
+            "type": "string"
+          },
+          "createdAt": {
+            "type": "string"
+          },
+          "threadId": {
+            "type": "string"
+          },
+          "type": {
+            "enum": ["thread.session.stop"],
+            "type": "string"
+          }
+        },
+        "required": ["type", "commandId", "threadId", "createdAt"],
+        "type": "object"
+      }
+    ]
+  }
+}

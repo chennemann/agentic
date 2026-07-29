@@ -2,7 +2,6 @@ package de.chennemann.agentic
 
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
-import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Rule
@@ -15,16 +14,8 @@ class MainActivityTest {
     val compose = createAndroidComposeRule<MainActivity>()
 
     @Test
-    fun launch_smoke_keeps_main_host_visible() {
+    fun clean_launch_shows_t3_onboarding() {
         compose.waitForIdle()
-        compose.onNodeWithContentDescription("Open settings").assertIsDisplayed()
-    }
-
-    @Test
-    fun renders_initial_compose_host_controls() {
-        compose.waitForIdle()
-        compose.onNodeWithText("Plan").assertIsDisplayed()
-        compose.onNodeWithText("Build").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Open wireless debugging settings").assertIsDisplayed()
+        compose.onNodeWithText("Connect to T3 Code").assertIsDisplayed()
     }
 }

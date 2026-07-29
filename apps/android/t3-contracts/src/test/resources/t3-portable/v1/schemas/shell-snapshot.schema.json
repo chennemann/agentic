@@ -1,0 +1,555 @@
+{
+  "definitions": {
+    "Objects_": {
+      "additionalProperties": false,
+      "properties": {
+        "instanceId": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "model": {},
+        "options": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "provider": {
+          "anyOf": [
+            {},
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "required": ["model"],
+      "type": "object"
+    }
+  },
+  "dialect": "draft-2020-12",
+  "schema": {
+    "additionalProperties": false,
+    "properties": {
+      "projects": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "createdAt": {
+              "type": "string"
+            },
+            "defaultModelSelection": {
+              "anyOf": [
+                {
+                  "$ref": "#/$defs/Objects_"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "id": {
+              "type": "string"
+            },
+            "repositoryIdentity": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "additionalProperties": false,
+                      "properties": {
+                        "canonicalKey": {
+                          "type": "string"
+                        },
+                        "displayName": {
+                          "type": "string"
+                        },
+                        "locator": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "remoteName": {
+                              "type": "string"
+                            },
+                            "remoteUrl": {
+                              "type": "string"
+                            },
+                            "source": {
+                              "enum": ["git-remote"],
+                              "type": "string"
+                            }
+                          },
+                          "required": ["source", "remoteName", "remoteUrl"],
+                          "type": "object"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "owner": {
+                          "type": "string"
+                        },
+                        "provider": {
+                          "type": "string"
+                        },
+                        "rootPath": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["canonicalKey", "locator"],
+                      "type": "object"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "scripts": {
+              "items": {
+                "additionalProperties": false,
+                "properties": {
+                  "autoOpenPreview": {
+                    "anyOf": [
+                      {
+                        "type": "boolean"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "command": {
+                    "type": "string"
+                  },
+                  "icon": {
+                    "enum": ["play", "test", "lint", "configure", "build", "debug"],
+                    "type": "string"
+                  },
+                  "id": {
+                    "type": "string"
+                  },
+                  "name": {
+                    "type": "string"
+                  },
+                  "previewUrl": {
+                    "anyOf": [
+                      {
+                        "type": "string"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "runOnWorktreeCreate": {
+                    "type": "boolean"
+                  }
+                },
+                "required": ["id", "name", "command", "icon", "runOnWorktreeCreate"],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "title": {
+              "type": "string"
+            },
+            "updatedAt": {
+              "type": "string"
+            },
+            "workspaceRoot": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "id",
+            "title",
+            "workspaceRoot",
+            "defaultModelSelection",
+            "scripts",
+            "createdAt",
+            "updatedAt"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "snapshotSequence": {
+        "allOf": [
+          {
+            "minimum": 0
+          }
+        ],
+        "type": "integer"
+      },
+      "threads": {
+        "items": {
+          "additionalProperties": false,
+          "properties": {
+            "archivedAt": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "createdAt": {
+              "type": "string"
+            },
+            "hasActionableProposedPlan": {
+              "type": "boolean"
+            },
+            "hasPendingApprovals": {
+              "type": "boolean"
+            },
+            "hasPendingUserInput": {
+              "type": "boolean"
+            },
+            "id": {
+              "type": "string"
+            },
+            "interactionMode": {
+              "anyOf": [
+                {
+                  "enum": ["default", "plan"],
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "latestTurn": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "assistantMessageId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "completedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "requestedAt": {
+                      "type": "string"
+                    },
+                    "sourceProposedPlan": {
+                      "anyOf": [
+                        {
+                          "additionalProperties": false,
+                          "properties": {
+                            "planId": {
+                              "type": "string"
+                            },
+                            "threadId": {
+                              "type": "string"
+                            }
+                          },
+                          "required": ["threadId", "planId"],
+                          "type": "object"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "startedAt": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "state": {
+                      "enum": ["running", "interrupted", "completed", "error"],
+                      "type": "string"
+                    },
+                    "turnId": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "turnId",
+                    "state",
+                    "requestedAt",
+                    "startedAt",
+                    "completedAt",
+                    "assistantMessageId"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "latestUserMessageAt": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "modelSelection": {
+              "$ref": "#/$defs/Objects_"
+            },
+            "projectId": {
+              "type": "string"
+            },
+            "runtimeMode": {
+              "enum": ["approval-required", "auto-accept-edits", "auto", "full-access"],
+              "type": "string"
+            },
+            "session": {
+              "anyOf": [
+                {
+                  "additionalProperties": false,
+                  "properties": {
+                    "activeTurnId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "lastError": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerInstanceId": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "providerName": {
+                      "anyOf": [
+                        {
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "runtimeMode": {
+                      "anyOf": [
+                        {
+                          "enum": ["approval-required", "auto-accept-edits", "auto", "full-access"],
+                          "type": "string"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    },
+                    "status": {
+                      "enum": [
+                        "idle",
+                        "starting",
+                        "running",
+                        "ready",
+                        "interrupted",
+                        "stopped",
+                        "error"
+                      ],
+                      "type": "string"
+                    },
+                    "threadId": {
+                      "type": "string"
+                    },
+                    "updatedAt": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "threadId",
+                    "status",
+                    "providerName",
+                    "activeTurnId",
+                    "lastError",
+                    "updatedAt"
+                  ],
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "settledAt": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "settledOverride": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "enum": ["settled", "active"],
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "snoozedAt": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "snoozedUntil": {
+              "anyOf": [
+                {
+                  "anyOf": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": {
+              "type": "string"
+            },
+            "updatedAt": {
+              "type": "string"
+            },
+            "worktreePath": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "required": [
+            "id",
+            "projectId",
+            "title",
+            "modelSelection",
+            "runtimeMode",
+            "branch",
+            "worktreePath",
+            "latestTurn",
+            "createdAt",
+            "updatedAt",
+            "session",
+            "latestUserMessageAt",
+            "hasPendingApprovals",
+            "hasPendingUserInput",
+            "hasActionableProposedPlan"
+          ],
+          "type": "object"
+        },
+        "type": "array"
+      },
+      "updatedAt": {
+        "type": "string"
+      }
+    },
+    "required": ["snapshotSequence", "projects", "threads", "updatedAt"],
+    "type": "object"
+  }
+}
