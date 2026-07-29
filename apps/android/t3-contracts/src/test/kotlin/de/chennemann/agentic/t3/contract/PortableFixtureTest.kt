@@ -2,6 +2,7 @@ package de.chennemann.agentic.t3.contract
 
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -45,6 +46,27 @@ class PortableFixtureTest {
         assertEquals(6, items.size)
         assertEquals(6, items.map { it::class }.distinct().size)
         assertInstanceOf(OrchestrationShellStreamItem.Synchronized::class.java, items.last())
+    }
+
+    @Test
+    fun `canonical model option selections decode as ordered string and boolean entries`() {
+        val selection = PortableJson.decodeFromString<ModelSelection>(
+            """
+            {
+              "instanceId": "provider-golden",
+              "model": "model-golden",
+              "options": [
+                {"id": "effort", "value": "high"},
+                {"id": "fastMode", "value": true}
+              ]
+            }
+            """.trimIndent()
+        )
+
+        assertEquals("effort", selection.options?.get(0)?.id)
+        assertEquals("high", selection.options?.get(0)?.value?.content)
+        assertEquals("fastMode", selection.options?.get(1)?.id)
+        assertEquals(true, selection.options?.get(1)?.value?.boolean)
     }
 
     @Test

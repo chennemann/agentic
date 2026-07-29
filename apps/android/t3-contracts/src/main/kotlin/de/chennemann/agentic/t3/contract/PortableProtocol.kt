@@ -7,6 +7,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonClassDiscriminator
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 
 const val T3_PORTABLE_PROTOCOL_NAME = "t3-portable-client"
 const val T3_PORTABLE_PROTOCOL_VERSION = 1
@@ -109,7 +110,10 @@ data class ProviderModel(
 data class SlashCommand(val name: String, val description: String? = null, val input: JsonObject? = null)
 
 @Serializable
-data class ModelSelection(val instanceId: String, val model: String, val options: JsonObject? = null)
+data class ProviderOptionSelection(val id: String, val value: JsonPrimitive)
+
+@Serializable
+data class ModelSelection(val instanceId: String, val model: String, val options: List<ProviderOptionSelection>? = null)
 
 @Serializable
 data class OrchestrationProject(
