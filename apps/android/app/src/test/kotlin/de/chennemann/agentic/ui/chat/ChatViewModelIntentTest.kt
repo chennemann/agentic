@@ -15,14 +15,21 @@ import de.chennemann.agentic.domain.orchestration.ThreadActions
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.DispatchResult
 import de.chennemann.agentic.t3.contract.EnvironmentClientConfig
+import de.chennemann.agentic.t3.contract.EnvironmentPlatform
+import de.chennemann.agentic.t3.contract.ExecutionEnvironmentCapabilities
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
 import de.chennemann.agentic.t3.contract.ModelSelection
 import de.chennemann.agentic.t3.contract.OrchestrationProject
 import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
+import de.chennemann.agentic.t3.contract.OrchestrationThreadDetail
 import de.chennemann.agentic.t3.contract.OrchestrationThreadShell
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
+import de.chennemann.agentic.t3.contract.ProviderInstance
+import de.chennemann.agentic.t3.contract.ProviderModel
+import de.chennemann.agentic.t3.contract.ProviderOptionSelection
+import de.chennemann.agentic.t3.contract.ServerAuthDescriptor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -33,6 +40,7 @@ import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -171,6 +179,70 @@ class ChatViewModelIntentTest {
             viewModel.state.value.composer.quickSwitchProjects.map { it.id },
         )
     }
+
+    @Test
+    fun `message submission preserves inherited model options and visible thread modes`() = runTest(dispatcher) {
+        val selection = ModelSelection(
+            instanceId = "provider",
+            model = "model",
+            options = listOf(ProviderOptionSelection("effort", JsonPrimitive("high"))),
+        )
+        val repository = submissionRepository(selection)
+        val chat = NoOpChatActions()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = chat,
+        )
+        advanceUntilIdle()
+
+        viewModel.onEvent(ChatUiEvent.DraftChanged("send this"))
+        viewModel.onEvent(ChatUiEvent.MessageSubmitted)
+        viewModel.onEvent(ChatUiEvent.MessageSubmitted)
+        advanceUntilIdle()
+
+        val call = chat.startTurnCalls.single()
+        assertEquals("thread-1", call.threadId)
+        assertEquals("project-1", call.projectId)
+        assertEquals("send this", call.prompt)
+        assertEquals(selection, call.modelSelection)
+        assertEquals("plan", call.interactionMode)
+        assertEquals("full-access", call.runtimeMode)
+        assertEquals("", viewModel.state.value.composer.draft)
+        assertEquals(false, viewModel.state.value.composer.sending)
+        assertEquals(null, viewModel.state.value.composer.errorMessage)
+    }
+
+    @Test
+    fun `message submission failure restores composer and displays the rejection`() = runTest(dispatcher) {
+        val selection = ModelSelection("provider", "model")
+        val repository = submissionRepository(selection)
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(startTurnFailure = IllegalStateException("Turn rejected")),
+        )
+        advanceUntilIdle()
+
+        viewModel.onEvent(ChatUiEvent.DraftChanged("keep this"))
+        viewModel.onEvent(ChatUiEvent.MessageSubmitted)
+        advanceUntilIdle()
+
+        assertEquals("keep this", viewModel.state.value.composer.draft)
+        assertEquals(false, viewModel.state.value.composer.sending)
+        assertEquals("Turn rejected", viewModel.state.value.composer.errorMessage)
+
+        viewModel.onEvent(ChatUiEvent.DraftChanged("retry"))
+        advanceUntilIdle()
+
+        assertEquals(null, viewModel.state.value.composer.errorMessage)
+    }
 }
 
 private class FakeConnectionController : ConnectionController {
@@ -210,7 +282,11 @@ private class RecordingThreadActions(
     override suspend fun unarchive(threadId: String) = DispatchResult(1)
 }
 
-private class NoOpChatActions : ChatActions {
+private class NoOpChatActions(
+    private val startTurnFailure: Throwable? = null,
+) : ChatActions {
+    val startTurnCalls = mutableListOf<StartTurnCall>()
+
     override suspend fun startTurn(
         threadId: String?,
         projectId: String,
@@ -218,7 +294,18 @@ private class NoOpChatActions : ChatActions {
         modelSelection: ModelSelection,
         interactionMode: String,
         runtimeMode: String,
-    ) = StartTurnResult(DispatchResult(1), threadId ?: "new-thread")
+    ): StartTurnResult {
+        startTurnFailure?.let { throw it }
+        startTurnCalls += StartTurnCall(
+            threadId,
+            projectId,
+            prompt,
+            modelSelection,
+            interactionMode,
+            runtimeMode,
+        )
+        return StartTurnResult(DispatchResult(1), threadId ?: "new-thread")
+    }
 
     override suspend fun interrupt(
         threadId: String,
@@ -247,6 +334,15 @@ private class NoOpChatActions : ChatActions {
         runtimeMode: String,
     ) = DispatchResult(1)
 }
+
+private data class StartTurnCall(
+    val threadId: String?,
+    val projectId: String,
+    val prompt: String,
+    val modelSelection: ModelSelection,
+    val interactionMode: String,
+    val runtimeMode: String,
+)
 
 private class FakeViewModelEnvironmentRepository : EnvironmentRepository {
     private val environment = SavedEnvironment(
@@ -405,3 +501,60 @@ private fun recentProjectsShell(): OrchestrationShellSnapshot = OrchestrationShe
     snapshotSequence = 8,
     updatedAt = "2026-07-29T11:00:00Z",
 )
+
+private fun submissionRepository(selection: ModelSelection) = FakeOrchestrationRepository().apply {
+    clientConfig.value = ProjectionState(
+        value = EnvironmentClientConfig(
+            environment = ExecutionEnvironmentDescriptor(
+                environmentId = "environment",
+                label = "Environment",
+                platform = EnvironmentPlatform("linux", "x64"),
+                serverVersion = "1",
+                capabilities = ExecutionEnvironmentCapabilities(portableClientProtocol = 1),
+            ),
+            auth = ServerAuthDescriptor(
+                policy = "remote-reachable",
+                bootstrapMethods = listOf("one-time-token"),
+                sessionMethods = listOf("bearer-access-token"),
+                sessionCookieName = "t3-session",
+            ),
+            providers = listOf(
+                ProviderInstance(
+                    instanceId = "provider",
+                    displayName = "Provider",
+                    models = listOf(ProviderModel("model", "Model")),
+                ),
+            ),
+            shellResumeCompletionMarker = true,
+            threadResumeCompletionMarker = true,
+            protocolVersion = 1,
+        ),
+        source = ProjectionSource.LIVE,
+    )
+    shell.value = ProjectionState(
+        value = pickerShell(),
+        sequence = 7,
+        source = ProjectionSource.LIVE,
+        synchronized = true,
+    )
+    selectedProjectId.value = "project-1"
+    focusedThreadId.value = "thread-1"
+    focusedThread.value = ProjectionState(
+        value = OrchestrationThreadDetailSnapshot(
+            snapshotSequence = 7,
+            thread = OrchestrationThreadDetail(
+                id = "thread-1",
+                projectId = "project-1",
+                title = "Thread One",
+                modelSelection = selection,
+                interactionMode = "plan",
+                runtimeMode = "full-access",
+                createdAt = "2026-07-29T10:00:00Z",
+                updatedAt = "2026-07-29T10:01:00Z",
+            ),
+        ),
+        sequence = 7,
+        source = ProjectionSource.LIVE,
+        synchronized = true,
+    )
+}

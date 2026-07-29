@@ -77,7 +77,9 @@ class ChatViewModel(
 
     fun onEvent(event: ChatUiEvent) {
         when (event) {
-            is ChatUiEvent.DraftChanged -> update { copy(draft = event.value) }
+            is ChatUiEvent.DraftChanged -> update {
+                copy(draft = event.value, commandError = null)
+            }
             ChatUiEvent.MessageSubmitted -> submitMessage()
             ChatUiEvent.TurnInterruptRequested -> launchCommand {
                 val detail = repository.focusedThread.value.value?.thread ?: return@launchCommand
@@ -203,25 +205,42 @@ class ChatViewModel(
     }
 
     private fun submitMessage() {
+        if (local.value.sending) return
         val prompt = local.value.draft.trim()
         if (prompt.isEmpty()) return
-        val shell = repository.shell.value.value ?: return
-        val projectId = repository.selectedProjectId.value ?: shell.projects.firstOrNull()?.id ?: return
-        val selection = selectedModel() ?: return
+        val shell = repository.shell.value.value
+            ?: return submissionUnavailable("Projects are not available yet.")
+        val projectId = repository.selectedProjectId.value
+            ?: shell.projects.firstOrNull()?.id
+            ?: return submissionUnavailable("Choose a project before sending.")
+        val selection = selectedModel()
+            ?: return submissionUnavailable("Choose an available provider and model before sending.")
         val threadId = repository.focusedThreadId.value
-        launchCommand(clearSending = false) {
-            update { copy(sending = true) }
+        val detail = repository.focusedThread.value.value?.thread
+            ?.takeIf { it.id == threadId }
+        val interactionMode = local.value.interactionMode.takeUnless {
+            it == InteractionModeUi.DEFAULT && detail?.interactionMode == "plan"
+        } ?: InteractionModeUi.PLAN
+        val runtimeMode = local.value.runtimeModeId
+            ?: detail?.runtimeMode
+            ?: DefaultRuntimeMode
+        update { copy(sending = true, commandError = null) }
+        launchCommand {
             val result = chat.startTurn(
                 threadId = threadId,
                 projectId = projectId,
                 prompt = prompt,
                 modelSelection = selection,
-                interactionMode = local.value.interactionMode.contractValue(),
-                runtimeMode = local.value.runtimeModeId ?: DefaultRuntimeMode,
+                interactionMode = interactionMode.contractValue(),
+                runtimeMode = runtimeMode,
             )
-            update { copy(draft = "", sending = false) }
+            update { copy(draft = "", sending = false, commandError = null) }
             if (threadId == null) threads.selectThread(result.threadId)
         }
+    }
+
+    private fun submissionUnavailable(message: String) {
+        update { copy(sending = false, commandError = message) }
     }
 
     private fun quickSwitchProject(projectId: String) {
@@ -319,30 +338,33 @@ class ChatViewModel(
 
     private fun selectedModel(): ModelSelection? {
         val config = repository.clientConfig.value.value ?: return null
-        val selectedId = local.value.providerModelId
-            ?: repository.focusedThread.value.value?.thread?.modelSelection?.optionId()
-            ?: repository.shell.value.value?.projects
+        val inheritedSelections = listOfNotNull(
+            repository.focusedThread.value.value?.thread?.modelSelection,
+            repository.shell.value.value?.projects
                 ?.firstOrNull { it.id == repository.selectedProjectId.value }
-                ?.defaultModelSelection
-                ?.optionId()
+                ?.defaultModelSelection,
+        )
+        val selectedId = local.value.providerModelId
+            ?: inheritedSelections.firstOrNull()?.optionId()
         val pair = config.providers.flatMap { provider ->
             provider.models.map { model -> provider.instanceId to model.slug }
         }.firstOrNull { (instanceId, model) -> optionId(instanceId, model) == selectedId }
             ?: config.providers.firstNotNullOfOrNull { provider ->
                 provider.models.firstOrNull()?.let { provider.instanceId to it.slug }
             }
-        return pair?.let { ModelSelection(it.first, it.second) }
+        return pair?.let {
+            inheritedSelections.firstOrNull { selection ->
+                selection.instanceId == it.first && selection.model == it.second
+            } ?: ModelSelection(it.first, it.second)
+        }
     }
 
-    private fun launchCommand(
-        clearSending: Boolean = true,
-        block: suspend () -> Unit,
-    ) {
+    private fun launchCommand(block: suspend () -> Unit) {
         viewModelScope.launch {
             runCatching { block() }.onFailure {
                 update {
                     copy(
-                        sending = if (clearSending) false else sending,
+                        sending = false,
                         renameSaving = false,
                         commandError = it.message ?: "The command was not accepted.",
                     )
@@ -403,6 +425,7 @@ class ChatViewModel(
                     selectedProjectId = projectId,
                 ),
                 sending = local.sending,
+                errorMessage = local.commandError,
                 enabled = environment.active != null && shell != null && project != null,
             ),
             environmentPicker = EnvironmentPickerUiState(

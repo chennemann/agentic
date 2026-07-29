@@ -205,6 +205,7 @@ data class ComposerUiState(
     val slashCommands: List<SlashCommandUi> = emptyList(),
     val quickSwitchProjects: List<ProjectQuickSwitchUi> = emptyList(),
     val sending: Boolean = false,
+    val errorMessage: String? = null,
     val enabled: Boolean = true,
 )
 
