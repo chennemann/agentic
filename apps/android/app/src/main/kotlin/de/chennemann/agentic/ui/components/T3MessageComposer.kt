@@ -1,15 +1,26 @@
 package de.chennemann.agentic.ui.components
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
@@ -24,8 +35,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -33,6 +49,9 @@ import de.chennemann.agentic.ui.chat.ChatPickerUi
 import de.chennemann.agentic.ui.chat.ChatUiEvent
 import de.chennemann.agentic.ui.chat.ComposerUiState
 import de.chennemann.agentic.ui.chat.InteractionModeUi
+import de.chennemann.agentic.ui.chat.ProjectQuickSwitchUi
+
+private val ModeSwipeThreshold = 28.dp
 
 @Composable
 fun T3MessageComposer(
@@ -81,8 +100,10 @@ fun T3MessageComposer(
                         } else {
                             MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
                         },
-                        modifier = Modifier.clickable(
+                        modifier = Modifier.selectable(
+                            selected = state.selectedInteractionMode == mode,
                             enabled = state.enabled && !state.sending,
+                            role = Role.Tab,
                             onClick = { onEvent(ChatUiEvent.InteractionModeSelected(mode)) },
                         ),
                     )
@@ -139,7 +160,34 @@ fun T3MessageComposer(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(end = 88.dp),
+                        .padding(end = 88.dp)
+                        .pointerInput(
+                            state.selectedInteractionMode,
+                            state.enabled,
+                            state.sending,
+                        ) {
+                            if (!state.enabled || state.sending) return@pointerInput
+                            val threshold = ModeSwipeThreshold.toPx()
+                            var delta = 0f
+                            var changed = false
+                            detectHorizontalDragGestures(
+                                onDragStart = {
+                                    delta = 0f
+                                    changed = false
+                                },
+                                onHorizontalDrag = { _, dragAmount ->
+                                    if (changed) return@detectHorizontalDragGestures
+                                    delta += dragAmount
+                                    if (delta in -threshold..threshold) return@detectHorizontalDragGestures
+                                    changed = true
+                                    onEvent(
+                                        ChatUiEvent.InteractionModeSelected(
+                                            state.selectedInteractionMode.next(),
+                                        ),
+                                    )
+                                },
+                            )
+                        },
                     enabled = state.enabled,
                     placeholder = { Text("Message") },
                     maxLines = 12,
@@ -208,6 +256,112 @@ fun T3MessageComposer(
                     }
                 }
             }
+
+            if (state.quickSwitchProjects.isNotEmpty()) {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    items(
+                        items = state.quickSwitchProjects,
+                        key = { it.id },
+                    ) { project ->
+                        ProjectQuickSwitchButton(
+                            project = project,
+                            onClick = {
+                                onEvent(ChatUiEvent.ProjectQuickSwitchRequested(project.id))
+                            },
+                            onLongClick = {
+                                onEvent(ChatUiEvent.ProjectThreadsRequested(project.id))
+                            },
+                        )
+                    }
+                }
+            }
         }
     }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ProjectQuickSwitchButton(
+    project: ProjectQuickSwitchUi,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+) {
+    val container = if (project.active) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.surfaceVariant
+    }
+    val content = if (project.active) {
+        MaterialTheme.colorScheme.onPrimary
+    } else {
+        MaterialTheme.colorScheme.onSurfaceVariant
+    }
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Box(
+            modifier = Modifier.size(44.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (project.processing) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(44.dp),
+                    strokeWidth = 2.dp,
+                )
+            }
+            Surface(
+                shape = CircleShape,
+                color = container,
+                contentColor = content,
+                modifier = Modifier
+                    .size(36.dp)
+                    .semantics {
+                        contentDescription = "Project ${project.title}"
+                    }
+                    .combinedClickable(
+                        onClick = onClick,
+                        onLongClick = onLongClick,
+                    ),
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(project.label)
+                }
+            }
+        }
+        Box(
+            modifier = Modifier.height(8.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            if (project.attentionCount > 0) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(3.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    repeat(minOf(project.attentionCount, 6)) {
+                        Box(
+                            modifier = Modifier
+                                .size(5.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.primary,
+                                    shape = CircleShape,
+                                ),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun InteractionModeUi.next(): InteractionModeUi = when (this) {
+    InteractionModeUi.DEFAULT -> InteractionModeUi.PLAN
+    InteractionModeUi.PLAN -> InteractionModeUi.DEFAULT
 }

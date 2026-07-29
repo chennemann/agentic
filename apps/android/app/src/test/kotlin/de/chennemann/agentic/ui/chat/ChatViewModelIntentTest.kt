@@ -101,6 +101,10 @@ class ChatViewModelIntentTest {
 
         assertEquals(listOf("project-1", "project-2"), viewModel.state.value.threadPicker.projects.map { it.id })
         assertEquals(listOf("thread-1"), viewModel.state.value.threadPicker.threads.map { it.id })
+        assertEquals(
+            listOf("project-1", "project-2"),
+            viewModel.state.value.composer.quickSwitchProjects.map { it.id },
+        )
 
         viewModel.onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
         viewModel.onEvent(ChatUiEvent.ProjectSelected("project-2"))
@@ -118,6 +122,21 @@ class ChatViewModelIntentTest {
         assertEquals("thread-2", viewModel.state.value.threadId)
         assertEquals("Thread Two", viewModel.state.value.title)
         assertTrue(viewModel.state.value.threadPicker.loading)
+
+        viewModel.onEvent(ChatUiEvent.ProjectQuickSwitchRequested("project-1"))
+        advanceUntilIdle()
+
+        assertEquals(listOf("project-2", "project-1"), threadActions.selectedProjects)
+        assertEquals(listOf("thread-2", "thread-1"), threadActions.selectedThreads)
+        assertEquals("project-1", viewModel.state.value.threadPicker.selectedProjectId)
+        assertEquals("thread-1", viewModel.state.value.threadId)
+
+        viewModel.onEvent(ChatUiEvent.ProjectThreadsRequested("project-2"))
+        advanceUntilIdle()
+
+        assertEquals(ChatPickerUi.PROJECT_THREAD, viewModel.state.value.activePicker)
+        assertEquals("project-2", viewModel.state.value.threadPicker.selectedProjectId)
+        assertEquals(listOf("thread-2"), viewModel.state.value.threadPicker.threads.map { it.id })
     }
 }
 

@@ -5,11 +5,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
@@ -18,6 +20,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
@@ -60,20 +63,55 @@ fun ChatSelectionSheets(
             PickerSheet(
                 title = "Project and thread",
                 onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
+                expanded = true,
             ) {
                 item("project-heading") {
                     Text("Project", style = MaterialTheme.typography.labelLarge)
                 }
-                items(
-                    items = state.threadPicker.projects,
-                    key = { "project:${it.id}" },
-                ) { project ->
-                    PickerRow(
-                        label = project.label,
-                        supportingText = project.supportingText,
-                        selected = project.id == state.threadPicker.selectedProjectId,
-                        onClick = { onEvent(ChatUiEvent.ProjectSelected(project.id)) },
-                    )
+                item("project-carousel") {
+                    LazyRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(
+                            items = state.threadPicker.projects,
+                            key = { "project:${it.id}" },
+                        ) { project ->
+                            FilterChip(
+                                selected = project.id == state.threadPicker.selectedProjectId,
+                                onClick = { onEvent(ChatUiEvent.ProjectSelected(project.id)) },
+                                label = {
+                                    Text(
+                                        text = project.label,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                },
+                            )
+                        }
+                    }
+                }
+                state.threadPicker.projects
+                    .firstOrNull { it.id == state.threadPicker.selectedProjectId }
+                    ?.supportingText
+                    ?.let { workspaceRoot ->
+                        item("selected-project-path") {
+                            Text(
+                                text = workspaceRoot,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                        }
+                    }
+                if (state.threadPicker.projects.isEmpty()) {
+                    item("no-projects") {
+                        Text(
+                            text = "No projects available",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 item("thread-heading") {
                     Row(
@@ -180,13 +218,24 @@ fun ChatSelectionSheets(
 private fun PickerSheet(
     title: String,
     onDismiss: () -> Unit,
+    expanded: Boolean = false,
     content: LazyListScope.() -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+    ) {
         LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 560.dp),
+            modifier = if (expanded) {
+                Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.9f)
+            } else {
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 560.dp)
+            },
             contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {

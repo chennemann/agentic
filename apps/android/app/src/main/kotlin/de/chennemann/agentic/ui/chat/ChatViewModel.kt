@@ -106,31 +106,57 @@ class ChatViewModel(
                 copy(draft = "/${event.name} ", activePicker = null)
             }
 
-            is ChatUiEvent.PickerRequested -> update { copy(activePicker = event.picker) }
-            ChatUiEvent.PickerDismissed -> update { copy(activePicker = null) }
+            is ChatUiEvent.PickerRequested -> update {
+                copy(
+                    activePicker = event.picker,
+                    pickerProjectId = if (event.picker == ChatPickerUi.PROJECT_THREAD) {
+                        repository.selectedProjectId.value
+                    } else {
+                        pickerProjectId
+                    },
+                )
+            }
+
+            ChatUiEvent.PickerDismissed -> update {
+                copy(activePicker = null, pickerProjectId = null)
+            }
             is ChatUiEvent.EnvironmentSelected -> launchCommand {
                 environmentService.select(event.environmentId)
-                update { copy(activePicker = null) }
+                update { copy(activePicker = null, pickerProjectId = null) }
             }
 
             ChatUiEvent.PairEnvironmentRequested -> Unit
             is ChatUiEvent.ProjectSelected -> launchCommand {
                 threads.selectProject(event.projectId)
-                update { copy(activePicker = ChatPickerUi.PROJECT_THREAD) }
+                update {
+                    copy(
+                        activePicker = ChatPickerUi.PROJECT_THREAD,
+                        pickerProjectId = event.projectId,
+                    )
+                }
             }
 
-            is ChatUiEvent.ThreadSelected -> launchCommand {
-                threads.selectThread(event.threadId)
-                update { copy(activePicker = null) }
+            is ChatUiEvent.ProjectQuickSwitchRequested -> quickSwitchProject(event.projectId)
+            is ChatUiEvent.ProjectThreadsRequested -> update {
+                copy(
+                    activePicker = ChatPickerUi.PROJECT_THREAD,
+                    pickerProjectId = event.projectId,
+                )
             }
+
+            is ChatUiEvent.ThreadSelected -> selectThread(event.threadId)
 
             is ChatUiEvent.ArchivedThreadsVisibilityChanged -> update {
                 copy(showArchived = event.visible)
             }
 
             ChatUiEvent.NewThreadRequested -> launchCommand {
+                val projectId = local.value.pickerProjectId
+                if (projectId != null && projectId != repository.selectedProjectId.value) {
+                    threads.selectProject(projectId)
+                }
                 threads.selectThread(null)
-                update { copy(activePicker = null) }
+                update { copy(activePicker = null, pickerProjectId = null) }
             }
             ChatUiEvent.RenameThreadRequested -> update {
                 copy(renameDraft = state.value.title, renameVisible = true)
@@ -191,6 +217,44 @@ class ChatViewModel(
             )
             update { copy(draft = "", sending = false) }
             if (threadId == null) threads.selectThread(result.threadId)
+        }
+    }
+
+    private fun quickSwitchProject(projectId: String) {
+        launchCommand {
+            val shell = repository.shell.value.value ?: return@launchCommand
+            if (shell.projects.none { it.id == projectId }) return@launchCommand
+            val projectThreads = shell.threads
+                .filter { it.projectId == projectId && it.archivedAt == null }
+                .sortedWith(compareByDescending<de.chennemann.agentic.t3.contract.OrchestrationThreadShell> {
+                    it.updatedAt
+                }.thenByDescending { it.id })
+            val focusedThreadId = repository.focusedThreadId.value
+            val focusedIndex = projectThreads.indexOfFirst { it.id == focusedThreadId }
+            val nextThreadId = when {
+                repository.selectedProjectId.value != projectId -> projectThreads.firstOrNull()?.id
+                focusedIndex < 0 -> projectThreads.firstOrNull()?.id
+                projectThreads.isEmpty() -> null
+                else -> projectThreads[(focusedIndex + 1) % projectThreads.size].id
+            }
+            if (repository.selectedProjectId.value != projectId) {
+                threads.selectProject(projectId)
+            }
+            threads.selectThread(nextThreadId)
+        }
+    }
+
+    private fun selectThread(threadId: String) {
+        launchCommand {
+            val projectId = repository.shell.value.value
+                ?.threads
+                ?.firstOrNull { it.id == threadId }
+                ?.projectId
+            if (projectId != null && projectId != repository.selectedProjectId.value) {
+                threads.selectProject(projectId)
+            }
+            threads.selectThread(threadId)
+            update { copy(activePicker = null, pickerProjectId = null) }
         }
     }
 
@@ -305,9 +369,10 @@ class ChatViewModel(
             it == InteractionModeUi.DEFAULT && detail?.interactionMode == "plan"
         } ?: InteractionModeUi.PLAN
         val runtime = local.runtimeModeId ?: detail?.runtimeMode ?: DefaultRuntimeMode
+        val pickerProjectId = local.pickerProjectId ?: projectId
         val filteredThreads = shell?.threads
             .orEmpty()
-            .filter { it.projectId == projectId && (local.showArchived || it.archivedAt == null) }
+            .filter { it.projectId == pickerProjectId && (local.showArchived || it.archivedAt == null) }
             .sortedByDescending { it.updatedAt }
 
         return ChatUiState(
@@ -325,6 +390,10 @@ class ChatViewModel(
                 selectedRuntimeModeId = runtime,
                 runtimeModes = RuntimeModes,
                 slashCommands = slashCommands(orchestration.config.value, selectedModelId),
+                quickSwitchProjects = quickSwitchProjects(
+                    shell = shell,
+                    selectedProjectId = projectId,
+                ),
                 sending = local.sending,
                 enabled = environment.active != null && shell != null && project != null,
             ),
@@ -347,7 +416,7 @@ class ChatViewModel(
                 projects = shell?.projects.orEmpty().map {
                     ProjectPickerItemUi(it.id, it.title, it.workspaceRoot)
                 },
-                selectedProjectId = projectId,
+                selectedProjectId = pickerProjectId,
                 threads = filteredThreads.map {
                     ThreadPickerItemUi(
                         id = it.id,
@@ -495,6 +564,7 @@ class ChatViewModel(
         val inFlightRequests: Set<String> = emptySet(),
         val textAnswers: Map<String, String> = emptyMap(),
         val optionAnswers: Map<String, Set<String>> = emptyMap(),
+        val pickerProjectId: String? = null,
     )
 }
 
@@ -522,6 +592,35 @@ private val activityOrder = compareBy<OrchestrationActivity>(
     { it.createdAt },
     { it.id },
 )
+
+private fun quickSwitchProjects(
+    shell: OrchestrationShellSnapshot?,
+    selectedProjectId: String?,
+): List<ProjectQuickSwitchUi> = shell
+    ?.projects
+    .orEmpty()
+    .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
+    .map { project ->
+        val projectThreads = shell?.threads.orEmpty().filter {
+            it.projectId == project.id && it.archivedAt == null
+        }
+        ProjectQuickSwitchUi(
+            id = project.id,
+            label = project.title
+                .firstOrNull(Char::isLetterOrDigit)
+                ?.uppercaseChar()
+                ?.toString()
+                ?: "?",
+            title = project.title,
+            active = project.id == selectedProjectId,
+            processing = projectThreads.any { it.session?.status in ActiveSessionStatuses },
+            attentionCount = projectThreads.count {
+                it.hasPendingApprovals ||
+                    it.hasPendingUserInput ||
+                    it.hasActionableProposedPlan
+            },
+        )
+    }
 
 private fun modelOptions(config: EnvironmentClientConfig?): List<ProviderModelOptionUi> = config
     ?.providers

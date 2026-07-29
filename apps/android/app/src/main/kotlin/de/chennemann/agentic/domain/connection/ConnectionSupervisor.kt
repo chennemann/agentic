@@ -16,16 +16,17 @@ import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.T3_PORTABLE_PROTOCOL_VERSION
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class ConnectionSupervisor(
@@ -41,25 +42,42 @@ class ConnectionSupervisor(
 ) : ConnectionController {
     private val mutableState = MutableStateFlow<ConnectionState>(ConnectionState.NoEnvironment)
     override val state: StateFlow<ConnectionState> = mutableState.asStateFlow()
-    private val wakeups = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
+    private val restartGeneration = MutableStateFlow(0L)
 
     init {
         scope.launch {
-            environments.activeEnvironment
-                .map { it?.copy(lastConnectedAt = null) }
-                .distinctUntilChanged()
-                .collectLatest { environment ->
-                    if (environment == null) {
-                        mutableState.value = ConnectionState.NoEnvironment
+            combine(
+                environments.activeEnvironment
+                    .map { it?.copy(lastConnectedAt = null) }
+                    .distinctUntilChanged(),
+                network.online,
+                restartGeneration,
+            ) { environment, online, generation ->
+                ConnectionTarget(environment, online, generation)
+            }.collectLatest { target ->
+                val environment = target.environment
+                if (environment == null) {
+                    mutableState.value = ConnectionState.NoEnvironment
+                } else if (!target.online) {
+                    orchestration.loadCached(environment.id)
+                    mutableState.value = if (orchestration.shell.value.value == null) {
+                        ConnectionState.Backoff(
+                            retryInMillis = 0,
+                            message = "Waiting for a network connection.",
+                        )
                     } else {
-                        supervise(environment)
+                        ConnectionState.Cached
                     }
+                    awaitCancellation()
+                } else {
+                    supervise(environment)
                 }
+            }
         }
     }
 
     override fun wake() {
-        wakeups.tryEmit(Unit)
+        restartGeneration.update { it + 1 }
     }
 
     private suspend fun supervise(environment: SavedEnvironment) {
@@ -67,7 +85,6 @@ class ConnectionSupervisor(
         if (orchestration.shell.value.value != null) mutableState.value = ConnectionState.Cached
         var retryDelay = InitialRetryMillis
         while (true) {
-            network.online.first { it }
             try {
                 connect(environment)
                 retryDelay = InitialRetryMillis
@@ -77,12 +94,12 @@ class ConnectionSupervisor(
                 mutableState.value = ConnectionState.BlockedAuthentication(
                     "Authentication expired. Pair this environment again.",
                 )
-                wakeups.first()
+                awaitCancellation()
             } catch (_: UnsupportedProtocol) {
                 mutableState.value = ConnectionState.UnsupportedProtocol(
                     "This environment does not support T3 portable client protocol v1.",
                 )
-                wakeups.first()
+                awaitCancellation()
             } catch (cause: Exception) {
                 if (!network.online.value) continue
                 mutableState.value = ConnectionState.Backoff(
@@ -207,6 +224,12 @@ class ConnectionSupervisor(
     private class SequenceGap : Exception("Projection sequence gap detected.")
 
     private class UnsupportedProtocol : Exception()
+
+    private data class ConnectionTarget(
+        val environment: SavedEnvironment?,
+        val online: Boolean,
+        @Suppress("unused") val generation: Long,
+    )
 
     private companion object {
         const val InitialRetryMillis = 1_000L

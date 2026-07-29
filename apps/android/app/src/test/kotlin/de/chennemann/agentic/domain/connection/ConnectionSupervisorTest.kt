@@ -36,6 +36,62 @@ import org.junit.jupiter.api.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class ConnectionSupervisorTest {
     @Test
+    fun `foreground wake cancels a stuck connection and starts fresh`() = runTest {
+        val environment = savedEnvironment("one")
+        val transport = SupervisorTransport(blockFirstDescriptor = true)
+        val supervisor = ConnectionSupervisor(
+            environments = SupervisorEnvironmentRepository(environment),
+            orchestration = SupervisorOrchestrationRepository(),
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            config = transport,
+            snapshots = transport,
+            streams = transport,
+            network = OnlineMonitor,
+            scope = backgroundScope,
+        )
+        runCurrent()
+
+        assertEquals(ConnectionState.Connecting, supervisor.state.value)
+        assertEquals(1, transport.descriptorRequests)
+
+        supervisor.wake()
+        runCurrent()
+
+        assertEquals(2, transport.descriptorRequests)
+        assertEquals(1, transport.cancelledDescriptorRequests)
+        assertEquals(ConnectionState.Live, supervisor.state.value)
+    }
+
+    @Test
+    fun `network restoration cancels old streams and reconnects immediately`() = runTest {
+        val environment = savedEnvironment("one")
+        val network = MutableOnlineMonitor(true)
+        val transport = SupervisorTransport()
+        val supervisor = ConnectionSupervisor(
+            environments = SupervisorEnvironmentRepository(environment),
+            orchestration = SupervisorOrchestrationRepository(),
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            config = transport,
+            snapshots = transport,
+            streams = transport,
+            network = network,
+            scope = backgroundScope,
+        )
+        runCurrent()
+
+        network.mutableOnline.value = false
+        runCurrent()
+        network.mutableOnline.value = true
+        runCurrent()
+
+        assertEquals(2, transport.descriptorRequests)
+        assertTrue(transport.cancelledStreams >= 1)
+        assertEquals(ConnectionState.Live, supervisor.state.value)
+    }
+
+    @Test
     fun `authentication failure blocks instead of retrying`() = runTest {
         val environment = savedEnvironment("one")
         val repository = SupervisorEnvironmentRepository(environment)
@@ -96,6 +152,13 @@ private object OnlineMonitor : NetworkMonitor {
     override val online: StateFlow<Boolean> = MutableStateFlow(true)
 }
 
+private class MutableOnlineMonitor(
+    initial: Boolean,
+) : NetworkMonitor {
+    val mutableOnline = MutableStateFlow(initial)
+    override val online: StateFlow<Boolean> = mutableOnline
+}
+
 private class SupervisorCredentialStore(
     private val token: String?,
 ) : CredentialStore {
@@ -133,17 +196,27 @@ private class SupervisorEnvironmentRepository(
     ) = Unit
 }
 
-private class SupervisorTransport : EnvironmentMetadataClient,
+private class SupervisorTransport(
+    private val blockFirstDescriptor: Boolean = false,
+) : EnvironmentMetadataClient,
     EnvironmentConfigClient,
     OrchestrationSnapshotClient,
     OrchestrationStreamClient {
     var descriptorRequests = 0
+    var cancelledDescriptorRequests = 0
     val shellBaseUrls = mutableListOf<String>()
     val threadRequests = mutableListOf<String>()
     var cancelledStreams = 0
 
     override suspend fun environmentDescriptor(baseUrl: String): ExecutionEnvironmentDescriptor {
         descriptorRequests++
+        if (blockFirstDescriptor && descriptorRequests == 1) {
+            try {
+                awaitCancellation()
+            } finally {
+                cancelledDescriptorRequests++
+            }
+        }
         return descriptor(baseUrl.substringAfter("https://").substringBefore('.'))
     }
 
@@ -151,7 +224,7 @@ private class SupervisorTransport : EnvironmentMetadataClient,
         baseUrl: String,
         bearerToken: String,
     ): EnvironmentClientConfig = EnvironmentClientConfig(
-        environment = environmentDescriptor(baseUrl),
+        environment = descriptor(baseUrl.substringAfter("https://").substringBefore('.')),
         auth = ServerAuthDescriptor(
             policy = "remote-reachable",
             bootstrapMethods = listOf("one-time-token"),

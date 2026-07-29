@@ -201,8 +201,18 @@ data class ComposerUiState(
     val selectedRuntimeModeId: String? = null,
     val runtimeModes: List<RuntimeModeOptionUi> = emptyList(),
     val slashCommands: List<SlashCommandUi> = emptyList(),
+    val quickSwitchProjects: List<ProjectQuickSwitchUi> = emptyList(),
     val sending: Boolean = false,
     val enabled: Boolean = true,
+)
+
+data class ProjectQuickSwitchUi(
+    val id: String,
+    val label: String,
+    val title: String,
+    val active: Boolean = false,
+    val processing: Boolean = false,
+    val attentionCount: Int = 0,
 )
 
 data class ProviderModelOptionUi(
@@ -309,6 +319,14 @@ sealed interface ChatUiEvent {
     data object PairEnvironmentRequested : ChatUiEvent
 
     data class ProjectSelected(
+        val projectId: String,
+    ) : ChatUiEvent
+
+    data class ProjectQuickSwitchRequested(
+        val projectId: String,
+    ) : ChatUiEvent
+
+    data class ProjectThreadsRequested(
         val projectId: String,
     ) : ChatUiEvent
 
