@@ -3,12 +3,14 @@ package de.chennemann.agentic.ui.chat
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -32,12 +34,17 @@ fun ChatSelectionSheets(
                 title = "Environment",
                 onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
             ) {
-                TextButton(
-                    onClick = { onEvent(ChatUiEvent.PairEnvironmentRequested) },
-                ) {
-                    Text("Pair another environment")
+                item("pair-environment") {
+                    TextButton(
+                        onClick = { onEvent(ChatUiEvent.PairEnvironmentRequested) },
+                    ) {
+                        Text("Pair another environment")
+                    }
                 }
-                state.environmentPicker.environments.forEach { environment ->
+                items(
+                    items = state.environmentPicker.environments,
+                    key = { "environment:${it.id}" },
+                ) { environment ->
                     PickerRow(
                         label = environment.label,
                         supportingText = environment.supportingText,
@@ -54,8 +61,13 @@ fun ChatSelectionSheets(
                 title = "Project and thread",
                 onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
             ) {
-                Text("Project", style = MaterialTheme.typography.labelLarge)
-                state.threadPicker.projects.forEach { project ->
+                item("project-heading") {
+                    Text("Project", style = MaterialTheme.typography.labelLarge)
+                }
+                items(
+                    items = state.threadPicker.projects,
+                    key = { "project:${it.id}" },
+                ) { project ->
                     PickerRow(
                         label = project.label,
                         supportingText = project.supportingText,
@@ -63,23 +75,53 @@ fun ChatSelectionSheets(
                         onClick = { onEvent(ChatUiEvent.ProjectSelected(project.id)) },
                     )
                 }
-                Text(
-                    text = if (state.threadPicker.showArchived) "Threads, including archived" else "Threads",
-                    style = MaterialTheme.typography.labelLarge,
-                    modifier = Modifier.padding(top = 8.dp),
-                )
-                FilterChip(
-                    selected = state.threadPicker.showArchived,
-                    onClick = {
-                        onEvent(
-                            ChatUiEvent.ArchivedThreadsVisibilityChanged(
-                                visible = !state.threadPicker.showArchived,
-                            ),
+                item("thread-heading") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            text = if (state.threadPicker.showArchived) {
+                                "Threads, including archived"
+                            } else {
+                                "Threads"
+                            },
+                            style = MaterialTheme.typography.labelLarge,
                         )
-                    },
-                    label = { Text("Show archived") },
-                )
-                state.threadPicker.threads.forEach { thread ->
+                        TextButton(onClick = { onEvent(ChatUiEvent.NewThreadRequested) }) {
+                            Text("New thread")
+                        }
+                    }
+                }
+                item("archived-filter") {
+                    FilterChip(
+                        selected = state.threadPicker.showArchived,
+                        onClick = {
+                            onEvent(
+                                ChatUiEvent.ArchivedThreadsVisibilityChanged(
+                                    visible = !state.threadPicker.showArchived,
+                                ),
+                            )
+                        },
+                        label = { Text("Show archived") },
+                    )
+                }
+                if (state.threadPicker.threads.isEmpty()) {
+                    item("no-threads") {
+                        Text(
+                            text = "No threads in this project",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 8.dp),
+                        )
+                    }
+                }
+                items(
+                    items = state.threadPicker.threads,
+                    key = { "thread:${it.id}" },
+                ) { thread ->
                     PickerRow(
                         label = thread.title,
                         supportingText = thread.supportingText,
@@ -96,7 +138,10 @@ fun ChatSelectionSheets(
                 title = "Provider and model",
                 onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
             ) {
-                state.composer.providerModels.forEach { option ->
+                items(
+                    items = state.composer.providerModels,
+                    key = { "provider-model:${it.id}" },
+                ) { option ->
                     PickerRow(
                         label = option.modelLabel,
                         supportingText = option.supportingText ?: option.providerLabel,
@@ -112,7 +157,10 @@ fun ChatSelectionSheets(
                 title = "Runtime mode",
                 onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
             ) {
-                state.composer.runtimeModes.forEach { option ->
+                items(
+                    items = state.composer.runtimeModes,
+                    key = { "runtime-mode:${it.id}" },
+                ) { option ->
                     PickerRow(
                         label = option.label,
                         supportingText = option.description,
@@ -132,22 +180,23 @@ fun ChatSelectionSheets(
 private fun PickerSheet(
     title: String,
     onDismiss: () -> Unit,
-    content: @Composable () -> Unit,
+    content: LazyListScope.() -> Unit,
 ) {
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
+        LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 560.dp)
-                .verticalScroll(rememberScrollState())
-                .padding(start = 20.dp, end = 20.dp, bottom = 32.dp),
+                .heightIn(max = 560.dp),
+            contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(bottom = 8.dp),
-            )
+            item("picker-title") {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+            }
             content()
         }
     }

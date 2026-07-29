@@ -247,7 +247,7 @@ data class OrchestrationMessage(
 data class OrchestrationActivity(
     val id: String,
     val turnId: String? = null,
-    val sequence: Long,
+    val sequence: Long? = null,
     val kind: String,
     val tone: String,
     val summary: String,

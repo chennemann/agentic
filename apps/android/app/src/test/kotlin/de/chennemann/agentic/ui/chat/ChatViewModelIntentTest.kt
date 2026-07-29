@@ -17,8 +17,10 @@ import de.chennemann.agentic.t3.contract.DispatchResult
 import de.chennemann.agentic.t3.contract.EnvironmentClientConfig
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
 import de.chennemann.agentic.t3.contract.ModelSelection
+import de.chennemann.agentic.t3.contract.OrchestrationProject
 import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
+import de.chennemann.agentic.t3.contract.OrchestrationThreadShell
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import kotlinx.coroutines.Dispatchers
@@ -54,7 +56,7 @@ class ChatViewModelIntentTest {
     @Test
     fun `view model maps UI intents to local state and domain actions`() = runTest(dispatcher) {
         val repository = FakeOrchestrationRepository()
-        val threadActions = RecordingThreadActions()
+        val threadActions = RecordingThreadActions(repository)
         val controller = FakeConnectionController()
         val viewModel = ChatViewModel(
             environments = FakeViewModelEnvironmentRepository(),
@@ -74,6 +76,49 @@ class ChatViewModelIntentTest {
         assertEquals(listOf("project-2"), threadActions.selectedProjects)
         assertTrue(controller.woken)
     }
+
+    @Test
+    fun `project and thread picker switches projects and focuses a shell thread`() = runTest(dispatcher) {
+        val repository = FakeOrchestrationRepository().apply {
+            shell.value = ProjectionState(
+                value = pickerShell(),
+                sequence = 7,
+                source = ProjectionSource.LIVE,
+                synchronized = true,
+            )
+            selectedProjectId.value = "project-1"
+        }
+        val threadActions = RecordingThreadActions(repository)
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = threadActions,
+            chat = NoOpChatActions(),
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf("project-1", "project-2"), viewModel.state.value.threadPicker.projects.map { it.id })
+        assertEquals(listOf("thread-1"), viewModel.state.value.threadPicker.threads.map { it.id })
+
+        viewModel.onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
+        viewModel.onEvent(ChatUiEvent.ProjectSelected("project-2"))
+        advanceUntilIdle()
+
+        assertEquals(ChatPickerUi.PROJECT_THREAD, viewModel.state.value.activePicker)
+        assertEquals("project-2", viewModel.state.value.threadPicker.selectedProjectId)
+        assertEquals(listOf("thread-2"), viewModel.state.value.threadPicker.threads.map { it.id })
+
+        viewModel.onEvent(ChatUiEvent.ThreadSelected("thread-2"))
+        advanceUntilIdle()
+
+        assertEquals(listOf("thread-2"), threadActions.selectedThreads)
+        assertEquals(null, viewModel.state.value.activePicker)
+        assertEquals("thread-2", viewModel.state.value.threadId)
+        assertEquals("Thread Two", viewModel.state.value.title)
+        assertTrue(viewModel.state.value.threadPicker.loading)
+    }
 }
 
 private class FakeConnectionController : ConnectionController {
@@ -85,14 +130,22 @@ private class FakeConnectionController : ConnectionController {
     }
 }
 
-private class RecordingThreadActions : ThreadActions {
+private class RecordingThreadActions(
+    private val repository: FakeOrchestrationRepository,
+) : ThreadActions {
     val selectedProjects = mutableListOf<String?>()
+    val selectedThreads = mutableListOf<String?>()
 
     override suspend fun selectProject(projectId: String?) {
         selectedProjects += projectId
+        repository.selectedProjectId.value = projectId
+        repository.focusedThreadId.value = null
     }
 
-    override suspend fun selectThread(threadId: String?) = Unit
+    override suspend fun selectThread(threadId: String?) {
+        selectedThreads += threadId
+        repository.focusedThreadId.value = threadId
+    }
 
     override suspend fun rename(
         threadId: String,
@@ -226,3 +279,40 @@ private class FakeOrchestrationRepository : OrchestrationRepository {
 
     override suspend fun clearEnvironment(environmentId: String) = Unit
 }
+
+private fun pickerShell() = OrchestrationShellSnapshot(
+    projects = listOf(
+        OrchestrationProject(
+            id = "project-1",
+            title = "Project One",
+            workspaceRoot = "/workspace/one",
+            createdAt = "2026-07-29T10:00:00Z",
+            updatedAt = "2026-07-29T10:00:00Z",
+        ),
+        OrchestrationProject(
+            id = "project-2",
+            title = "Project Two",
+            workspaceRoot = "/workspace/two",
+            createdAt = "2026-07-29T10:00:00Z",
+            updatedAt = "2026-07-29T10:00:00Z",
+        ),
+    ),
+    threads = listOf(
+        OrchestrationThreadShell(
+            id = "thread-1",
+            projectId = "project-1",
+            title = "Thread One",
+            createdAt = "2026-07-29T10:00:00Z",
+            updatedAt = "2026-07-29T10:01:00Z",
+        ),
+        OrchestrationThreadShell(
+            id = "thread-2",
+            projectId = "project-2",
+            title = "Thread Two",
+            createdAt = "2026-07-29T10:00:00Z",
+            updatedAt = "2026-07-29T10:02:00Z",
+        ),
+    ),
+    snapshotSequence = 7,
+    updatedAt = "2026-07-29T10:02:00Z",
+)

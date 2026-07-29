@@ -1,11 +1,11 @@
 package de.chennemann.agentic.ui.chat
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -240,29 +240,48 @@ private fun T3ChatHeader(
                     )
                 },
             )
+            FilterChip(
+                selected = state.threadPicker.selectedProjectId != null,
+                onClick = {
+                    onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
+                },
+                modifier = Modifier.weight(1f),
+                label = {
+                    Text(
+                        text = state.projectLabel ?: "Choose project",
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                },
+            )
+            TextButton(onClick = { onEvent(ChatUiEvent.NewThreadRequested) }) {
+                Text("New")
+            }
+        }
+
+        OutlinedButton(
+            onClick = {
+                onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
+            },
+            modifier = Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+        ) {
             Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable {
-                        onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
-                    },
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.Start,
             ) {
+                Text(
+                    text = "Thread",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 Text(
                     text = state.title,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = state.projectLabel ?: "Choose a project",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
-            TextButton(onClick = { onEvent(ChatUiEvent.NewThreadRequested) }) {
-                Text("New")
-            }
+            Text("Choose")
         }
 
         if (state.threadId != null) {

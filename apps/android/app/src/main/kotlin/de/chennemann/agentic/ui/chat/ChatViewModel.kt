@@ -47,8 +47,9 @@ class ChatViewModel(
         repository.shell,
         repository.focusedThread,
         repository.selectedProjectId,
-    ) { config, shell, thread, projectId ->
-        OrchestrationBundle(config, shell, thread, projectId)
+        repository.focusedThreadId,
+    ) { config, shell, thread, projectId, threadId ->
+        OrchestrationBundle(config, shell, thread, projectId, threadId)
     }
     private val environment = combine(
         environments.environments,
@@ -115,7 +116,7 @@ class ChatViewModel(
             ChatUiEvent.PairEnvironmentRequested -> Unit
             is ChatUiEvent.ProjectSelected -> launchCommand {
                 threads.selectProject(event.projectId)
-                update { copy(activePicker = null) }
+                update { copy(activePicker = ChatPickerUi.PROJECT_THREAD) }
             }
 
             is ChatUiEvent.ThreadSelected -> launchCommand {
@@ -127,7 +128,10 @@ class ChatViewModel(
                 copy(showArchived = event.visible)
             }
 
-            ChatUiEvent.NewThreadRequested -> launchCommand { threads.selectThread(null) }
+            ChatUiEvent.NewThreadRequested -> launchCommand {
+                threads.selectThread(null)
+                update { copy(activePicker = null) }
+            }
             ChatUiEvent.RenameThreadRequested -> update {
                 copy(renameDraft = state.value.title, renameVisible = true)
             }
@@ -285,8 +289,12 @@ class ChatViewModel(
         local: LocalState,
     ): ChatUiState {
         val shell = orchestration.shell.value
-        val detail = orchestration.thread.value?.thread
-        val projectId = orchestration.projectId ?: detail?.projectId ?: shell?.projects?.firstOrNull()?.id
+        val detail = orchestration.thread.value?.thread?.takeIf { it.id == orchestration.threadId }
+        val shellThread = shell?.threads?.firstOrNull { it.id == orchestration.threadId }
+        val projectId = orchestration.projectId
+            ?: detail?.projectId
+            ?: shellThread?.projectId
+            ?: shell?.projects?.firstOrNull()?.id
         val project = shell?.projects?.firstOrNull { it.id == projectId }
         val modelOptions = modelOptions(orchestration.config.value)
         val selectedModelId = local.providerModelId
@@ -303,10 +311,10 @@ class ChatViewModel(
             .sortedByDescending { it.updatedAt }
 
         return ChatUiState(
-            title = detail?.title ?: "New thread",
+            title = detail?.title ?: shellThread?.title ?: "New thread",
             environmentLabel = environment.active?.label ?: "T3",
             projectLabel = project?.title,
-            threadId = detail?.id,
+            threadId = orchestration.threadId,
             timeline = detail?.let { timeline(it, local) }.orEmpty(),
             connection = environment.connection.toUi(),
             composer = ComposerUiState(
@@ -349,8 +357,9 @@ class ChatViewModel(
                         active = it.session?.status in ActiveSessionStatuses,
                     )
                 },
-                selectedThreadId = detail?.id,
+                selectedThreadId = orchestration.threadId,
                 showArchived = local.showArchived,
+                loading = orchestration.threadId != null && detail?.id != orchestration.threadId,
             ),
             activePicker = local.activePicker,
             isTurnRunning = detail?.session?.status in ActiveSessionStatuses,
@@ -388,11 +397,11 @@ class ChatViewModel(
         }
         val oldestApproval = detail.activities
             .filter { it.kind == "approval.requested" }
-            .minByOrNull { it.sequence }
+            .minWithOrNull(activityOrder)
             ?.id
         val oldestUserInput = detail.activities
             .filter { it.kind == "user-input.requested" }
-            .minByOrNull { it.sequence }
+            .minWithOrNull(activityOrder)
             ?.id
         val activities = detail.activities.filter {
             when (it.kind) {
@@ -494,6 +503,7 @@ private data class OrchestrationBundle(
     val shell: ProjectionState<OrchestrationShellSnapshot>,
     val thread: ProjectionState<OrchestrationThreadDetailSnapshot>,
     val projectId: String?,
+    val threadId: String?,
 )
 
 private data class EnvironmentBundle(
@@ -505,6 +515,12 @@ private data class EnvironmentBundle(
 private data class TimedItem(
     val at: String,
     val item: ChatTimelineItemUi,
+)
+
+private val activityOrder = compareBy<OrchestrationActivity>(
+    { it.sequence ?: Long.MAX_VALUE },
+    { it.createdAt },
+    { it.id },
 )
 
 private fun modelOptions(config: EnvironmentClientConfig?): List<ProviderModelOptionUi> = config

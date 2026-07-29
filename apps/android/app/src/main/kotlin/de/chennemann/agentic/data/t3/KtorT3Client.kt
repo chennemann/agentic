@@ -28,6 +28,7 @@ import io.ktor.http.Parameters
 import io.ktor.http.contentType
 import io.ktor.http.encodeURLPathPart
 import io.ktor.http.isSuccess
+import io.ktor.serialization.JsonConvertException
 import io.ktor.utils.io.readUTF8Line
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.Flow
@@ -187,6 +188,8 @@ class KtorT3Client(
     } catch (cause: T3TransportException) {
         throw cause
     } catch (cause: SerializationException) {
+        throw T3TransportException.InvalidResponse()
+    } catch (cause: JsonConvertException) {
         throw T3TransportException.InvalidResponse()
     } catch (_: Exception) {
         throw T3TransportException.Network()

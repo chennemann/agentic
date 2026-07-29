@@ -85,6 +85,26 @@ class PortableFixtureTest {
     }
 
     @Test
+    fun `thread activities decode without their optional sequence`() {
+        val activity = PortableJson.decodeFromString<OrchestrationActivity>(
+            """
+            {
+              "id": "event-without-sequence",
+              "turnId": null,
+              "kind": "future.additive-activity",
+              "tone": "info",
+              "summary": "Portable activity",
+              "payload": {"detail": "preserved"},
+              "createdAt": "2026-07-29T10:00:00Z"
+            }
+            """.trimIndent()
+        )
+
+        assertEquals(null, activity.sequence)
+        assertEquals("preserved", activity.payload["detail"]?.jsonPrimitive?.content)
+    }
+
+    @Test
     fun `vendored artifact manifest matches pinned provenance`() {
         val manifest = PortableJson.parseToJsonElement(
             resource("/t3-portable/v1/artifact-manifest.json")
