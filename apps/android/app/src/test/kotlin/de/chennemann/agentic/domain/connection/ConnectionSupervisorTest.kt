@@ -5,6 +5,7 @@ import de.chennemann.agentic.data.t3.EnvironmentConfigClient
 import de.chennemann.agentic.data.t3.EnvironmentMetadataClient
 import de.chennemann.agentic.data.t3.OrchestrationSnapshotClient
 import de.chennemann.agentic.data.t3.OrchestrationStreamClient
+import de.chennemann.agentic.data.t3.T3TransportException
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
 import de.chennemann.agentic.domain.environment.SavedEnvironment
 import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
@@ -27,6 +28,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -88,6 +91,107 @@ class ConnectionSupervisorTest {
 
         assertEquals(2, transport.descriptorRequests)
         assertTrue(transport.cancelledStreams >= 1)
+        assertEquals(ConnectionState.Live, supervisor.state.value)
+    }
+
+    @Test
+    fun `foreground wake keeps an already live connection`() = runTest {
+        val transport = SupervisorTransport()
+        val supervisor = ConnectionSupervisor(
+            environments = SupervisorEnvironmentRepository(savedEnvironment("one")),
+            orchestration = SupervisorOrchestrationRepository(),
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            config = transport,
+            snapshots = transport,
+            streams = transport,
+            network = OnlineMonitor,
+            scope = backgroundScope,
+        )
+        runCurrent()
+
+        supervisor.wake()
+        runCurrent()
+
+        assertEquals(1, transport.descriptorRequests)
+        assertEquals(0, transport.cancelledStreams)
+        assertEquals(ConnectionState.Live, supervisor.state.value)
+    }
+
+    @Test
+    fun `completed shell stream resumes without a full reconnect`() = runTest {
+        val transport = SupervisorTransport(completeFirstShellStream = true)
+        val supervisor = ConnectionSupervisor(
+            environments = SupervisorEnvironmentRepository(savedEnvironment("one")),
+            orchestration = SupervisorOrchestrationRepository(),
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            config = transport,
+            snapshots = transport,
+            streams = transport,
+            network = OnlineMonitor,
+            scope = backgroundScope,
+        )
+        runCurrent()
+        advanceTimeBy(250)
+        runCurrent()
+
+        assertEquals(1, transport.descriptorRequests)
+        assertEquals(2, transport.shellStreamRequests)
+        assertEquals(ConnectionState.Live, supervisor.state.value)
+    }
+
+    @Test
+    fun `completed focused thread stream resumes without dropping shell connection`() = runTest {
+        val transport = SupervisorTransport(completeFirstThreadStream = true)
+        val orchestration = SupervisorOrchestrationRepository()
+        val supervisor = ConnectionSupervisor(
+            environments = SupervisorEnvironmentRepository(savedEnvironment("one")),
+            orchestration = orchestration,
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            config = transport,
+            snapshots = transport,
+            streams = transport,
+            network = OnlineMonitor,
+            scope = backgroundScope,
+        )
+        runCurrent()
+        orchestration.focusedThreadId.value = "thread-one"
+        runCurrent()
+        advanceTimeBy(250)
+        runCurrent()
+
+        assertEquals(1, transport.descriptorRequests)
+        assertEquals(1, transport.threadRequests.size)
+        assertEquals(2, transport.threadStreamRequests)
+        assertEquals(ConnectionState.Live, supervisor.state.value)
+    }
+
+    @Test
+    fun `transient focused thread failure retries without dropping shell connection`() = runTest {
+        val transport = SupervisorTransport(failFirstThreadStream = true)
+        val orchestration = SupervisorOrchestrationRepository()
+        val supervisor = ConnectionSupervisor(
+            environments = SupervisorEnvironmentRepository(savedEnvironment("one")),
+            orchestration = orchestration,
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            config = transport,
+            snapshots = transport,
+            streams = transport,
+            network = OnlineMonitor,
+            scope = backgroundScope,
+        )
+        runCurrent()
+        orchestration.focusedThreadId.value = "thread-one"
+        runCurrent()
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertEquals(1, transport.descriptorRequests)
+        assertEquals(1, transport.threadRequests.size)
+        assertEquals(2, transport.threadStreamRequests)
         assertEquals(ConnectionState.Live, supervisor.state.value)
     }
 
@@ -198,6 +302,9 @@ private class SupervisorEnvironmentRepository(
 
 private class SupervisorTransport(
     private val blockFirstDescriptor: Boolean = false,
+    private val completeFirstShellStream: Boolean = false,
+    private val completeFirstThreadStream: Boolean = false,
+    private val failFirstThreadStream: Boolean = false,
 ) : EnvironmentMetadataClient,
     EnvironmentConfigClient,
     OrchestrationSnapshotClient,
@@ -206,6 +313,8 @@ private class SupervisorTransport(
     var cancelledDescriptorRequests = 0
     val shellBaseUrls = mutableListOf<String>()
     val threadRequests = mutableListOf<String>()
+    var shellStreamRequests = 0
+    var threadStreamRequests = 0
     var cancelledStreams = 0
 
     override suspend fun environmentDescriptor(baseUrl: String): ExecutionEnvironmentDescriptor {
@@ -259,7 +368,14 @@ private class SupervisorTransport(
         bearerToken: String,
         afterSequence: Long,
         requestCompletionMarker: Boolean,
-    ): Flow<OrchestrationShellStreamItem> = cancellableFlow(OrchestrationShellStreamItem.Synchronized)
+    ): Flow<OrchestrationShellStreamItem> {
+        shellStreamRequests++
+        return if (completeFirstShellStream && shellStreamRequests == 1) {
+            flowOf(OrchestrationShellStreamItem.Synchronized)
+        } else {
+            cancellableFlow(OrchestrationShellStreamItem.Synchronized)
+        }
+    }
 
     override fun threadStream(
         baseUrl: String,
@@ -267,7 +383,20 @@ private class SupervisorTransport(
         threadId: String,
         afterSequence: Long,
         requestCompletionMarker: Boolean,
-    ): Flow<OrchestrationThreadStreamItem> = cancellableFlow(OrchestrationThreadStreamItem.Synchronized)
+    ): Flow<OrchestrationThreadStreamItem> {
+        threadStreamRequests++
+        return when {
+            completeFirstThreadStream && threadStreamRequests == 1 ->
+                flowOf(OrchestrationThreadStreamItem.Synchronized)
+
+            failFirstThreadStream && threadStreamRequests == 1 -> flow {
+                emit(OrchestrationThreadStreamItem.Synchronized)
+                throw T3TransportException.Network()
+            }
+
+            else -> cancellableFlow(OrchestrationThreadStreamItem.Synchronized)
+        }
+    }
 
     private fun <T> cancellableFlow(item: T): Flow<T> = flow {
         try {

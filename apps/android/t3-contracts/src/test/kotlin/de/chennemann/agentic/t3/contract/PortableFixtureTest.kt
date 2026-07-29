@@ -70,6 +70,26 @@ class PortableFixtureTest {
     }
 
     @Test
+    fun `thread settlement metadata decodes from the portable contract`() {
+        val thread = PortableJson.decodeFromString<OrchestrationThreadShell>(
+            """
+            {
+              "id": "thread-settled",
+              "projectId": "project-golden",
+              "title": "Settled thread",
+              "createdAt": "2026-01-01T00:00:00.000Z",
+              "updatedAt": "2026-01-01T00:01:00.000Z",
+              "settledAt": "2026-01-01T00:02:00.000Z",
+              "settledOverride": "active"
+            }
+            """.trimIndent()
+        )
+
+        assertEquals("2026-01-01T00:02:00.000Z", thread.settledAt)
+        assertEquals("active", thread.settledOverride)
+    }
+
+    @Test
     fun `every canonical thread stream variant decodes and unknown activity stays intact`() {
         val items = PortableJson.decodeFromString(
             ListSerializer(OrchestrationThreadStreamItem.serializer()),

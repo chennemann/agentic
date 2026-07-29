@@ -77,7 +77,9 @@ class ConnectionSupervisor(
     }
 
     override fun wake() {
-        restartGeneration.update { it + 1 }
+        if (mutableState.value != ConnectionState.Live) {
+            restartGeneration.update { it + 1 }
+        }
     }
 
     private suspend fun supervise(environment: SavedEnvironment) {
@@ -183,7 +185,7 @@ class ConnectionSupervisor(
                 refreshShell(environment, token)
                 continue
             }
-            throw T3TransportException.Network()
+            delay(StreamReconnectDelayMillis)
         }
     }
 
@@ -192,16 +194,22 @@ class ConnectionSupervisor(
         token: String,
         threadId: String,
     ) {
+        var needsSnapshot = true
+        var retryDelay = InitialRetryMillis
         while (orchestration.focusedThreadId.value == threadId) {
-            val snapshot = snapshots.threadSnapshot(environment.baseUrl, token, threadId)
-            orchestration.setThreadSnapshot(environment.id, snapshot, ProjectionSource.LIVE)
-            var gap = false
             try {
+                if (needsSnapshot) {
+                    val snapshot = snapshots.threadSnapshot(environment.baseUrl, token, threadId)
+                    orchestration.setThreadSnapshot(environment.id, snapshot, ProjectionSource.LIVE)
+                    needsSnapshot = false
+                }
+                val sequence = orchestration.focusedThread.value.sequence ?: 0
+                var gap = false
                 streams.threadStream(
                     environment.baseUrl,
                     token,
                     threadId,
-                    snapshot.snapshotSequence,
+                    sequence,
                     requestCompletionMarker = true,
                 ).collect { item ->
                     when (orchestration.applyThreadItem(environment.id, item)) {
@@ -214,10 +222,21 @@ class ConnectionSupervisor(
                     }
                     if (gap) throw SequenceGap()
                 }
+                retryDelay = InitialRetryMillis
+                delay(StreamReconnectDelayMillis)
+            } catch (cause: CancellationException) {
+                throw cause
+            } catch (cause: T3TransportException.Authentication) {
+                throw cause
             } catch (_: SequenceGap) {
+                needsSnapshot = true
+                retryDelay = InitialRetryMillis
                 continue
+            } catch (_: Exception) {
+                if (!network.online.value) return
+                delay(retryDelay)
+                retryDelay = (retryDelay * 2).coerceAtMost(MaxRetryMillis)
             }
-            throw T3TransportException.Network()
         }
     }
 
@@ -234,5 +253,6 @@ class ConnectionSupervisor(
     private companion object {
         const val InitialRetryMillis = 1_000L
         const val MaxRetryMillis = 16_000L
+        const val StreamReconnectDelayMillis = 250L
     }
 }

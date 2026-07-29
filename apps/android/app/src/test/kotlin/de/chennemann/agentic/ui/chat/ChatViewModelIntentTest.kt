@@ -101,12 +101,19 @@ class ChatViewModelIntentTest {
 
         assertEquals(listOf("project-1", "project-2"), viewModel.state.value.threadPicker.projects.map { it.id })
         assertEquals(listOf("thread-1"), viewModel.state.value.threadPicker.threads.map { it.id })
+        assertEquals(listOf("thread-settled"), viewModel.state.value.threadPicker.settledThreads.map { it.id })
+        assertEquals(false, viewModel.state.value.threadPicker.showSettled)
         assertEquals(
-            listOf("project-1", "project-2"),
+            listOf("project-2", "project-1"),
             viewModel.state.value.composer.quickSwitchProjects.map { it.id },
         )
 
         viewModel.onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
+        viewModel.onEvent(ChatUiEvent.SettledThreadsVisibilityChanged(true))
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.threadPicker.showSettled)
+
         viewModel.onEvent(ChatUiEvent.ProjectSelected("project-2"))
         advanceUntilIdle()
 
@@ -137,6 +144,32 @@ class ChatViewModelIntentTest {
         assertEquals(ChatPickerUi.PROJECT_THREAD, viewModel.state.value.activePicker)
         assertEquals("project-2", viewModel.state.value.threadPicker.selectedProjectId)
         assertEquals(listOf("thread-2"), viewModel.state.value.threadPicker.threads.map { it.id })
+    }
+
+    @Test
+    fun `quick switch shows five recent projects with unsettled threads`() = runTest(dispatcher) {
+        val repository = FakeOrchestrationRepository().apply {
+            shell.value = ProjectionState(
+                value = recentProjectsShell(),
+                sequence = 8,
+                source = ProjectionSource.LIVE,
+                synchronized = true,
+            )
+        }
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+        )
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf("project-8", "project-6", "project-5", "project-4", "project-3"),
+            viewModel.state.value.composer.quickSwitchProjects.map { it.id },
+        )
     }
 }
 
@@ -331,7 +364,44 @@ private fun pickerShell() = OrchestrationShellSnapshot(
             createdAt = "2026-07-29T10:00:00Z",
             updatedAt = "2026-07-29T10:02:00Z",
         ),
+        OrchestrationThreadShell(
+            id = "thread-settled",
+            projectId = "project-1",
+            title = "Settled Thread",
+            createdAt = "2026-07-29T10:00:00Z",
+            updatedAt = "2026-07-29T10:03:00Z",
+            settledAt = "2026-07-29T10:04:00Z",
+        ),
     ),
     snapshotSequence = 7,
     updatedAt = "2026-07-29T10:02:00Z",
+)
+
+private fun recentProjectsShell(): OrchestrationShellSnapshot = OrchestrationShellSnapshot(
+    projects = (1..8).map { index ->
+        OrchestrationProject(
+            id = "project-$index",
+            title = "Project $index",
+            workspaceRoot = "/workspace/$index",
+            createdAt = "2026-07-29T10:00:00Z",
+            updatedAt = "2026-07-29T10:${index.toString().padStart(2, '0')}:00Z",
+        )
+    },
+    threads = (1..8).map { index ->
+        OrchestrationThreadShell(
+            id = "thread-$index",
+            projectId = "project-$index",
+            title = "Thread $index",
+            createdAt = "2026-07-29T10:00:00Z",
+            updatedAt = "2026-07-29T10:${index.toString().padStart(2, '0')}:00Z",
+            settledAt = if (index == 8) "2026-07-29T11:00:00Z" else null,
+            settledOverride = when (index) {
+                7 -> "settled"
+                8 -> "active"
+                else -> null
+            },
+        )
+    },
+    snapshotSequence = 8,
+    updatedAt = "2026-07-29T11:00:00Z",
 )

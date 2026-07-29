@@ -150,6 +150,10 @@ class ChatViewModel(
                 copy(showArchived = event.visible)
             }
 
+            is ChatUiEvent.SettledThreadsVisibilityChanged -> update {
+                copy(showSettled = event.visible)
+            }
+
             ChatUiEvent.NewThreadRequested -> launchCommand {
                 val projectId = local.value.pickerProjectId
                 if (projectId != null && projectId != repository.selectedProjectId.value) {
@@ -225,7 +229,11 @@ class ChatViewModel(
             val shell = repository.shell.value.value ?: return@launchCommand
             if (shell.projects.none { it.id == projectId }) return@launchCommand
             val projectThreads = shell.threads
-                .filter { it.projectId == projectId && it.archivedAt == null }
+                .filter {
+                    it.projectId == projectId &&
+                        it.archivedAt == null &&
+                        !it.isSettled()
+                }
                 .sortedWith(compareByDescending<de.chennemann.agentic.t3.contract.OrchestrationThreadShell> {
                     it.updatedAt
                 }.thenByDescending { it.id })
@@ -370,7 +378,7 @@ class ChatViewModel(
         } ?: InteractionModeUi.PLAN
         val runtime = local.runtimeModeId ?: detail?.runtimeMode ?: DefaultRuntimeMode
         val pickerProjectId = local.pickerProjectId ?: projectId
-        val filteredThreads = shell?.threads
+        val pickerThreads = shell?.threads
             .orEmpty()
             .filter { it.projectId == pickerProjectId && (local.showArchived || it.archivedAt == null) }
             .sortedByDescending { it.updatedAt }
@@ -417,7 +425,16 @@ class ChatViewModel(
                     ProjectPickerItemUi(it.id, it.title, it.workspaceRoot)
                 },
                 selectedProjectId = pickerProjectId,
-                threads = filteredThreads.map {
+                threads = pickerThreads.filterNot { it.isSettled() }.map {
+                    ThreadPickerItemUi(
+                        id = it.id,
+                        title = it.title,
+                        supportingText = it.updatedAt,
+                        archived = it.archivedAt != null,
+                        active = it.session?.status in ActiveSessionStatuses,
+                    )
+                },
+                settledThreads = pickerThreads.filter { it.isSettled() }.map {
                     ThreadPickerItemUi(
                         id = it.id,
                         title = it.title,
@@ -428,6 +445,7 @@ class ChatViewModel(
                 },
                 selectedThreadId = orchestration.threadId,
                 showArchived = local.showArchived,
+                showSettled = local.showSettled,
                 loading = orchestration.threadId != null && detail?.id != orchestration.threadId,
             ),
             activePicker = local.activePicker,
@@ -553,6 +571,7 @@ class ChatViewModel(
         val draft: String = "",
         val activePicker: ChatPickerUi? = null,
         val showArchived: Boolean = false,
+        val showSettled: Boolean = false,
         val providerModelId: String? = null,
         val runtimeModeId: String? = null,
         val interactionMode: InteractionModeUi = InteractionModeUi.DEFAULT,
@@ -596,31 +615,55 @@ private val activityOrder = compareBy<OrchestrationActivity>(
 private fun quickSwitchProjects(
     shell: OrchestrationShellSnapshot?,
     selectedProjectId: String?,
-): List<ProjectQuickSwitchUi> = shell
-    ?.projects
-    .orEmpty()
-    .sortedWith(compareBy(String.CASE_INSENSITIVE_ORDER) { it.title })
-    .map { project ->
-        val projectThreads = shell?.threads.orEmpty().filter {
-            it.projectId == project.id && it.archivedAt == null
+): List<ProjectQuickSwitchUi> {
+    val snapshot = shell ?: return emptyList()
+    return snapshot.projects
+        .mapNotNull { project ->
+            val projectThreads = snapshot.threads.filter {
+                it.projectId == project.id &&
+                    it.archivedAt == null &&
+                    !it.isSettled()
+            }
+            val lastActiveAt = projectThreads.maxOfOrNull { it.updatedAt }
+                ?: return@mapNotNull null
+            ActiveProject(project, projectThreads, lastActiveAt)
         }
-        ProjectQuickSwitchUi(
-            id = project.id,
-            label = project.title
-                .firstOrNull(Char::isLetterOrDigit)
-                ?.uppercaseChar()
-                ?.toString()
-                ?: "?",
-            title = project.title,
-            active = project.id == selectedProjectId,
-            processing = projectThreads.any { it.session?.status in ActiveSessionStatuses },
-            attentionCount = projectThreads.count {
-                it.hasPendingApprovals ||
-                    it.hasPendingUserInput ||
-                    it.hasActionableProposedPlan
-            },
+        .sortedWith(
+            compareByDescending<ActiveProject> { it.lastActiveAt }
+                .thenBy(String.CASE_INSENSITIVE_ORDER) { it.project.title }
+                .thenBy { it.project.id },
         )
-    }
+        .take(MaxQuickSwitchProjects)
+        .map { activeProject ->
+            val project = activeProject.project
+            val projectThreads = activeProject.threads
+            ProjectQuickSwitchUi(
+                id = project.id,
+                label = project.title
+                    .firstOrNull(Char::isLetterOrDigit)
+                    ?.uppercaseChar()
+                    ?.toString()
+                    ?: "?",
+                title = project.title,
+                active = project.id == selectedProjectId,
+                processing = projectThreads.any { it.session?.status in ActiveSessionStatuses },
+                attentionCount = projectThreads.count {
+                    it.hasPendingApprovals ||
+                        it.hasPendingUserInput ||
+                        it.hasActionableProposedPlan
+                },
+            )
+        }
+}
+
+private data class ActiveProject(
+    val project: de.chennemann.agentic.t3.contract.OrchestrationProject,
+    val threads: List<de.chennemann.agentic.t3.contract.OrchestrationThreadShell>,
+    val lastActiveAt: String,
+)
+
+private fun de.chennemann.agentic.t3.contract.OrchestrationThreadShell.isSettled(): Boolean =
+    settledOverride == "settled" || (settledOverride != "active" && settledAt != null)
 
 private fun modelOptions(config: EnvironmentClientConfig?): List<ProviderModelOptionUi> = config
     ?.providers
@@ -718,4 +761,5 @@ private val RuntimeModes = listOf(
     RuntimeModeOptionUi("full-access", "Full access"),
 )
 private val ActiveSessionStatuses = setOf("starting", "running")
+private const val MaxQuickSwitchProjects = 5
 private const val DefaultRuntimeMode = "approval-required"

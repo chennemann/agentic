@@ -154,8 +154,10 @@ data class ThreadPickerUiState(
     val projects: List<ProjectPickerItemUi> = emptyList(),
     val selectedProjectId: String? = null,
     val threads: List<ThreadPickerItemUi> = emptyList(),
+    val settledThreads: List<ThreadPickerItemUi> = emptyList(),
     val selectedThreadId: String? = null,
     val showArchived: Boolean = false,
+    val showSettled: Boolean = false,
     val loading: Boolean = false,
 )
 
@@ -335,6 +337,10 @@ sealed interface ChatUiEvent {
     ) : ChatUiEvent
 
     data class ArchivedThreadsVisibilityChanged(
+        val visible: Boolean,
+    ) : ChatUiEvent
+
+    data class SettledThreadsVisibilityChanged(
         val visible: Boolean,
     ) : ChatUiEvent
 

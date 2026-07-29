@@ -123,9 +123,9 @@ fun ChatSelectionSheets(
                     ) {
                         Text(
                             text = if (state.threadPicker.showArchived) {
-                                "Threads, including archived"
+                                "Active threads, including archived"
                             } else {
-                                "Threads"
+                                "Active threads"
                             },
                             style = MaterialTheme.typography.labelLarge,
                         )
@@ -150,7 +150,7 @@ fun ChatSelectionSheets(
                 if (state.threadPicker.threads.isEmpty()) {
                     item("no-threads") {
                         Text(
-                            text = "No threads in this project",
+                            text = "No active threads in this project",
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(vertical = 8.dp),
                         )
@@ -167,6 +167,50 @@ fun ChatSelectionSheets(
                         trailingText = if (thread.archived) "Archived" else null,
                         onClick = { onEvent(ChatUiEvent.ThreadSelected(thread.id)) },
                     )
+                }
+                item("settled-thread-heading") {
+                    TextButton(
+                        onClick = {
+                            onEvent(
+                                ChatUiEvent.SettledThreadsVisibilityChanged(
+                                    visible = !state.threadPicker.showSettled,
+                                ),
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("Settled threads (${state.threadPicker.settledThreads.size})")
+                            Text(if (state.threadPicker.showSettled) "Hide" else "Show")
+                        }
+                    }
+                }
+                if (state.threadPicker.showSettled && state.threadPicker.settledThreads.isEmpty()) {
+                    item("no-settled-threads") {
+                        Text(
+                            text = "No settled threads in this project",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(vertical = 8.dp),
+                        )
+                    }
+                }
+                if (state.threadPicker.showSettled) {
+                    items(
+                        items = state.threadPicker.settledThreads,
+                        key = { "settled-thread:${it.id}" },
+                    ) { thread ->
+                        PickerRow(
+                            label = thread.title,
+                            supportingText = thread.supportingText,
+                            selected = thread.id == state.threadPicker.selectedThreadId,
+                            trailingText = if (thread.archived) "Archived" else null,
+                            onClick = { onEvent(ChatUiEvent.ThreadSelected(thread.id)) },
+                        )
+                    }
                 }
             }
         }

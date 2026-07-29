@@ -142,6 +142,8 @@ data class OrchestrationThreadShell(
     val latestUserMessageAt: String? = null,
     val latestTurn: LatestTurn? = null,
     val session: ThreadSession? = null,
+    val settledAt: String? = null,
+    val settledOverride: String? = null,
     val hasPendingApprovals: Boolean = false,
     val hasPendingUserInput: Boolean = false,
     val hasActionableProposedPlan: Boolean = false
@@ -225,6 +227,8 @@ data class OrchestrationThreadDetail(
     val updatedAt: String,
     val latestTurn: LatestTurn? = null,
     val session: ThreadSession? = null,
+    val settledAt: String? = null,
+    val settledOverride: String? = null,
     val messages: List<OrchestrationMessage> = emptyList(),
     val activities: List<OrchestrationActivity> = emptyList(),
     val proposedPlans: List<ProposedPlan> = emptyList(),
