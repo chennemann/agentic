@@ -1,127 +1,97 @@
-# Agentic - A native opencode client for Android
+# Agentic - Native T3 Code Client for Android
 
 ## Project Overview
 
-Agentic is a native opencode client for Android built with:
+Agentic is a native Android chat client for the T3 Code environment server. It consumes portable
+T3 protocol v1 over authenticated JSON HTTP and Server-Sent Events. The Android runtime must remain
+provider-neutral: provider instance IDs, model names, modes, commands, and activities come from the
+server contract.
 
-- **Kotlin 2.3.0** - Modern Kotlin with latest features
-- **Jetpack Compose** - Declarative UI with Material 3
-- **SQLDelight** - Type-safe SQL with Kotlin code generation
-- **KTLint** - Kotlin formatting and style checks
-- **Koin** - Lightweight dependency injection
-- **Navigation 3** - Type-safe navigation with serializable routes
+The repository is Android-only and is built with:
+
+- Kotlin and Jetpack Compose with Material 3
+- SQLDelight for versioned local projection caches
+- Koin for dependency injection
+- Navigation 3 with serializable routes
+- KTLint for Kotlin formatting and style
 
 ## Quick Reference Commands
 
 ```bash
-# Build & Run
-./apps/android/gradlew -p apps/android clean build assembleDebug # Build debug APK
-./apps/android/gradlew -p apps/android installDebug && adb logcat --clear && adb shell am start -W -n de.chennemann.agentic/.MainActivity  # Install & Start app on device
+# Format and verify
+./apps/android/gradlew -p apps/android ktlintFormat
+./apps/android/gradlew -p apps/android ktlintCheck
+./apps/android/gradlew -p apps/android build
 
-# Logcat
-adb logcat -d | grep -E "de\.chennemann\.opencode\.mobile|AndroidRuntime" # Check for errors when asked
+# Focused Android tests
+./apps/android/gradlew -p apps/android test
 
-# Code Quality
-./apps/android/gradlew -p apps/android ktlintCheck            # Check Kotlin style
-./apps/android/gradlew -p apps/android ktlintFormat           # Auto-fix style issues
+# Build, install, and launch a debug APK
+./apps/android/gradlew -p apps/android :app:assembleDebug
+./apps/android/gradlew -p apps/android :app:installDebug
+adb shell am start -W -n de.chennemann.agentic/.MainActivity
 
-# Testing
-./apps/android/gradlew -p apps/android clean test                   # Run Android unit tests
-npm run build && npm run check                                      # Run Node package builds and checks
-
-# Releases
-./apps/android/gradlew -p apps/android createBaselineTag            # Create next manual baseline tag (v<major>) at HEAD; tag push remains manual
-keytool -genkeypair -v -keystore apps/android/app/release.keystore -alias agentic -keyalg RSA -keysize 2048 -validity 36500 -storepass changeit -keypass changeit -dname "CN=Agentic, O=Agentic"  # Generate Android release keystore (replace passwords)
-base64 apps/android/app/release.keystore | gh secret set KEYSTORE_BASE64 && gh secret set KEYSTORE_PASSWORD -b"changeit" && gh secret set KEY_ALIAS -b"agentic"  # Upload signing secrets for GitHub Actions
-
-# OpenAPI source
-sh script/setup-opencode-submodule.sh  # Initialize/update opencode submodule with sparse API/DTO checkout
-
-# Icons
-bun run mobile:add-icon --source lucide --name pin --target PinLucide  # Generate ImageVector icon into app icons pack
-
-# Database
-# SQLDelight generates code in build/generated/sqldelight/
+# Generate SQLDelight interfaces
 ./apps/android/gradlew -p apps/android generateSqlDelightInterface
 ```
 
 ## Critical Rules
 
-### Releases
+### T3 contract
 
-1. **Baseline tags are manual only** – Use `v<major>` tags (for example `v1`, `v2`)
-2. **CI release tags are automatic** – Workflow publishes `v<major>.<commits_since_baseline>`
-3. **Release APKs must be signed in CI** – Configure `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, `KEY_ALIAS` GitHub secrets
+1. T3 is the source of truth for projects, threads, messages, activities, approvals, and user input.
+2. Android stores projection snapshots as a cache and applies sequenced stream items.
+3. HTTP/SSE transport and T3 DTOs must not leak into Compose.
+4. Provider routing uses stable provider instance IDs. Never branch on provider driver names.
+5. Unknown additive activity payloads remain visible through a generic provider-neutral UI model.
+6. Do not add legacy protocol fallbacks, server hosting, or sibling-repository build dependencies.
 
 ### Architecture
 
-1. **UI layer has NO business logic** – ViewModels only transform data for display
-2. **Repositories are the single source of truth** – UI observes via Flow
-3. **Services orchestrate the business logic** – Fully tested
-4. **Type-safe navigation** – All routes use sealed interface with @Serializable
-5. **Koin for DI** – No manual instance creation
+1. Repositories own observable state and expose `Flow`.
+2. Services perform pairing, connection, and command orchestration.
+3. ViewModels map repository/service state for display and forward user intents.
+4. UI-only state is owned according to its lifetime; keep ephemeral presentation state in Compose.
+5. Navigation routes are type-safe and serializable.
+6. Production dependencies are wired through Koin.
 
 ### Compose
 
-1. **State ownership by lifetime** – Hoist business/app/shared state to ViewModel; keep ephemeral presentation-only state (expand/collapse, local menus, focus, selection) in composables with `remember`; use `rememberSaveable` only when UI restoration is explicitly desired
-2. **Unidirectional data flow** – State down, events up
-3. **Material 3** – Use M3 components, theming, and adaptive layouts
+1. Keep conversation content dominant and the composer anchored at the bottom.
+2. Preserve stable streaming and follow-latest behavior.
+3. Use unidirectional data flow: state down, events up.
+4. Use Material 3 components, theming, and adaptive layouts.
 
-### SQLDelight
+### Persistence and credentials
 
-1. **Schema in .sq files** – All tables defined in sqldelight/ directory
-2. **Queries return Flow** – Use asFlow() for reactive updates
-3. **Mapper functions** – Map database models to domain models in repository
-4. **schema migrations** – ALWAYS add a new migration file for each schema change
+1. Define SQLDelight tables in `.sq` files and expose reactive queries.
+2. Treat cached state as subordinate to newer live projection sequences.
+3. Keep bearer credentials in the Android Keystore-backed credential store, never SQLDelight.
+4. Never log credentials, pairing tokens, or authenticated URLs.
+
+### Releases
+
+1. Baseline tags are manual `v<major>` tags such as `v1` and `v2`.
+2. CI publishes `v<major>.<commits_since_baseline>`.
+3. Release APKs are signed in CI using `KEYSTORE_BASE64`, `KEYSTORE_PASSWORD`, and `KEY_ALIAS`.
 
 ## Task Finalization
 
-### 1. Quality Gate (Mandatory — Gradle)
+Run the Android-only quality gate in this order:
 
-After completing the task, perform the following steps **in order**:
+```bash
+./apps/android/gradlew -p apps/android ktlintFormat
+./apps/android/gradlew -p apps/android ktlintCheck
+./apps/android/gradlew -p apps/android build
+```
 
-1. **Run linting**
+Run focused tests for the changed behavior before the full Android build. Fix only failures caused by
+the assigned work, preserve unrelated changes, and repeat the gate until it passes.
 
-    ```bash
-    ./apps/android/gradlew -p apps/android ktlintFormat
-    ```
+If an Android device is connected, install and launch the debug app before completion. Report any
+install or launch failure.
 
-    - Fix any linting errors.
-    - Re-run linting until it passes with zero issues.
-
-2. **Run a clean build with all tests**
-
-    ```bash
-    ./apps/android/gradlew -p apps/android build
-    npm run build
-    npm run check
-    ```
-
-3. **Failure handling**
-    - If any tests fail:
-        - Fix **only** the issues required to make tests pass.
-        - Re-run:
-            ```bash
-            ./apps/android/gradlew -p apps/android ktlintFormat
-            ./apps/android/gradlew -p apps/android build
-            npm run build
-            npm run check
-            ```
-    - Repeat until both linting and tests pass cleanly.
-
-### 2. Completion Criteria (Stop Condition)
-
-Stop when **all** of the following are true:
-
-- The assigned task is fully implemented.
-- `./apps/android/gradlew -p apps/android ktlintCheck` passes with zero errors.
-- `./apps/android/gradlew -p apps/android build` passes with all tests green.
-- `npm run build` and `npm run check` pass for the Node workspaces.
-- **No additional tasks are started or modified.**
-
-### 3. Create the Commit (Exactly One)
-
-Use the following commit message format:
+Create exactly one commit using:
 
 ```text
 <type>(<component>): <description>
@@ -133,15 +103,4 @@ Changes:
 - Bullet list of what changed
 ```
 
-### 4. Device Launch Requirement (Mandatory)
-
-If an Android device is connected, always install and launch the app as part of task completion.
-
-- Do not stop after tests/build only.
-- Always run install + launch on the connected device.
-- If install or launch fails, report the failure and reason in the final response.
-
----
-
-Once all is done, **stop immediately**.
-Do **not** suggest next steps, and do **not** continue with any additional work.
+Once the assigned task, quality gate, commit, and any connected-device launch are complete, stop.

@@ -1,5 +1,5 @@
-# Created by https://www.toptal.com/developers/gitignore/api/android,intellij,androidstudio,gradle,turbo
-# Edit at https://www.toptal.com/developers/gitignore?templates=android,intellij,androidstudio,gradle,turbo
+# Created by https://www.toptal.com/developers/gitignore/api/android,intellij,androidstudio,gradle
+# Edit at https://www.toptal.com/developers/gitignore?templates=android,intellij,androidstudio,gradle
 
 ### Android ###
 # Gradle files
@@ -155,16 +155,6 @@ fabric.properties
 # Azure Toolkit for IntelliJ plugin
 # https://plugins.jetbrains.com/plugin/8053-azure-toolkit-for-intellij
 .idea/**/azureSettings.xml
-
-### Turbo ###
-# Turborepo task cache
-.turbo
-
-# Node / monorepo
-node_modules/
-apps/server/node_modules/
-apps/agentic-relay/node_modules/
-apps/server/dist/
 
 ### Gradle ###
 .gradle

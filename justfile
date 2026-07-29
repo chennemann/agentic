@@ -3,44 +3,23 @@ set shell := ["bash", "-cu"]
 default:
     just --list
 
-setup-opencode:
-    sh script/setup-opencode-submodule.sh
-
 build:
-    just build-node
-    just build-android
-
-build-node:
-    npm run build
-
-build-android:
     ./apps/android/gradlew --parallel -p apps/android build
 
-build-server:
-    npm run build:server
-
-run-server:
-    npm run build:server
-    node apps/server/dist/main.js
-
-dev-server:
-    npm run --workspace @mariozechner/pi-server dev
-
-build-relay:
-    npm run build:relay
+format:
+    ./apps/android/gradlew --parallel -p apps/android ktlintFormat
 
 check:
-    just check-node
-    just check-android
-
-check-node:
-    npm run check
-
-check-android:
     ./apps/android/gradlew --parallel -p apps/android ktlintCheck
 
-test-android:
+test:
     ./apps/android/gradlew --parallel -p apps/android test
 
-release-android:
+assemble-debug:
+    ./apps/android/gradlew --parallel -p apps/android :app:assembleDebug
+
+install-debug:
+    ./apps/android/gradlew --parallel -p apps/android :app:installDebug
+
+release:
     ./apps/android/gradlew --parallel -p apps/android :app:assembleRelease
