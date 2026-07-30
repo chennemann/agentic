@@ -558,8 +558,8 @@ class ChatViewModel(
     ): List<ChatTimelineItemUi> {
         val messages = detail.messages.map {
             TimedItem(
-                it.createdAt,
-                ChatTimelineItemUi.Message(
+                at = it.createdAt,
+                item = ChatTimelineItemUi.Message(
                     ChatMessageUi(
                         id = it.id,
                         author = when (it.role) {
@@ -571,6 +571,8 @@ class ChatViewModel(
                         isStreaming = it.streaming,
                     ),
                 ),
+                turnId = it.turnId,
+                turnPhase = if (it.role == "user") TurnPhaseUser else TurnPhaseAssistant,
             )
         }
         val oldestApproval = detail.activities
@@ -601,11 +603,21 @@ class ChatViewModel(
                 item = ChatTimelineItemUi.Activity(it.toUi(local)),
                 sequence = it.sequence ?: Long.MAX_VALUE,
                 lifecycleRank = activityLifecycleRank(it.kind),
+                turnId = it.turnId,
+                turnPhase = TurnPhaseActivity,
             )
         }
-        val sorted = (messages + activities)
+        val items = messages + activities
+        val turnStartedAt = items
+            .filter { it.turnId != null }
+            .groupBy { requireNotNull(it.turnId) }
+            .mapValues { (_, turnItems) -> turnItems.minOf { it.at } }
+        val sorted = items
             .sortedWith(
-                compareBy<TimedItem> { it.at }
+                compareBy<TimedItem> { it.turnId?.let(turnStartedAt::get) ?: it.at }
+                    .thenBy { it.turnId.orEmpty() }
+                    .thenBy { it.turnPhase }
+                    .thenBy { it.at }
                     .thenBy { it.sequence }
                     .thenBy { it.lifecycleRank }
                     .thenBy { it.item.id },
@@ -764,6 +776,8 @@ private data class TimedItem(
     val item: ChatTimelineItemUi,
     val sequence: Long = Long.MIN_VALUE,
     val lifecycleRank: Int = 0,
+    val turnId: String? = null,
+    val turnPhase: Int = TurnPhaseActivity,
 )
 
 private fun activityLifecycleRank(kind: String): Int = when {
@@ -1051,3 +1065,6 @@ private val RuntimeModes = listOf(
 private val ActiveSessionStatuses = setOf("starting", "running")
 private const val MaxQuickSwitchProjects = 5
 private const val DefaultRuntimeMode = "full-access"
+private const val TurnPhaseUser = 0
+private const val TurnPhaseActivity = 1
+private const val TurnPhaseAssistant = 2

@@ -20,6 +20,7 @@ import de.chennemann.agentic.t3.contract.ExecutionEnvironmentCapabilities
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
 import de.chennemann.agentic.t3.contract.ModelSelection
 import de.chennemann.agentic.t3.contract.OrchestrationActivity
+import de.chennemann.agentic.t3.contract.OrchestrationMessage
 import de.chennemann.agentic.t3.contract.OrchestrationProject
 import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
@@ -405,6 +406,103 @@ class ChatViewModelIntentTest {
     }
 
     @Test
+    fun `tool groups stay within their turn and precede the assistant message`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val current = requireNotNull(repository.focusedThread.value.value)
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = current.copy(
+                thread = current.thread.copy(
+                    messages = listOf(
+                        orchestrationMessage(
+                            id = "user-1",
+                            turnId = "turn-1",
+                            role = "user",
+                            text = "First request",
+                            createdAt = "2026-07-29T10:00:00Z",
+                        ),
+                        orchestrationMessage(
+                            id = "assistant-1",
+                            turnId = "turn-1",
+                            role = "assistant",
+                            text = "First answer",
+                            createdAt = "2026-07-29T10:02:00Z",
+                        ),
+                        orchestrationMessage(
+                            id = "user-2",
+                            turnId = "turn-2",
+                            role = "user",
+                            text = "Second request",
+                            createdAt = "2026-07-29T10:03:00Z",
+                        ),
+                        orchestrationMessage(
+                            id = "assistant-2",
+                            turnId = "turn-2",
+                            role = "assistant",
+                            text = "Second answer",
+                            createdAt = "2026-07-29T10:03:30Z",
+                        ),
+                    ),
+                    activities = listOf(
+                        toolActivity(
+                            id = "turn-1-tool-a",
+                            kind = "tool.completed",
+                            status = "completed",
+                            callId = "call-1-a",
+                            command = "first command",
+                            turnId = "turn-1",
+                            createdAt = "2026-07-29T10:01:00Z",
+                        ),
+                        toolActivity(
+                            id = "turn-1-tool-b",
+                            kind = "tool.completed",
+                            status = "completed",
+                            callId = "call-1-b",
+                            command = "second command",
+                            turnId = "turn-1",
+                            createdAt = "2026-07-29T10:04:00Z",
+                        ),
+                        toolActivity(
+                            id = "turn-2-tool",
+                            kind = "tool.completed",
+                            status = "completed",
+                            callId = "call-2",
+                            command = "third command",
+                            turnId = "turn-2",
+                            createdAt = "2026-07-29T10:05:00Z",
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(
+                "user-1",
+                "tool-group:turn-1-tool-a",
+                "assistant-1",
+                "user-2",
+                "tool-group:turn-2-tool",
+                "assistant-2",
+            ),
+            viewModel.state.value.timeline.map { it.id },
+        )
+        assertEquals(
+            2,
+            (viewModel.state.value.timeline[1] as ChatTimelineItemUi.ToolGroup).activities.size,
+        )
+    }
+
+    @Test
     fun `message submission failure restores composer and displays the rejection`() = runTest(dispatcher) {
         val selection = ModelSelection("provider", "model")
         val repository = submissionRepository(selection)
@@ -766,8 +864,11 @@ private fun toolActivity(
     status: String,
     callId: String,
     command: String,
+    turnId: String? = null,
+    createdAt: String = "2026-07-29T10:00:00Z",
 ) = OrchestrationActivity(
     id = id,
+    turnId = turnId,
     kind = kind,
     tone = "tool",
     summary = "Run command",
@@ -786,5 +887,20 @@ private fun toolActivity(
         }
         """.trimIndent(),
     ).jsonObject,
-    createdAt = "2026-07-29T10:00:00Z",
+    createdAt = createdAt,
+)
+
+private fun orchestrationMessage(
+    id: String,
+    turnId: String,
+    role: String,
+    text: String,
+    createdAt: String,
+) = OrchestrationMessage(
+    id = id,
+    turnId = turnId,
+    role = role,
+    text = text,
+    createdAt = createdAt,
+    updatedAt = createdAt,
 )
