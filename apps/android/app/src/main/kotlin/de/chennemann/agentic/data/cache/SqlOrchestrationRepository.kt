@@ -15,9 +15,13 @@ import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.PortableJson
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -26,8 +30,11 @@ import kotlinx.serialization.encodeToString
 class SqlOrchestrationRepository(
     private val database: AgenticDb,
     private val dispatcher: CoroutineDispatcher,
+    private val scope: CoroutineScope,
 ) : OrchestrationRepository {
     private val lock = Mutex()
+    private val cacheJobs = mutableMapOf<CacheIdentity, Job>()
+    private val cacheGenerations = mutableMapOf<CacheIdentity, Long>()
     private val mutableClientConfig = MutableStateFlow(ProjectionState<EnvironmentClientConfig>())
     override val clientConfig: StateFlow<ProjectionState<EnvironmentClientConfig>> = mutableClientConfig.asStateFlow()
     private val mutableShell = MutableStateFlow(ProjectionState<OrchestrationShellSnapshot>())
@@ -43,6 +50,7 @@ class SqlOrchestrationRepository(
 
     override suspend fun loadCached(environmentId: String) = withContext(dispatcher) {
         lock.withLock {
+            cancelScheduledCaches(environmentId)
             currentEnvironmentId = environmentId
             mutableClientConfig.value = ProjectionState()
             mutableShell.value = ProjectionState()
@@ -83,6 +91,7 @@ class SqlOrchestrationRepository(
         lock.withLock {
             if (environmentId != currentEnvironmentId) return@withLock
             mutableClientConfig.value = ClientConfigReducer.reduce(mutableClientConfig.value, config, source)
+            cancelScheduledCache(environmentId, ClientConfigKind, GlobalCacheKey)
             cache(
                 environmentId,
                 ClientConfigKind,
@@ -101,6 +110,7 @@ class SqlOrchestrationRepository(
         lock.withLock {
             if (environmentId != currentEnvironmentId) return@withLock
             mutableShell.value = ShellProjectionReducer.snapshot(mutableShell.value, snapshot, source)
+            cancelScheduledCache(environmentId, ShellKind, GlobalCacheKey)
             cache(
                 environmentId,
                 ShellKind,
@@ -124,12 +134,20 @@ class SqlOrchestrationRepository(
                     item is OrchestrationShellStreamItem.ThreadRemoved &&
                     mutableFocusedThreadId.value == item.threadId
                 ) {
+                    cancelScheduledCache(environmentId, ThreadKind, item.threadId)
                     mutableFocusedThreadId.value = null
                     mutableFocusedThread.value = ProjectionState()
                     database.agenticT3Queries.deleteProjection(environmentId, ThreadKind, item.threadId)
                 }
                 reduction.state.value?.let {
-                    cache(environmentId, ShellKind, GlobalCacheKey, reduction.state.sequence, PortableJson.encodeToString(it))
+                    scheduleCache(
+                        environmentId,
+                        ShellKind,
+                        GlobalCacheKey,
+                        reduction.state.sequence,
+                    ) {
+                        PortableJson.encodeToString(it)
+                    }
                 }
             }
             reduction
@@ -194,6 +212,7 @@ class SqlOrchestrationRepository(
                 snapshot,
                 source,
             )
+            cancelScheduledCache(environmentId, ThreadKind, snapshot.thread.id)
             cache(
                 environmentId,
                 ThreadKind,
@@ -218,17 +237,19 @@ class SqlOrchestrationRepository(
                 val value = reduction.state.value
                 if (value == null) {
                     mutableFocusedThreadId.value?.let {
+                        cancelScheduledCache(environmentId, ThreadKind, it)
                         database.agenticT3Queries.deleteProjection(environmentId, ThreadKind, it)
                     }
                     mutableFocusedThreadId.value = null
                 } else {
-                    cache(
+                    scheduleCache(
                         environmentId,
                         ThreadKind,
                         value.thread.id,
                         reduction.state.sequence,
-                        PortableJson.encodeToString(value),
-                    )
+                    ) {
+                        PortableJson.encodeToString(value)
+                    }
                 }
             }
             reduction
@@ -237,6 +258,7 @@ class SqlOrchestrationRepository(
 
     override suspend fun clearEnvironment(environmentId: String) = withContext(dispatcher) {
         lock.withLock {
+            cancelScheduledCaches(environmentId)
             database.agenticT3Queries.deleteEnvironmentProjections(environmentId)
             database.agenticT3Queries.deleteEnvironmentPreferences(environmentId)
             if (currentEnvironmentId == environmentId) {
@@ -285,13 +307,64 @@ class SqlOrchestrationRepository(
         )
     }
 
+    private fun scheduleCache(
+        environmentId: String,
+        kind: String,
+        key: String,
+        sequence: Long?,
+        payload: () -> String,
+    ) {
+        val identity = CacheIdentity(environmentId, kind, key)
+        val generation = cacheGenerations.getOrDefault(identity, 0) + 1
+        cacheGenerations[identity] = generation
+        cacheJobs.remove(identity)?.cancel()
+        cacheJobs[identity] = scope.launch(dispatcher) {
+            delay(CacheWriteDebounceMillis)
+            val encoded = payload()
+            lock.withLock {
+                if (
+                    currentEnvironmentId == environmentId &&
+                    cacheGenerations[identity] == generation
+                ) {
+                    cache(environmentId, kind, key, sequence, encoded)
+                }
+            }
+        }
+    }
+
+    private fun cancelScheduledCache(
+        environmentId: String,
+        kind: String,
+        key: String,
+    ) {
+        val identity = CacheIdentity(environmentId, kind, key)
+        cacheGenerations[identity] = cacheGenerations.getOrDefault(identity, 0) + 1
+        cacheJobs.remove(identity)?.cancel()
+    }
+
+    private fun cancelScheduledCaches(environmentId: String) {
+        cacheJobs.keys
+            .filter { it.environmentId == environmentId }
+            .forEach { identity ->
+                cacheGenerations[identity] = cacheGenerations.getOrDefault(identity, 0) + 1
+                cacheJobs.remove(identity)?.cancel()
+            }
+    }
+
     private data class CachedProjection(
         val sequence: Long?,
         val payload: String,
     )
 
+    private data class CacheIdentity(
+        val environmentId: String,
+        val kind: String,
+        val key: String,
+    )
+
     private companion object {
         const val CacheSchemaVersion = 1L
+        const val CacheWriteDebounceMillis = 500L
         const val ClientConfigKind = "client-config"
         const val ShellKind = "shell"
         const val ThreadKind = "thread"

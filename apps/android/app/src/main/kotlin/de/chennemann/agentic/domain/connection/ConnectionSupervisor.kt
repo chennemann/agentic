@@ -158,6 +158,8 @@ class ConnectionSupervisor(
         token: String,
         requestMarker: Boolean,
     ) {
+        var retryDelay = InitialRetryMillis
+        var consecutiveFailures = 0
         while (true) {
             val sequence = orchestration.shell.value.sequence ?: 0
             var gap = false
@@ -175,6 +177,8 @@ class ConnectionSupervisor(
                             !requestMarker
                         ) {
                             mutableState.value = ConnectionState.Live
+                            retryDelay = InitialRetryMillis
+                            consecutiveFailures = 0
                         }
 
                         is Reduction.Ignored -> Unit
@@ -183,6 +187,24 @@ class ConnectionSupervisor(
                 }
             } catch (_: SequenceGap) {
                 refreshShell(environment, token)
+                retryDelay = InitialRetryMillis
+                consecutiveFailures = 0
+                continue
+            } catch (cause: CancellationException) {
+                throw cause
+            } catch (cause: T3TransportException.Authentication) {
+                throw cause
+            } catch (cause: Exception) {
+                if (!network.online.value) awaitCancellation()
+                consecutiveFailures++
+                if (consecutiveFailures >= FailuresBeforeBackoffUi) {
+                    mutableState.value = ConnectionState.Backoff(
+                        retryInMillis = retryDelay,
+                        message = cause.message ?: "Connection interrupted.",
+                    )
+                }
+                delay(retryDelay)
+                retryDelay = (retryDelay * 2).coerceAtMost(MaxRetryMillis)
                 continue
             }
             delay(StreamReconnectDelayMillis)
@@ -254,5 +276,6 @@ class ConnectionSupervisor(
         const val InitialRetryMillis = 1_000L
         const val MaxRetryMillis = 16_000L
         const val StreamReconnectDelayMillis = 250L
+        const val FailuresBeforeBackoffUi = 3
     }
 }

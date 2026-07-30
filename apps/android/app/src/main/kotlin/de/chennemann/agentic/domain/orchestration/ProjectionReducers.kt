@@ -67,9 +67,6 @@ object ShellProjectionReducer {
         val currentSequence = current.sequence
             ?: return Reduction.Gap(current, expected = 0, received = sequence)
         if (sequence <= currentSequence) return Reduction.Ignored(current)
-        if (sequence != currentSequence + 1) {
-            return Reduction.Gap(current, expected = currentSequence + 1, received = sequence)
-        }
         val value = current.value
             ?: return Reduction.Gap(current, expected = currentSequence + 1, received = sequence)
         val updated = when (item) {
@@ -141,9 +138,6 @@ object ThreadProjectionReducer {
         val currentSequence = current.sequence
             ?: return Reduction.Gap(current, expected = 0, received = sequence)
         if (sequence <= currentSequence) return Reduction.Ignored(current)
-        if (sequence != currentSequence + 1) {
-            return Reduction.Gap(current, expected = currentSequence + 1, received = sequence)
-        }
         val snapshot = current.value
             ?: return Reduction.Gap(current, expected = currentSequence + 1, received = sequence)
         if (event.type == "thread.deleted") {

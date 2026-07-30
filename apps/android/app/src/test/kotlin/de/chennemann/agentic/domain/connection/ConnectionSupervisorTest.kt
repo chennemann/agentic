@@ -142,6 +142,29 @@ class ConnectionSupervisorTest {
     }
 
     @Test
+    fun `transient shell failure resumes without a full reconnect`() = runTest {
+        val transport = SupervisorTransport(failFirstShellStream = true)
+        val supervisor = ConnectionSupervisor(
+            environments = SupervisorEnvironmentRepository(savedEnvironment("one")),
+            orchestration = SupervisorOrchestrationRepository(),
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            config = transport,
+            snapshots = transport,
+            streams = transport,
+            network = OnlineMonitor,
+            scope = backgroundScope,
+        )
+        runCurrent()
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertEquals(1, transport.descriptorRequests)
+        assertEquals(2, transport.shellStreamRequests)
+        assertEquals(ConnectionState.Live, supervisor.state.value)
+    }
+
+    @Test
     fun `completed focused thread stream resumes without dropping shell connection`() = runTest {
         val transport = SupervisorTransport(completeFirstThreadStream = true)
         val orchestration = SupervisorOrchestrationRepository()
@@ -303,6 +326,7 @@ private class SupervisorEnvironmentRepository(
 private class SupervisorTransport(
     private val blockFirstDescriptor: Boolean = false,
     private val completeFirstShellStream: Boolean = false,
+    private val failFirstShellStream: Boolean = false,
     private val completeFirstThreadStream: Boolean = false,
     private val failFirstThreadStream: Boolean = false,
 ) : EnvironmentMetadataClient,
@@ -370,10 +394,16 @@ private class SupervisorTransport(
         requestCompletionMarker: Boolean,
     ): Flow<OrchestrationShellStreamItem> {
         shellStreamRequests++
-        return if (completeFirstShellStream && shellStreamRequests == 1) {
-            flowOf(OrchestrationShellStreamItem.Synchronized)
-        } else {
-            cancellableFlow(OrchestrationShellStreamItem.Synchronized)
+        return when {
+            completeFirstShellStream && shellStreamRequests == 1 ->
+                flowOf(OrchestrationShellStreamItem.Synchronized)
+
+            failFirstShellStream && shellStreamRequests == 1 -> flow {
+                emit(OrchestrationShellStreamItem.Synchronized)
+                throw T3TransportException.Network()
+            }
+
+            else -> cancellableFlow(OrchestrationShellStreamItem.Synchronized)
         }
     }
 

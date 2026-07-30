@@ -90,6 +90,7 @@ val appModule = module {
         SqlOrchestrationRepository(
             database = get(),
             dispatcher = get<DispatcherProvider>().io,
+            scope = get(named(AppScopeName)),
         )
     }
     single {
@@ -125,5 +126,15 @@ val appModule = module {
     }
     single<ConnectionController> { get<ConnectionSupervisor>() }
     viewModel { OnboardingViewModel(get(), get()) }
-    viewModel { ChatViewModel(get(), get(), get(), get(), get(), get()) }
+    viewModel {
+        ChatViewModel(
+            environments = get(),
+            repository = get(),
+            connection = get(),
+            environmentService = get(),
+            threads = get(),
+            chat = get(),
+            mappingDispatcher = get<DispatcherProvider>().default,
+        )
+    }
 }

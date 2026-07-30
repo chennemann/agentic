@@ -43,6 +43,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
@@ -73,6 +74,7 @@ class ChatViewModelIntentTest {
             environmentService = EnvironmentSelector {},
             threads = threadActions,
             chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
         )
 
         viewModel.onEvent(ChatUiEvent.DraftChanged("hello"))
@@ -104,6 +106,7 @@ class ChatViewModelIntentTest {
             environmentService = EnvironmentSelector {},
             threads = threadActions,
             chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
         )
         advanceUntilIdle()
 
@@ -115,6 +118,16 @@ class ChatViewModelIntentTest {
             listOf("project-2", "project-1"),
             viewModel.state.value.composer.quickSwitchProjects.map { it.id },
         )
+        val timelineBeforeTyping = viewModel.state.value.timeline
+        val projectsBeforeTyping = viewModel.state.value.composer.quickSwitchProjects
+        val pickerBeforeTyping = viewModel.state.value.threadPicker
+
+        viewModel.onEvent(ChatUiEvent.DraftChanged("typing stays local"))
+        advanceUntilIdle()
+
+        assertSame(timelineBeforeTyping, viewModel.state.value.timeline)
+        assertSame(projectsBeforeTyping, viewModel.state.value.composer.quickSwitchProjects)
+        assertSame(pickerBeforeTyping, viewModel.state.value.threadPicker)
 
         viewModel.onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
         viewModel.onEvent(ChatUiEvent.SettledThreadsVisibilityChanged(true))
@@ -171,6 +184,7 @@ class ChatViewModelIntentTest {
             environmentService = EnvironmentSelector {},
             threads = RecordingThreadActions(repository),
             chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
         )
         advanceUntilIdle()
 
@@ -196,6 +210,7 @@ class ChatViewModelIntentTest {
             environmentService = EnvironmentSelector {},
             threads = RecordingThreadActions(repository),
             chat = chat,
+            mappingDispatcher = dispatcher,
         )
         advanceUntilIdle()
 
@@ -227,6 +242,7 @@ class ChatViewModelIntentTest {
             environmentService = EnvironmentSelector {},
             threads = RecordingThreadActions(repository),
             chat = NoOpChatActions(startTurnFailure = IllegalStateException("Turn rejected")),
+            mappingDispatcher = dispatcher,
         )
         advanceUntilIdle()
 

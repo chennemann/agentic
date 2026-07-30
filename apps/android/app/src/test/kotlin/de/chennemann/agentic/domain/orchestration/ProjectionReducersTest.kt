@@ -32,7 +32,7 @@ class ProjectionReducersTest {
     }
 
     @Test
-    fun `duplicate is ignored and a sequence gap requests recovery`() {
+    fun `duplicate is ignored and a sparse global sequence is applied`() {
         val items = shellItems()
         val snapshot = ShellProjectionReducer.reduce(
             ProjectionState(),
@@ -41,12 +41,27 @@ class ProjectionReducersTest {
         val applied = ShellProjectionReducer.reduce(snapshot.state, items[1]) as Reduction.Applied
 
         val duplicate = ShellProjectionReducer.reduce(applied.state, items[1])
-        val gap = ShellProjectionReducer.reduce(applied.state, items[3])
+        val sparse = ShellProjectionReducer.reduce(applied.state, items[3])
 
         assertInstanceOf(Reduction.Ignored::class.java, duplicate)
-        assertInstanceOf(Reduction.Gap::class.java, gap)
-        assertEquals(42, (gap as Reduction.Gap).expected)
-        assertEquals(43, gap.received)
+        assertInstanceOf(Reduction.Applied::class.java, sparse)
+        assertEquals(43, (sparse as Reduction.Applied).state.sequence)
+    }
+
+    @Test
+    fun `thread reducer applies sparse global sequences without snapshot recovery`() {
+        val items = threadItems()
+        val snapshot = ThreadProjectionReducer.reduce(
+            ProjectionState(),
+            items[0],
+        ) as Reduction.Applied
+        val event = items.filterIsInstance<OrchestrationThreadStreamItem.Event>().first()
+        val sparse = event.copy(event = event.event.copy(sequence = 1_000))
+
+        val result = ThreadProjectionReducer.reduce(snapshot.state, sparse)
+
+        assertInstanceOf(Reduction.Applied::class.java, result)
+        assertEquals(1_000, (result as Reduction.Applied).state.sequence)
     }
 
     @Test

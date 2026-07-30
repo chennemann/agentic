@@ -19,9 +19,14 @@ import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import de.chennemann.agentic.t3.contract.PortableJson
 import java.time.Instant
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.conflate
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
@@ -40,6 +45,7 @@ class ChatViewModel(
     private val environmentService: EnvironmentSelector,
     private val threads: ThreadActions,
     private val chat: ChatActions,
+    private val mappingDispatcher: CoroutineDispatcher,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
     private val orchestration = combine(
@@ -59,8 +65,24 @@ class ChatViewModel(
         EnvironmentBundle(all, active, connection)
     }
 
-    val state = combine(orchestration, environment, local) { orchestration, environment, local ->
-        mapState(orchestration, environment, local)
+    private val mappedState = combine(
+        orchestration,
+        environment,
+        local.map(LocalState::structural).distinctUntilChanged(),
+    ) { orchestration, environment, local ->
+        Triple(orchestration, environment, local)
+    }.conflate().map { input ->
+        mapState(input.first, input.second, input.third)
+    }.flowOn(mappingDispatcher)
+
+    val state = combine(mappedState, local) { mapped, local ->
+        mapped.copy(
+            composer = mapped.composer.copy(
+                draft = local.draft,
+                sending = local.sending,
+                errorMessage = local.commandError,
+            ),
+        )
     }.stateIn(
         viewModelScope,
         SharingStarted.Eagerly,
@@ -607,7 +629,13 @@ class ChatViewModel(
         val textAnswers: Map<String, String> = emptyMap(),
         val optionAnswers: Map<String, Set<String>> = emptyMap(),
         val pickerProjectId: String? = null,
-    )
+    ) {
+        fun structural(): LocalState = copy(
+            draft = "",
+            sending = false,
+            commandError = null,
+        )
+    }
 }
 
 private data class OrchestrationBundle(
@@ -640,13 +668,12 @@ private fun quickSwitchProjects(
     selectedProjectId: String?,
 ): List<ProjectQuickSwitchUi> {
     val snapshot = shell ?: return emptyList()
+    val activeThreadsByProject = snapshot.threads
+        .filter { it.archivedAt == null && !it.isSettled() }
+        .groupBy { it.projectId }
     return snapshot.projects
         .mapNotNull { project ->
-            val projectThreads = snapshot.threads.filter {
-                it.projectId == project.id &&
-                    it.archivedAt == null &&
-                    !it.isSettled()
-            }
+            val projectThreads = activeThreadsByProject[project.id].orEmpty()
             val lastActiveAt = projectThreads.maxOfOrNull { it.updatedAt }
                 ?: return@mapNotNull null
             ActiveProject(project, projectThreads, lastActiveAt)
@@ -716,9 +743,11 @@ private fun slashCommands(
         .map { SlashCommandUi(it.name, it.description) }
 }
 
-private fun JsonObject.pretty(): String = Json(PortableJson) {
+private val PrettyPortableJson = Json(PortableJson) {
     prettyPrint = true
-}.encodeToString(this)
+}
+
+private fun JsonObject.pretty(): String = PrettyPortableJson.encodeToString(this)
 
 private fun ModelSelection.optionId(): String = optionId(instanceId, model)
 
