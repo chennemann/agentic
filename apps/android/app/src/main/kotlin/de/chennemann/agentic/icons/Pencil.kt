@@ -1,11 +1,6 @@
 package de.chennemann.agentic.icons
 
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
 val Icons.Pencil: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
@@ -16,23 +11,20 @@ val Icons.Pencil: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
         viewportWidth = 24f,
         viewportHeight = 24f,
     ).apply {
-        path(
-            stroke = SolidColor(Color.Black),
-            strokeLineWidth = 1.9f,
-            strokeLineCap = StrokeCap.Round,
-            strokeLineJoin = StrokeJoin.Round,
-        ) {
-            moveTo(4f, 20f)
-            horizontalLineTo(8f)
-            lineTo(19.5f, 8.5f)
-            curveTo(20.9f, 7.1f, 20.9f, 4.9f, 19.5f, 3.5f)
-            curveTo(18.1f, 2.1f, 15.9f, 2.1f, 14.5f, 3.5f)
-            lineTo(3f, 15f)
-            verticalLineTo(20f)
-            horizontalLineTo(4f)
+        lucidePath {
+            moveTo(21.174f, 6.812f)
+            arcToRelative(1f, 1f, 0f, false, false, -3.986f, -3.987f)
+            lineTo(3.842f, 16.174f)
+            arcToRelative(2f, 2f, 0f, false, false, -0.5f, 0.83f)
+            lineTo(2.021f, 21.356f)
+            arcToRelative(0.5f, 0.5f, 0f, false, false, 0.623f, 0.622f)
+            lineTo(6.997f, 20.658f)
+            arcToRelative(2f, 2f, 0f, false, false, 0.83f, -0.497f)
             close()
-            moveTo(13f, 5f)
-            lineTo(18f, 10f)
+        }
+        lucidePath {
+            moveTo(15f, 5f)
+            lineTo(19f, 9f)
         }
     }.build()
 }

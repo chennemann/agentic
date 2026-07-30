@@ -2,6 +2,8 @@ package de.chennemann.agentic.ui.components
 
 import androidx.activity.compose.setContent
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -44,9 +46,9 @@ class T3MessageComposerTest {
                                     label = "Reasoning",
                                     values = listOf(
                                         ProviderOptionValueUi("low", "Low"),
-                                        ProviderOptionValueUi("high", "High"),
+                                        ProviderOptionValueUi("xhigh", "Extra high"),
                                     ),
-                                    selectedValueId = "high",
+                                    selectedValueId = "xhigh",
                                 ),
                                 ProviderOptionUi.Select(
                                     id = "service-tier",
@@ -60,7 +62,16 @@ class T3MessageComposerTest {
                             ),
                             selectedRuntimeModeId = "full-access",
                             runtimeModes = listOf(
-                                RuntimeModeOptionUi("full-access", "Full access"),
+                                RuntimeModeOptionUi(
+                                    "approval-required",
+                                    "Supervised",
+                                    "Ask before changes.",
+                                ),
+                                RuntimeModeOptionUi(
+                                    "full-access",
+                                    "Full access",
+                                    "Allow all supported actions without approval.",
+                                ),
                             ),
                         ),
                         turnRunning = false,
@@ -71,12 +82,18 @@ class T3MessageComposerTest {
         }
 
         compose.onAllNodesWithText("Model Selection").assertCountEquals(0)
+        compose.onNodeWithText("Message").performClick().assertIsFocused()
         compose.onNodeWithContentDescription(
             "Open model, reasoning, and access controls",
         ).performClick()
+        compose.onNodeWithText("Message").assertIsNotFocused()
         compose.onNodeWithText("Model Selection").assertIsDisplayed()
         compose.onNodeWithText("Reasoning").assertIsDisplayed()
+        compose.onNodeWithText("xhigh").assertIsDisplayed()
+        compose.onAllNodesWithText("Extra high").assertCountEquals(0)
         compose.onAllNodesWithText("Service mode").assertCountEquals(0)
+        compose.onNodeWithText("Allow all supported actions without approval.").assertIsDisplayed()
+        compose.onAllNodesWithText("Ask before changes.").assertCountEquals(0)
 
         compose.onNodeWithText("Message").performClick()
         compose.onAllNodesWithText("Model Selection").assertCountEquals(0)

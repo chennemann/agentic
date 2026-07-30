@@ -1,11 +1,6 @@
 package de.chennemann.agentic.icons
 
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.dp
 
 val Icons.Brain: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
@@ -16,34 +11,40 @@ val Icons.Brain: ImageVector by lazy(LazyThreadSafetyMode.NONE) {
         viewportWidth = 24f,
         viewportHeight = 24f,
     ).apply {
-        path(
-            stroke = SolidColor(Color.Black),
-            strokeLineWidth = 1.8f,
-            strokeLineCap = StrokeCap.Round,
-            strokeLineJoin = StrokeJoin.Round,
-        ) {
-            moveTo(12f, 5.5f)
-            curveTo(11.5f, 3.2f, 8.4f, 2.8f, 7.2f, 5f)
-            curveTo(4.9f, 4.9f, 3.8f, 7.3f, 5f, 9f)
-            curveTo(2.7f, 10.2f, 3f, 13.3f, 5.1f, 14.2f)
-            curveTo(4.3f, 16.8f, 6.2f, 19f, 8.5f, 18.6f)
-            curveTo(9.5f, 20.7f, 12f, 19.7f, 12f, 17.5f)
-            close()
-            moveTo(12f, 5.5f)
-            curveTo(12.5f, 3.2f, 15.6f, 2.8f, 16.8f, 5f)
-            curveTo(19.1f, 4.9f, 20.2f, 7.3f, 19f, 9f)
-            curveTo(21.3f, 10.2f, 21f, 13.3f, 18.9f, 14.2f)
-            curveTo(19.7f, 16.8f, 17.8f, 19f, 15.5f, 18.6f)
-            curveTo(14.5f, 20.7f, 12f, 19.7f, 12f, 17.5f)
-            close()
-            moveTo(8f, 8f)
-            curveTo(9f, 8.2f, 9.7f, 9f, 9.8f, 10f)
-            moveTo(16f, 8f)
-            curveTo(15f, 8.2f, 14.3f, 9f, 14.2f, 10f)
-            moveTo(7.2f, 14f)
-            curveTo(8.4f, 13.4f, 9.6f, 13.8f, 10.1f, 15f)
-            moveTo(16.8f, 14f)
-            curveTo(15.6f, 13.4f, 14.4f, 13.8f, 13.9f, 15f)
+        lucidePath {
+            moveTo(12f, 18f)
+            verticalLineTo(5f)
+        }
+        lucidePath {
+            moveTo(15f, 13f)
+            arcToRelative(4.17f, 4.17f, 0f, false, true, -3f, -4f)
+            arcToRelative(4.17f, 4.17f, 0f, false, true, -3f, 4f)
+        }
+        lucidePath {
+            moveTo(17.598f, 6.5f)
+            arcTo(3f, 3f, 0f, true, false, 12f, 5f)
+            arcToRelative(3f, 3f, 0f, true, false, -5.598f, 1.5f)
+        }
+        lucidePath {
+            moveTo(17.997f, 5.125f)
+            arcToRelative(4f, 4f, 0f, false, true, 2.526f, 5.77f)
+        }
+        lucidePath {
+            moveTo(18f, 18f)
+            arcToRelative(4f, 4f, 0f, false, false, 2f, -7.464f)
+        }
+        lucidePath {
+            moveTo(19.967f, 17.483f)
+            arcTo(4f, 4f, 0f, true, true, 12f, 18f)
+            arcToRelative(4f, 4f, 0f, true, true, -7.967f, -0.517f)
+        }
+        lucidePath {
+            moveTo(6f, 18f)
+            arcToRelative(4f, 4f, 0f, false, true, -2f, -7.464f)
+        }
+        lucidePath {
+            moveTo(6.003f, 5.125f)
+            arcToRelative(4f, 4f, 0f, false, false, -2.526f, 5.77f)
         }
     }.build()
 }
