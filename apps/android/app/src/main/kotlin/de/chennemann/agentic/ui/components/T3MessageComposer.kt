@@ -42,6 +42,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -320,6 +321,7 @@ private fun ProjectQuickSwitchButton(
     onClick: () -> Unit,
     onLongClick: () -> Unit,
 ) {
+    val indicatorSize = 44.dp + with(LocalDensity.current) { 1.toDp() }
     val container = if (project.active) {
         MaterialTheme.colorScheme.primary
     } else {
@@ -335,18 +337,18 @@ private fun ProjectQuickSwitchButton(
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Box(
-            modifier = Modifier.size(44.dp),
+            modifier = Modifier.size(indicatorSize),
             contentAlignment = Alignment.Center,
         ) {
             if (project.processing) {
                 CircularProgressIndicator(
-                    modifier = Modifier.size(44.dp),
+                    modifier = Modifier.size(indicatorSize),
                     strokeWidth = 2.dp,
                 )
             } else if (project.unreadCount > 0) {
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
+                        .size(indicatorSize)
                         .border(
                             width = 2.dp,
                             color = MaterialTheme.colorScheme.primary,
