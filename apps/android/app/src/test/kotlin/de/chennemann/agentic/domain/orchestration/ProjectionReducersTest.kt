@@ -4,6 +4,8 @@ import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.PortableJson
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertSame
@@ -65,6 +67,48 @@ class ProjectionReducersTest {
     }
 
     @Test
+    fun `thread reducer accumulates streaming message fragments`() {
+        val items = threadItems()
+        val snapshot = ThreadProjectionReducer.reduce(
+            ProjectionState(),
+            items[0],
+        ) as Reduction.Applied
+        val event = items.filterIsInstance<OrchestrationThreadStreamItem.Event>().first {
+            it.event.type == "thread.message-sent"
+        }
+        val fragment = event.withMessageText(" streamed", sequence = 44)
+        val terminalFragment = event.withMessageText(" together", sequence = 45, streaming = false)
+        val accumulated = event.withMessageText(
+            "Generating streamed together!",
+            sequence = 46,
+            streaming = false,
+        )
+
+        val afterFragment = ThreadProjectionReducer.reduce(snapshot.state, fragment) as Reduction.Applied
+        val afterTerminal = ThreadProjectionReducer.reduce(
+            afterFragment.state,
+            terminalFragment,
+        ) as Reduction.Applied
+        val afterAccumulated = ThreadProjectionReducer.reduce(
+            afterTerminal.state,
+            accumulated,
+        ) as Reduction.Applied
+
+        assertEquals(
+            "Generating streamed together",
+            afterTerminal.state.value?.thread?.messages
+                ?.first { it.id == "message-assistant" }
+                ?.text,
+        )
+        assertEquals(
+            "Generating streamed together!",
+            afterAccumulated.state.value?.thread?.messages
+                ?.first { it.id == "message-assistant" }
+                ?.text,
+        )
+    }
+
+    @Test
     fun `cached snapshot cannot replace newer live shell`() {
         val snapshot = (shellItems().first() as OrchestrationShellStreamItem.Snapshot).snapshot
         val live = ShellProjectionReducer.snapshot(ProjectionState(), snapshot, ProjectionSource.LIVE)
@@ -111,3 +155,19 @@ class ProjectionReducersTest {
         javaClass.getResource("/t3-portable-v1/$name"),
     ).readText()
 }
+
+private fun OrchestrationThreadStreamItem.Event.withMessageText(
+    text: String,
+    sequence: Long,
+    streaming: Boolean = true,
+): OrchestrationThreadStreamItem.Event = copy(
+    event = event.copy(
+        sequence = sequence,
+        payload = JsonObject(
+            event.payload + mapOf(
+                "text" to JsonPrimitive(text),
+                "streaming" to JsonPrimitive(streaming),
+            ),
+        ),
+    ),
+)

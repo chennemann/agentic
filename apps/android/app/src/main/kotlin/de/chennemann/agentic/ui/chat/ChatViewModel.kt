@@ -22,6 +22,7 @@ import java.time.Instant
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -63,6 +64,33 @@ class ChatViewModel(
         connection.state,
     ) { all, active, connection ->
         EnvironmentBundle(all, active, connection)
+    }
+
+    init {
+        viewModelScope.launch {
+            var activeThreadIds: Set<String>? = null
+            combine(repository.shell, repository.focusedThreadId) { shell, focusedThreadId ->
+                shell.value?.threads.orEmpty() to focusedThreadId
+            }.collect { (threadShells, focusedThreadId) ->
+                val nextActiveThreadIds = threadShells
+                    .filter { it.session?.status in ActiveSessionStatuses }
+                    .mapTo(mutableSetOf()) { it.id }
+                val completedThreadIds = activeThreadIds
+                    ?.minus(nextActiveThreadIds)
+                    .orEmpty()
+                activeThreadIds = nextActiveThreadIds
+                val availableThreadIds = threadShells.mapTo(mutableSetOf()) { it.id }
+                update {
+                    copy(
+                        unreadThreadIds = (
+                            unreadThreadIds
+                                .intersect(availableThreadIds) +
+                                completedThreadIds.filterNot { it == focusedThreadId }
+                            ) - setOfNotNull(focusedThreadId),
+                    )
+                }
+            }
+        }
     }
 
     private val mappedState = combine(
@@ -454,6 +482,7 @@ class ChatViewModel(
                 quickSwitchProjects = quickSwitchProjects(
                     shell = shell,
                     selectedProjectId = projectId,
+                    unreadThreadIds = local.unreadThreadIds,
                 ),
                 sending = local.sending,
                 errorMessage = local.commandError,
@@ -630,16 +659,17 @@ class ChatViewModel(
                 )
             }
 
-            else -> when (tone) {
-                "tool" -> payload.toToolUi(this)
+            else -> when {
+                summary.equals("Plan updated", ignoreCase = true) ->
+                    payload.toToolUi(this).copy(status = ActivityStatusUi.COMPLETED)
 
-                "error" -> ChatActivityUi.Error(id, summary, payload.pretty())
-                "info" -> if (kind.startsWith("status.")) {
+                tone == "tool" -> payload.toToolUi(this)
+
+                tone == "error" -> ChatActivityUi.Error(id, summary, payload.pretty())
+                tone == "info" && kind.startsWith("status.") ->
                     ChatActivityUi.Information(id, summary, payload.pretty())
-                } else {
-                    ChatActivityUi.Unknown(id, summary, payload.pretty(), kind)
-                }
 
+                tone == "info" -> ChatActivityUi.Unknown(id, summary, payload.pretty(), kind)
                 else -> ChatActivityUi.Unknown(id, summary, payload.pretty(), kind)
             }
         }
@@ -705,6 +735,7 @@ class ChatViewModel(
         val textAnswers: Map<String, String> = emptyMap(),
         val optionAnswers: Map<String, Set<String>> = emptyMap(),
         val pickerProjectId: String? = null,
+        val unreadThreadIds: Set<String> = emptySet(),
     ) {
         fun structural(): LocalState = copy(
             draft = "",
@@ -862,6 +893,7 @@ private val activityOrder = compareBy<OrchestrationActivity>(
 private fun quickSwitchProjects(
     shell: OrchestrationShellSnapshot?,
     selectedProjectId: String?,
+    unreadThreadIds: Set<String>,
 ): List<ProjectQuickSwitchUi> {
     val snapshot = shell ?: return emptyList()
     val activeThreadsByProject = snapshot.threads
@@ -871,13 +903,22 @@ private fun quickSwitchProjects(
         .mapNotNull { project ->
             val projectThreads = activeThreadsByProject[project.id].orEmpty()
             if (projectThreads.isEmpty()) return@mapNotNull null
-            ActiveProject(project, projectThreads)
+            ActiveProject(
+                project = project,
+                threads = projectThreads,
+                lastActiveAt = projectThreads.maxOf { it.updatedAt },
+            )
         }
+        .sortedWith(
+            compareByDescending<ActiveProject> { it.lastActiveAt }
+                .thenBy(String.CASE_INSENSITIVE_ORDER) { it.project.title }
+                .thenBy { it.project.id },
+        )
+        .take(MaxQuickSwitchProjects)
         .sortedWith(
             compareBy<ActiveProject, String>(String.CASE_INSENSITIVE_ORDER) { it.project.title }
                 .thenBy { it.project.id },
         )
-        .take(MaxQuickSwitchProjects)
         .map { activeProject ->
             val project = activeProject.project
             val projectThreads = activeProject.threads
@@ -891,6 +932,7 @@ private fun quickSwitchProjects(
                 title = project.title,
                 active = project.id == selectedProjectId,
                 processing = projectThreads.any { it.session?.status in ActiveSessionStatuses },
+                unreadCount = projectThreads.count { it.id in unreadThreadIds },
                 attentionCount = projectThreads.count {
                     it.hasPendingApprovals ||
                         it.hasPendingUserInput ||
@@ -903,6 +945,7 @@ private fun quickSwitchProjects(
 private data class ActiveProject(
     val project: de.chennemann.agentic.t3.contract.OrchestrationProject,
     val threads: List<de.chennemann.agentic.t3.contract.OrchestrationThreadShell>,
+    val lastActiveAt: String,
 )
 
 private fun de.chennemann.agentic.t3.contract.OrchestrationThreadShell.isSettled(): Boolean =

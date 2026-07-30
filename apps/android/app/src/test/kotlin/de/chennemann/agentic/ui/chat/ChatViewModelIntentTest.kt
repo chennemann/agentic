@@ -32,6 +32,7 @@ import de.chennemann.agentic.t3.contract.ProviderModel
 import de.chennemann.agentic.t3.contract.ProviderOptionSelection
 import de.chennemann.agentic.t3.contract.PortableJson
 import de.chennemann.agentic.t3.contract.ServerAuthDescriptor
+import de.chennemann.agentic.t3.contract.ThreadSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -199,8 +200,77 @@ class ChatViewModelIntentTest {
         advanceUntilIdle()
 
         assertEquals(
-            listOf("project-1", "project-2", "project-3", "project-4", "project-5"),
+            listOf("project-3", "project-4", "project-5", "project-6", "project-8"),
             viewModel.state.value.composer.quickSwitchProjects.map { it.id },
+        )
+    }
+
+    @Test
+    fun `quick switch marks a completed unopened thread unread until selected`() = runTest(dispatcher) {
+        val runningSession = ThreadSession(
+            threadId = "thread-1",
+            status = "running",
+            updatedAt = "2026-07-29T10:02:00Z",
+        )
+        val initialShell = pickerShell().copy(
+            threads = pickerShell().threads.map {
+                if (it.id == "thread-1") it.copy(session = runningSession) else it
+            },
+        )
+        val repository = FakeOrchestrationRepository().apply {
+            shell.value = ProjectionState(
+                value = initialShell,
+                sequence = 7,
+                source = ProjectionSource.LIVE,
+                synchronized = true,
+            )
+        }
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        repository.shell.value = repository.shell.value.copy(
+            value = initialShell.copy(
+                threads = initialShell.threads.map {
+                    if (it.id == "thread-1") {
+                        it.copy(
+                            session = runningSession.copy(
+                                status = "idle",
+                                updatedAt = "2026-07-29T10:03:00Z",
+                            ),
+                            updatedAt = "2026-07-29T10:03:00Z",
+                        )
+                    } else {
+                        it
+                    }
+                },
+            ),
+            sequence = 8,
+        )
+        advanceUntilIdle()
+
+        assertEquals(
+            1,
+            viewModel.state.value.composer.quickSwitchProjects
+                .first { it.id == "project-1" }
+                .unreadCount,
+        )
+
+        repository.focusedThreadId.value = "thread-1"
+        advanceUntilIdle()
+
+        assertEquals(
+            0,
+            viewModel.state.value.composer.quickSwitchProjects
+                .first { it.id == "project-1" }
+                .unreadCount,
         )
     }
 
@@ -274,6 +344,14 @@ class ChatViewModelIntentTest {
             value = current.copy(
                 thread = current.thread.copy(
                     activities = listOf(
+                        OrchestrationActivity(
+                            id = "plan-updated",
+                            kind = "task.progress",
+                            tone = "thinking",
+                            summary = "Plan updated",
+                            payload = JsonObject(emptyMap()),
+                            createdAt = "2026-07-29T09:59:00Z",
+                        ),
                         toolActivity(
                             id = "tool-1-update",
                             kind = "tool.updated",
@@ -311,11 +389,19 @@ class ChatViewModelIntentTest {
         advanceUntilIdle()
 
         val group = viewModel.state.value.timeline.single() as ChatTimelineItemUi.ToolGroup
-        assertEquals(2, group.activities.size)
-        assertEquals(ActivityStatusUi.COMPLETED, group.activities.first().status)
-        assertEquals(ActivityStatusUi.RUNNING, group.activities.last().status)
-        assertEquals("./gradlew test", group.activities.first().subtitle)
-        assertEquals("git status --short", group.activities.last().subtitle)
+        assertEquals(3, group.activities.size)
+        assertEquals(
+            ActivityStatusUi.COMPLETED,
+            group.activities.first { it.summary == "Plan updated" }.status,
+        )
+        assertEquals(
+            ActivityStatusUi.COMPLETED,
+            group.activities.first { it.subtitle == "./gradlew test" }.status,
+        )
+        assertEquals(
+            ActivityStatusUi.RUNNING,
+            group.activities.first { it.subtitle == "git status --short" }.status,
+        )
     }
 
     @Test

@@ -180,9 +180,11 @@ object ThreadProjectionReducer {
             updatedAt = payload.string("updatedAt") ?: thread.updatedAt,
         )
 
-        "thread.message-sent" -> payload.decodeOrNull<MessageEventPayload>()?.let { message ->
+        "thread.message-sent" -> payload.decodeOrNull<MessageEventPayload>()?.let { event ->
+            val message = event.toMessage()
+            val previous = thread.messages.firstOrNull { it.id == message.id }
             thread.copy(
-                messages = thread.messages.replaceById(message.toMessage()) { it.id },
+                messages = thread.messages.replaceById(previous.merge(message)) { it.id },
                 updatedAt = message.updatedAt,
             )
         } ?: thread
@@ -246,6 +248,16 @@ private fun <T> List<T>.replaceById(
     value: T,
     id: (T) -> String,
 ): List<T> = filterNot { id(it) == id(value) } + value
+
+private fun OrchestrationMessage?.merge(incoming: OrchestrationMessage): OrchestrationMessage {
+    if (this == null || (!streaming && !incoming.streaming)) return incoming
+    val mergedText = when {
+        incoming.text.startsWith(text) -> incoming.text
+        text.endsWith(incoming.text) -> text
+        else -> text + incoming.text
+    }
+    return incoming.copy(text = mergedText)
+}
 
 @Serializable
 private data class MessageEventPayload(

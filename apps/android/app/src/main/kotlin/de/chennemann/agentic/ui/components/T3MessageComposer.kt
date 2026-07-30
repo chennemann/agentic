@@ -283,6 +283,7 @@ fun T3MessageComposer(
             }
 
             if (state.quickSwitchProjects.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
                 LazyRow(
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 16.dp),
@@ -307,7 +308,6 @@ fun T3MessageComposer(
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
@@ -350,7 +350,12 @@ private fun ProjectQuickSwitchButton(
                 modifier = Modifier
                     .size(36.dp)
                     .semantics {
-                        contentDescription = "Project ${project.title}"
+                        contentDescription = buildString {
+                            append("Project ${project.title}")
+                            if (project.unreadCount > 0) {
+                                append(", ${project.unreadCount} unread")
+                            }
+                        }
                     }
                     .combinedClickable(
                         onClick = onClick,
@@ -363,6 +368,17 @@ private fun ProjectQuickSwitchButton(
                 ) {
                     Text(project.label)
                 }
+            }
+            if (project.unreadCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .size(10.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.error,
+                            shape = CircleShape,
+                        ),
+                )
             }
         }
         Box(

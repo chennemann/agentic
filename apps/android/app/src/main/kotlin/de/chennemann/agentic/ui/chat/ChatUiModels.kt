@@ -221,6 +221,7 @@ data class ProjectQuickSwitchUi(
     val title: String,
     val active: Boolean = false,
     val processing: Boolean = false,
+    val unreadCount: Int = 0,
     val attentionCount: Int = 0,
 )
 
