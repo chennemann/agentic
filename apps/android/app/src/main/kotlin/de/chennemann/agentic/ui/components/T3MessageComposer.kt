@@ -10,6 +10,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,17 +30,15 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -47,6 +47,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -55,6 +56,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.Role
@@ -63,8 +65,15 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import de.chennemann.agentic.icons.Brain
+import de.chennemann.agentic.icons.Flame
 import de.chennemann.agentic.icons.Icons
+import de.chennemann.agentic.icons.Lock
+import de.chennemann.agentic.icons.Pencil
 import de.chennemann.agentic.icons.Send
+import de.chennemann.agentic.icons.Sparkles
+import de.chennemann.agentic.icons.Tune
+import de.chennemann.agentic.icons.Unlock
 import de.chennemann.agentic.ui.chat.ChatPickerUi
 import de.chennemann.agentic.ui.chat.ChatUiEvent
 import de.chennemann.agentic.ui.chat.ComposerUiState
@@ -72,6 +81,7 @@ import de.chennemann.agentic.ui.chat.InteractionModeUi
 import de.chennemann.agentic.ui.chat.ProjectQuickSwitchUi
 import de.chennemann.agentic.ui.chat.ProviderModelOptionUi
 import de.chennemann.agentic.ui.chat.ProviderOptionUi
+import de.chennemann.agentic.ui.chat.RuntimeModeOptionUi
 import kotlin.math.roundToInt
 
 private val ModeSwipeThreshold = 28.dp
@@ -85,6 +95,7 @@ fun T3MessageComposer(
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     var commandMenuDismissed by remember { mutableStateOf(false) }
+    val inputInteractionSource = remember { MutableInteractionSource() }
     val selectedModel = state.providerModels.firstOrNull {
         it.id == state.selectedProviderModelId
     }
@@ -101,8 +112,16 @@ fun T3MessageComposer(
     } else {
         state.slashCommands.filter { it.name.startsWith(commandQuery, ignoreCase = true) }
     }
+    val visibleProviderOptions = state.providerOptions.filterNot(ProviderOptionUi::isServiceMode)
 
     BackHandler(enabled = expanded) { expanded = false }
+    LaunchedEffect(inputInteractionSource) {
+        inputInteractionSource.interactions.collect { interaction ->
+            if (interaction is PressInteraction.Press) {
+                expanded = false
+            }
+        }
+    }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
@@ -169,9 +188,10 @@ fun T3MessageComposer(
                                     )
                                 },
                             )
-                        },
+                    },
                     enabled = state.enabled,
                     placeholder = { Text("Message") },
+                    interactionSource = inputInteractionSource,
                     maxLines = 12,
                     colors = TextFieldDefaults.colors(
                         focusedContainerColor = Color.Transparent,
@@ -228,11 +248,10 @@ fun T3MessageComposer(
                             Text("Stop")
                         }
                     } else {
-                        Button(
+                        IconButton(
                             onClick = { onEvent(ChatUiEvent.MessageSubmitted) },
                             enabled = state.enabled && state.draft.isNotBlank() && !state.sending,
-                            shape = CircleShape,
-                            contentPadding = PaddingValues(12.dp),
+                            modifier = Modifier.size(48.dp),
                         ) {
                             if (state.sending) {
                                 CircularProgressIndicator(
@@ -243,7 +262,7 @@ fun T3MessageComposer(
                                 Icon(
                                     imageVector = Icons.Send,
                                     contentDescription = "Send message",
-                                    modifier = Modifier.size(20.dp),
+                                    modifier = Modifier.size(28.dp),
                                 )
                             }
                         }
@@ -254,7 +273,7 @@ fun T3MessageComposer(
             if (!expanded) {
                 ComposerSummary(
                     selectedModel = selectedModel,
-                    providerOptions = state.providerOptions,
+                    providerOptions = visibleProviderOptions,
                     accessLabel = selectedRuntimeMode?.label ?: "Access",
                     enabled = state.enabled,
                     onExpand = { expanded = true },
@@ -269,8 +288,8 @@ fun T3MessageComposer(
                 ExpandedControls(
                     state = state,
                     selectedModel = selectedModel,
+                    providerOptions = visibleProviderOptions,
                     onEvent = onEvent,
-                    onCollapse = { expanded = false },
                 )
             }
 
@@ -330,29 +349,57 @@ private fun ComposerSummary(
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Text(
-            text = selectedModel?.modelLabel ?: "Choose model",
-            style = MaterialTheme.typography.labelMedium,
+        SummaryItem(
+            icon = Icons.Brain,
+            contentDescription = "Model ${selectedModel?.modelLabel ?: "not selected"}",
+            label = selectedModel?.modelLabel ?: "Choose model",
         )
         providerOptions.forEach { option ->
-            Text(
-                text = when (option) {
-                    is ProviderOptionUi.Select -> option.values
-                        .firstOrNull { it.id == option.selectedValueId }
-                        ?.label
-                        ?: option.label
+            val valueLabel = when (option) {
+                is ProviderOptionUi.Select -> option.values
+                    .firstOrNull { it.id == option.selectedValueId }
+                    ?.label
+                    ?: option.label
 
-                    is ProviderOptionUi.Toggle -> "${option.label}: ${if (option.selected) "On" else "Off"}"
-                },
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                is ProviderOptionUi.Toggle -> if (option.selected) "On" else "Off"
+            }
+            SummaryItem(
+                icon = option.icon(),
+                contentDescription = "${option.label}: $valueLabel",
             )
         }
-        Text(
-            text = accessLabel,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        SummaryItem(
+            icon = Icons.Lock,
+            contentDescription = "Access: $accessLabel",
         )
+    }
+}
+
+@Composable
+private fun SummaryItem(
+    icon: ImageVector,
+    contentDescription: String,
+    label: String? = null,
+) {
+    Row(
+        modifier = Modifier.semantics { this.contentDescription = contentDescription },
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(22.dp),
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        label?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.labelMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -360,8 +407,8 @@ private fun ComposerSummary(
 private fun ExpandedControls(
     state: ComposerUiState,
     selectedModel: ProviderModelOptionUi?,
+    providerOptions: List<ProviderOptionUi>,
     onEvent: (ChatUiEvent) -> Unit,
-    onCollapse: () -> Unit,
 ) {
     val favorites = state.providerModels
         .filter(ProviderModelOptionUi::favorite)
@@ -375,17 +422,7 @@ private fun ExpandedControls(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable(onClick = onCollapse)
-                .padding(vertical = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text("Model selection", style = MaterialTheme.typography.labelLarge)
-            Text("Collapse", style = MaterialTheme.typography.labelMedium)
-        }
+        SectionHeading(icon = Icons.Brain, label = "Model Selection")
 
         FlowRow(
             modifier = Modifier.fillMaxWidth(),
@@ -394,18 +431,24 @@ private fun ExpandedControls(
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             shortcuts.forEach { model ->
-                FilterChip(
-                    selected = model.id == state.selectedProviderModelId,
+                OutlinedButton(
                     onClick = { onEvent(ChatUiEvent.ProviderModelSelected(model.id)) },
                     enabled = state.enabled,
-                    label = {
-                        Text(
-                            text = model.modelLabel,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
-                )
+                    shape = RoundedCornerShape(6.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Brain,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Spacer(modifier = Modifier.size(6.dp))
+                    Text(
+                        text = model.modelLabel,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
         TextButton(
@@ -418,43 +461,68 @@ private fun ExpandedControls(
             Text("More models")
         }
 
-        state.providerOptions.forEach { option ->
-            HorizontalDivider()
+        providerOptions.forEach { option ->
             when (option) {
                 is ProviderOptionUi.Select -> SelectProviderOption(option, state.enabled, onEvent)
                 is ProviderOptionUi.Toggle -> ToggleProviderOption(option, state.enabled, onEvent)
             }
         }
 
-        HorizontalDivider()
-        Text("Access", style = MaterialTheme.typography.labelLarge)
+        SectionHeading(icon = Icons.Lock, label = "Access")
         state.runtimeModes.forEach { mode ->
             val selected = mode.id == state.selectedRuntimeModeId
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .background(
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.secondaryContainer
+                        } else {
+                            Color.Transparent
+                        },
+                        shape = RoundedCornerShape(10.dp),
+                    )
                     .selectable(
                         selected = selected,
                         enabled = state.enabled,
                         role = Role.RadioButton,
                         onClick = { onEvent(ChatUiEvent.RuntimeModeSelected(mode.id)) },
                     )
-                    .padding(vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    .semantics { contentDescription = "Access mode ${mode.label}" }
+                    .padding(horizontal = 8.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.Top,
             ) {
-                RadioButton(
-                    selected = selected,
-                    onClick = null,
-                    enabled = state.enabled,
+                Icon(
+                    imageVector = mode.icon(),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .padding(top = 1.dp)
+                        .size(22.dp),
+                    tint = if (selected) {
+                        MaterialTheme.colorScheme.onSecondaryContainer
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
                 )
                 Column(modifier = Modifier.weight(1f)) {
-                    Text(mode.label)
+                    Text(
+                        text = mode.label,
+                        color = if (selected) {
+                            MaterialTheme.colorScheme.onSecondaryContainer
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                    )
                     mode.description?.let {
                         Text(
                             text = it,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.onSecondaryContainer
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                         )
                     }
                 }
@@ -473,7 +541,7 @@ private fun SelectProviderOption(
         .indexOfFirst { it.id == option.selectedValueId }
         .coerceAtLeast(0)
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(option.label, style = MaterialTheme.typography.labelLarge)
+        SectionHeading(icon = option.icon(), label = option.label)
         option.description?.let {
             Text(
                 text = it,
@@ -531,7 +599,7 @@ private fun ToggleProviderOption(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(option.label, style = MaterialTheme.typography.labelLarge)
+            SectionHeading(icon = option.icon(), label = option.label)
             option.description?.let {
                 Text(
                     text = it,
@@ -549,6 +617,45 @@ private fun ToggleProviderOption(
         )
     }
 }
+
+@Composable
+private fun SectionHeading(
+    icon: ImageVector,
+    label: String,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            modifier = Modifier.size(24.dp),
+        )
+        Text(text = label, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+private fun ProviderOptionUi.icon(): ImageVector =
+    if (normalizedLabel().contains("reason")) Icons.Flame else Icons.Tune
+
+private fun RuntimeModeOptionUi.icon(): ImageVector = when (id) {
+    "approval-required" -> Icons.Lock
+    "auto-accept-edits" -> Icons.Pencil
+    "auto" -> Icons.Sparkles
+    "full-access" -> Icons.Unlock
+    else -> Icons.Lock
+}
+
+private fun ProviderOptionUi.isServiceMode(): Boolean {
+    val normalizedId = id.filter(Char::isLetterOrDigit).lowercase()
+    if (normalizedId in ServiceModeOptionIds) return true
+    if (normalizedLabel() in ServiceModeLabels) return true
+    return this is ProviderOptionUi.Select &&
+        values.mapTo(linkedSetOf()) { it.id.lowercase() } == ServiceModeValues
+}
+
+private fun ProviderOptionUi.normalizedLabel(): String = label.trim().lowercase()
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -648,3 +755,7 @@ private fun InteractionModeUi.next(): InteractionModeUi = when (this) {
     InteractionModeUi.DEFAULT -> InteractionModeUi.PLAN
     InteractionModeUi.PLAN -> InteractionModeUi.DEFAULT
 }
+
+private val ServiceModeOptionIds = setOf("fastmode", "servicemode", "servicetier")
+private val ServiceModeLabels = setOf("fast mode", "service mode", "service tier")
+private val ServiceModeValues = setOf("default", "fast")

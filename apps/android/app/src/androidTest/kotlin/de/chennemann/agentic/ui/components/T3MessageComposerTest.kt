@@ -23,7 +23,7 @@ class T3MessageComposerTest {
     val compose = createAndroidComposeRule<MainActivity>()
 
     @Test
-    fun summary_reveals_and_collapses_controls() {
+    fun summary_reveals_controls_and_input_collapses_them() {
         compose.activityRule.scenario.onActivity { activity ->
             activity.setContent {
                 MobileTheme {
@@ -48,6 +48,15 @@ class T3MessageComposerTest {
                                     ),
                                     selectedValueId = "high",
                                 ),
+                                ProviderOptionUi.Select(
+                                    id = "service-tier",
+                                    label = "Service mode",
+                                    values = listOf(
+                                        ProviderOptionValueUi("default", "Default"),
+                                        ProviderOptionValueUi("fast", "Fast"),
+                                    ),
+                                    selectedValueId = "default",
+                                ),
                             ),
                             selectedRuntimeModeId = "full-access",
                             runtimeModes = listOf(
@@ -61,11 +70,15 @@ class T3MessageComposerTest {
             }
         }
 
-        compose.onAllNodesWithText("Model selection").assertCountEquals(0)
+        compose.onAllNodesWithText("Model Selection").assertCountEquals(0)
         compose.onNodeWithContentDescription(
             "Open model, reasoning, and access controls",
         ).performClick()
-        compose.onNodeWithText("Model selection").assertIsDisplayed().performClick()
-        compose.onAllNodesWithText("Model selection").assertCountEquals(0)
+        compose.onNodeWithText("Model Selection").assertIsDisplayed()
+        compose.onNodeWithText("Reasoning").assertIsDisplayed()
+        compose.onAllNodesWithText("Service mode").assertCountEquals(0)
+
+        compose.onNodeWithText("Message").performClick()
+        compose.onAllNodesWithText("Model Selection").assertCountEquals(0)
     }
 }
