@@ -86,5 +86,9 @@ upsertPreference:
 INSERT OR REPLACE INTO local_preference(environment_id, preference_key, payload_json)
 VALUES (?, ?, ?);
 
+deletePreference:
+DELETE FROM local_preference
+WHERE environment_id = ? AND preference_key = ?;
+
 deleteEnvironmentPreferences:
 DELETE FROM local_preference WHERE environment_id = ?;

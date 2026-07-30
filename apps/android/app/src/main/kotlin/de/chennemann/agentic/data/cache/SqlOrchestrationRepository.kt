@@ -57,6 +57,7 @@ class SqlOrchestrationRepository(
             mutableFocusedThread.value = ProjectionState()
             mutableFocusedThreadId.value = null
             mutableSelectedProjectId.value = preference(environmentId, SelectedProjectPreference)
+            val storedThreadId = preference(environmentId, LastThreadPreference)
             projection(environmentId, ClientConfigKind, GlobalCacheKey)?.let {
                 runCatching { PortableJson.decodeFromString<EnvironmentClientConfig>(it.payload) }
                     .getOrNull()
@@ -78,6 +79,14 @@ class SqlOrchestrationRepository(
                             ProjectionSource.CACHE,
                         )
                     }
+            }
+            if (storedThreadId != null) {
+                mutableFocusedThreadId.value = storedThreadId
+                mutableShell.value.value
+                    ?.threads
+                    ?.firstOrNull { it.id == storedThreadId }
+                    ?.let { mutableSelectedProjectId.value = it.projectId }
+                loadThreadProjection(environmentId, storedThreadId)
             }
             Unit
         }
@@ -110,6 +119,7 @@ class SqlOrchestrationRepository(
         lock.withLock {
             if (environmentId != currentEnvironmentId) return@withLock
             mutableShell.value = ShellProjectionReducer.snapshot(mutableShell.value, snapshot, source)
+            if (source == ProjectionSource.LIVE) reconcileFocusedThread(environmentId)
             cancelScheduledCache(environmentId, ShellKind, GlobalCacheKey)
             cache(
                 environmentId,
@@ -130,15 +140,7 @@ class SqlOrchestrationRepository(
             val reduction = ShellProjectionReducer.reduce(mutableShell.value, item)
             if (reduction is Reduction.Applied) {
                 mutableShell.value = reduction.state
-                if (
-                    item is OrchestrationShellStreamItem.ThreadRemoved &&
-                    mutableFocusedThreadId.value == item.threadId
-                ) {
-                    cancelScheduledCache(environmentId, ThreadKind, item.threadId)
-                    mutableFocusedThreadId.value = null
-                    mutableFocusedThread.value = ProjectionState()
-                    database.agenticT3Queries.deleteProjection(environmentId, ThreadKind, item.threadId)
-                }
+                reconcileFocusedThread(environmentId)
                 reduction.state.value?.let {
                     scheduleCache(
                         environmentId,
@@ -163,17 +165,23 @@ class SqlOrchestrationRepository(
             mutableFocusedThreadId.value = threadId
             mutableFocusedThread.value = ProjectionState()
             if (threadId != null) {
-                projection(environmentId, ThreadKind, threadId)?.let {
-                    runCatching { PortableJson.decodeFromString<OrchestrationThreadDetailSnapshot>(it.payload) }
-                        .getOrNull()
-                        ?.let { snapshot ->
-                            mutableFocusedThread.value = ThreadProjectionReducer.snapshot(
-                                mutableFocusedThread.value,
-                                snapshot,
-                                ProjectionSource.CACHE,
-                            )
-                        }
-                }
+                database.agenticT3Queries.upsertPreference(
+                    environmentId,
+                    LastThreadPreference,
+                    threadId,
+                )
+                mutableShell.value.value
+                    ?.threads
+                    ?.firstOrNull { it.id == threadId }
+                    ?.let { thread ->
+                        mutableSelectedProjectId.value = thread.projectId
+                        database.agenticT3Queries.upsertPreference(
+                            environmentId,
+                            SelectedProjectPreference,
+                            thread.projectId,
+                        )
+                    }
+                loadThreadProjection(environmentId, threadId)
             }
         }
     }
@@ -241,6 +249,7 @@ class SqlOrchestrationRepository(
                         database.agenticT3Queries.deleteProjection(environmentId, ThreadKind, it)
                     }
                     mutableFocusedThreadId.value = null
+                    database.agenticT3Queries.deletePreference(environmentId, LastThreadPreference)
                 } else {
                     scheduleCache(
                         environmentId,
@@ -269,6 +278,43 @@ class SqlOrchestrationRepository(
                 mutableFocusedThreadId.value = null
                 mutableSelectedProjectId.value = null
             }
+        }
+    }
+
+    private fun loadThreadProjection(
+        environmentId: String,
+        threadId: String,
+    ) {
+        projection(environmentId, ThreadKind, threadId)?.let {
+            runCatching { PortableJson.decodeFromString<OrchestrationThreadDetailSnapshot>(it.payload) }
+                .getOrNull()
+                ?.let { snapshot ->
+                    mutableFocusedThread.value = ThreadProjectionReducer.snapshot(
+                        mutableFocusedThread.value,
+                        snapshot,
+                        ProjectionSource.CACHE,
+                    )
+                }
+        }
+    }
+
+    private fun reconcileFocusedThread(environmentId: String) {
+        val threadId = mutableFocusedThreadId.value ?: return
+        val shell = mutableShell.value.value ?: return
+        val thread = shell.threads.firstOrNull { it.id == threadId }
+        if (thread == null) {
+            cancelScheduledCache(environmentId, ThreadKind, threadId)
+            mutableFocusedThreadId.value = null
+            mutableFocusedThread.value = ProjectionState()
+            database.agenticT3Queries.deleteProjection(environmentId, ThreadKind, threadId)
+            database.agenticT3Queries.deletePreference(environmentId, LastThreadPreference)
+        } else if (mutableSelectedProjectId.value != thread.projectId) {
+            mutableSelectedProjectId.value = thread.projectId
+            database.agenticT3Queries.upsertPreference(
+                environmentId,
+                SelectedProjectPreference,
+                thread.projectId,
+            )
         }
     }
 
@@ -370,5 +416,6 @@ class SqlOrchestrationRepository(
         const val ThreadKind = "thread"
         const val GlobalCacheKey = "current"
         const val SelectedProjectPreference = "selected-project"
+        const val LastThreadPreference = "last-thread"
     }
 }
