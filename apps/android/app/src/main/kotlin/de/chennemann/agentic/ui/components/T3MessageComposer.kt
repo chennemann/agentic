@@ -152,7 +152,7 @@ fun T3MessageComposer(
                     "Build"
                 },
                 style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace),
-                color = ComposerMuted,
+                color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
                     .clickable(
                         enabled = state.enabled && !state.sending,
@@ -217,7 +217,7 @@ fun T3MessageComposer(
                         focusedTextColor = ComposerContent,
                         unfocusedTextColor = ComposerContent,
                         disabledTextColor = ComposerDisabled,
-                        cursorColor = ComposerContent,
+                        cursorColor = MaterialTheme.colorScheme.primary,
                         focusedPlaceholderColor = ComposerMuted,
                         unfocusedPlaceholderColor = ComposerMuted,
                         disabledPlaceholderColor = ComposerDisabled,
@@ -269,10 +269,10 @@ fun T3MessageComposer(
                             enabled = state.enabled && !state.sending,
                             shape = CircleShape,
                             colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = ComposerContent,
+                                contentColor = MaterialTheme.colorScheme.primary,
                                 disabledContentColor = ComposerDisabled,
                             ),
-                            border = BorderStroke(1.dp, ComposerMuted),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
                         ) {
                             Text("Stop")
                         }
@@ -282,7 +282,7 @@ fun T3MessageComposer(
                             enabled = state.enabled && state.draft.isNotBlank() && !state.sending,
                             modifier = Modifier.size(48.dp),
                             colors = IconButtonDefaults.iconButtonColors(
-                                contentColor = ComposerContent,
+                                contentColor = MaterialTheme.colorScheme.primary,
                                 disabledContentColor = ComposerDisabled,
                             ),
                         ) {
@@ -307,7 +307,7 @@ fun T3MessageComposer(
                 ComposerSummary(
                     selectedModel = selectedModel,
                     providerOptions = visibleProviderOptions,
-                    accessLabel = selectedRuntimeMode?.label ?: "Access",
+                    selectedRuntimeMode = selectedRuntimeMode,
                     enabled = state.enabled,
                     onExpand = {
                         focusManager.clearFocus(force = true)
@@ -373,7 +373,7 @@ fun T3MessageComposer(
 private fun ComposerSummary(
     selectedModel: ProviderModelOptionUi?,
     providerOptions: List<ProviderOptionUi>,
-    accessLabel: String,
+    selectedRuntimeMode: RuntimeModeOptionUi?,
     enabled: Boolean,
     onExpand: () -> Unit,
 ) {
@@ -406,8 +406,8 @@ private fun ComposerSummary(
             )
         }
         SummaryItem(
-            icon = Icons.Lock,
-            contentDescription = "Access: $accessLabel",
+            icon = selectedRuntimeMode?.icon() ?: Icons.Lock,
+            contentDescription = "Access: ${selectedRuntimeMode?.label ?: "not selected"}",
         )
     }
 }
@@ -420,14 +420,14 @@ private fun SummaryItem(
 ) {
     Row(
         modifier = Modifier.semantics { this.contentDescription = contentDescription },
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(
             imageVector = icon,
             contentDescription = null,
-            modifier = Modifier.size(22.dp),
-            tint = ComposerMuted,
+            modifier = Modifier.size(16.dp),
+            tint = MaterialTheme.colorScheme.primary,
         )
         label?.let {
             Text(
@@ -506,13 +506,25 @@ private fun ModelSelectionSection(
                         enabled = enabled,
                         shape = RoundedCornerShape(6.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = if (selected) ComposerSelected else Color.Transparent,
-                            contentColor = ComposerContent,
+                            containerColor = if (selected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                Color.Transparent
+                            },
+                            contentColor = if (selected) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                ComposerContent
+                            },
                             disabledContentColor = ComposerDisabled,
                         ),
                         border = BorderStroke(
                             width = 1.dp,
-                            color = if (selected) ComposerContent else ComposerMuted,
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                ComposerMuted
+                            },
                         ),
                         contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
                     ) {
@@ -536,7 +548,7 @@ private fun ModelSelectionSection(
                 },
                 enabled = hasModels,
                 colors = ButtonDefaults.textButtonColors(
-                    contentColor = ComposerContent,
+                    contentColor = MaterialTheme.colorScheme.primary,
                     disabledContentColor = ComposerDisabled,
                 ),
                 modifier = Modifier.align(Alignment.End),
@@ -564,7 +576,11 @@ private fun AccessSection(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(
-                            color = if (selected) ComposerSelected else Color.Transparent,
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.primaryContainer
+                            } else {
+                                Color.Transparent
+                            },
                             shape = RoundedCornerShape(10.dp),
                         )
                         .selectable(
@@ -584,18 +600,28 @@ private fun AccessSection(
                         modifier = Modifier
                             .padding(top = 1.dp)
                             .size(22.dp),
-                        tint = if (selected) ComposerContent else ComposerMuted,
+                        tint = if (selected) {
+                            MaterialTheme.colorScheme.onPrimaryContainer
+                        } else {
+                            ComposerMuted
+                        },
                     )
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = mode.label,
-                            color = if (selected) ComposerContent else ComposerMuted,
+                            color = if (selected) {
+                                MaterialTheme.colorScheme.onPrimaryContainer
+                            } else {
+                                ComposerMuted
+                            },
                         )
                         mode.description?.takeIf { selected }?.let {
                             Text(
                                 text = it,
                                 style = MaterialTheme.typography.bodySmall,
-                                color = ComposerMuted,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(
+                                    alpha = 0.8f,
+                                ),
                             )
                         }
                     }
@@ -630,7 +656,7 @@ private fun SelectProviderOption(
             if (option.values.size == 1) {
                 Text(
                     text = option.values.single().displayLabel(),
-                    color = ComposerContent,
+                    color = MaterialTheme.colorScheme.primary,
                 )
             } else {
                 Slider(
@@ -648,10 +674,10 @@ private fun SelectProviderOption(
                     valueRange = 0f..option.values.lastIndex.toFloat(),
                     steps = (option.values.size - 2).coerceAtLeast(0),
                     colors = SliderDefaults.colors(
-                        thumbColor = ComposerContent,
-                        activeTrackColor = ComposerContent,
+                        thumbColor = MaterialTheme.colorScheme.primary,
+                        activeTrackColor = MaterialTheme.colorScheme.primary,
                         inactiveTrackColor = ComposerDisabled,
-                        activeTickColor = ComposerBackground,
+                        activeTickColor = MaterialTheme.colorScheme.onPrimary,
                         inactiveTickColor = ComposerMuted,
                         disabledThumbColor = ComposerDisabled,
                         disabledActiveTrackColor = ComposerDisabled,
@@ -664,7 +690,7 @@ private fun SelectProviderOption(
                             text = value.displayLabel(),
                             style = MaterialTheme.typography.labelSmall,
                             color = if (index == selectedIndex) {
-                                ComposerContent
+                                MaterialTheme.colorScheme.primary
                             } else {
                                 ComposerMuted
                             },
@@ -709,8 +735,8 @@ private fun ToggleProviderOption(
                 },
                 enabled = enabled,
                 colors = SwitchDefaults.colors(
-                    checkedThumbColor = ComposerBackground,
-                    checkedTrackColor = ComposerContent,
+                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                    checkedTrackColor = MaterialTheme.colorScheme.primary,
                     uncheckedThumbColor = ComposerMuted,
                     uncheckedTrackColor = ComposerSelected,
                     uncheckedBorderColor = ComposerMuted,
@@ -738,7 +764,7 @@ private fun SectionHeading(
             imageVector = icon,
             contentDescription = null,
             modifier = Modifier.size(24.dp),
-            tint = ComposerContent,
+            tint = MaterialTheme.colorScheme.primary,
         )
         Text(
             text = label,
@@ -788,12 +814,12 @@ private fun ProjectQuickSwitchButton(
 ) {
     val indicatorSize = 44.dp + with(LocalDensity.current) { 1.toDp() }
     val container = if (project.active) {
-        ComposerContent
+        MaterialTheme.colorScheme.primary
     } else {
         ComposerSelected
     }
     val content = if (project.active) {
-        ComposerBackground
+        MaterialTheme.colorScheme.onPrimary
     } else {
         ComposerContent
     }
@@ -808,7 +834,7 @@ private fun ProjectQuickSwitchButton(
             if (project.processing) {
                 CircularProgressIndicator(
                     modifier = Modifier.size(indicatorSize),
-                    color = ComposerContent,
+                    color = MaterialTheme.colorScheme.primary,
                     strokeWidth = 2.dp,
                 )
             } else if (project.unreadCount > 0) {
@@ -817,7 +843,7 @@ private fun ProjectQuickSwitchButton(
                         .size(indicatorSize)
                         .border(
                             width = 2.dp,
-                            color = ComposerContent,
+                            color = MaterialTheme.colorScheme.primary,
                             shape = CircleShape,
                         ),
                 )
@@ -863,7 +889,7 @@ private fun ProjectQuickSwitchButton(
                             modifier = Modifier
                                 .size(5.dp)
                                 .background(
-                                    color = ComposerContent,
+                                    color = MaterialTheme.colorScheme.primary,
                                     shape = CircleShape,
                                 ),
                         )

@@ -97,5 +97,6 @@ class T3MessageComposerTest {
 
         compose.onNodeWithText("Message").performClick()
         compose.onAllNodesWithText("Model Selection").assertCountEquals(0)
+        compose.onNodeWithContentDescription("Access: Full access").assertIsDisplayed()
     }
 }

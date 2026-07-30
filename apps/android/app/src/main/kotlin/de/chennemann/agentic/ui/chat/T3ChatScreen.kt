@@ -1,5 +1,6 @@
 package de.chennemann.agentic.ui.chat
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -20,6 +21,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -43,6 +45,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import de.chennemann.agentic.streamingmarkdown.StreamingMarkdownText
 import de.chennemann.agentic.ui.components.ChatActivityCard
 import de.chennemann.agentic.ui.components.ConnectionStatusBanner
@@ -102,24 +105,6 @@ fun T3ChatScreen(
                 .fillMaxSize()
                 .imePadding(),
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 8.dp),
-            ) {
-                OutlinedButton(
-                    onClick = {
-                        onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.NAVIGATION))
-                    },
-                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Tune,
-                        contentDescription = "Open navigation and settings",
-                    )
-                }
-            }
-
             ConnectionStatusBanner(
                 connection = state.connection,
                 onRetry = { onEvent(ChatUiEvent.ConnectionRetryRequested) },
@@ -203,6 +188,27 @@ fun T3ChatScreen(
                     ) {
                         Text("↓")
                     }
+                }
+
+                OutlinedButton(
+                    onClick = {
+                        onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.NAVIGATION))
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 8.dp, top = 8.dp)
+                        .zIndex(1f),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        contentColor = MaterialTheme.colorScheme.primary,
+                    ),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Tune,
+                        contentDescription = "Open navigation and settings",
+                    )
                 }
             }
 
