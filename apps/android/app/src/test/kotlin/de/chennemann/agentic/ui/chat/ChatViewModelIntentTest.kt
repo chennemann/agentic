@@ -313,6 +313,45 @@ class ChatViewModelIntentTest {
     }
 
     @Test
+    fun `provider option selection is sent while unknown inherited options are preserved`() = runTest(dispatcher) {
+        val selection = ModelSelection(
+            instanceId = "provider",
+            model = "model",
+            options = listOf(
+                ProviderOptionSelection("effort", JsonPrimitive("high")),
+                ProviderOptionSelection("future-option", JsonPrimitive("keep-me")),
+            ),
+        )
+        val repository = submissionRepository(selection)
+        val chat = NoOpChatActions()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = chat,
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        val option = viewModel.state.value.composer.providerOptions.single() as ProviderOptionUi.Select
+        assertEquals("high", option.selectedValueId)
+        viewModel.onEvent(ChatUiEvent.ProviderSelectOptionSelected("effort", "ultra"))
+        viewModel.onEvent(ChatUiEvent.DraftChanged("use more reasoning"))
+        viewModel.onEvent(ChatUiEvent.MessageSubmitted)
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(
+                ProviderOptionSelection("effort", JsonPrimitive("ultra")),
+                ProviderOptionSelection("future-option", JsonPrimitive("keep-me")),
+            ),
+            chat.startTurnCalls.single().modelSelection.options,
+        )
+    }
+
+    @Test
     fun `new thread submission defaults to full access`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model")).apply {
             focusedThreadId.value = null
@@ -821,7 +860,31 @@ private fun submissionRepository(selection: ModelSelection) = FakeOrchestrationR
                 ProviderInstance(
                     instanceId = "provider",
                     displayName = "Provider",
-                    models = listOf(ProviderModel("model", "Model")),
+                    models = listOf(
+                        ProviderModel(
+                            slug = "model",
+                            name = "Model",
+                            capabilities = PortableJson.parseToJsonElement(
+                                """
+                                {
+                                  "optionDescriptors": [
+                                    {
+                                      "id": "effort",
+                                      "label": "Reasoning",
+                                      "type": "select",
+                                      "currentValue": "medium",
+                                      "options": [
+                                        {"id": "low", "label": "Low"},
+                                        {"id": "high", "label": "High", "isDefault": true},
+                                        {"id": "ultra", "label": "Ultra"}
+                                      ]
+                                    }
+                                  ]
+                                }
+                                """.trimIndent(),
+                            ).jsonObject,
+                        ),
+                    ),
                 ),
             ),
             shellResumeCompletionMarker = true,

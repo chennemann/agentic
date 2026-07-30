@@ -54,6 +54,7 @@ import de.chennemann.agentic.icons.Archive
 import de.chennemann.agentic.icons.ArchiveRestore
 import de.chennemann.agentic.icons.Icons
 import de.chennemann.agentic.icons.Rename
+import de.chennemann.agentic.icons.Tune
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -101,10 +102,23 @@ fun T3ChatScreen(
                 .fillMaxSize()
                 .imePadding(),
         ) {
-            T3ChatHeader(
-                state = state,
-                onEvent = onEvent,
-            )
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = {
+                        onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.NAVIGATION))
+                    },
+                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Tune,
+                        contentDescription = "Open navigation and settings",
+                    )
+                }
+            }
 
             ConnectionStatusBanner(
                 connection = state.connection,
@@ -112,17 +126,20 @@ fun T3ChatScreen(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             )
 
-            LazyColumn(
-                state = listState,
+            Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    horizontal = 16.dp,
-                    vertical = 12.dp,
-                ),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                LazyColumn(
+                    state = listState,
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                        horizontal = 16.dp,
+                        vertical = 12.dp,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                 if (state.timeline.isEmpty()) {
                     item("empty-chat") {
                         EmptyChatState(
@@ -169,8 +186,23 @@ fun T3ChatScreen(
                     }
                 }
 
-                item("bottom-spacer") {
-                    Spacer(modifier = Modifier.height(20.dp))
+                    item("bottom-spacer") {
+                        Spacer(modifier = Modifier.height(20.dp))
+                    }
+                }
+
+                if (!followLatest) {
+                    SmallFloatingActionButton(
+                        onClick = {
+                            followLatest = true
+                            scope.launch { listState.scrollToLatest() }
+                        },
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(16.dp),
+                    ) {
+                        Text("↓")
+                    }
                 }
             }
 
@@ -181,19 +213,6 @@ fun T3ChatScreen(
             )
         }
 
-        if (!followLatest) {
-            SmallFloatingActionButton(
-                onClick = {
-                    followLatest = true
-                    scope.launch { listState.scrollToLatest() }
-                },
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = 232.dp),
-            ) {
-                Text("↓")
-            }
-        }
     }
 
     ChatSelectionSheets(
@@ -230,115 +249,6 @@ fun T3ChatScreen(
                 }
             },
         )
-    }
-}
-
-@Composable
-private fun T3ChatHeader(
-    state: ChatUiState,
-    onEvent: (ChatUiEvent) -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            FilterChip(
-                selected = false,
-                onClick = {
-                    onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.ENVIRONMENT))
-                },
-                label = {
-                    Text(
-                        text = state.environmentLabel,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-            )
-            FilterChip(
-                selected = state.threadPicker.selectedProjectId != null,
-                onClick = {
-                    onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
-                },
-                modifier = Modifier.weight(1f),
-                label = {
-                    Text(
-                        text = state.projectLabel ?: "Choose project",
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-            )
-            TextButton(onClick = { onEvent(ChatUiEvent.NewThreadRequested) }) {
-                Icon(
-                    imageVector = Icons.Add,
-                    contentDescription = "New thread",
-                )
-            }
-        }
-
-        OutlinedButton(
-            onClick = {
-                onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
-            },
-            modifier = Modifier.fillMaxWidth(),
-            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.Start,
-            ) {
-                Text(
-                    text = "Thread",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = state.title,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-            Text("Choose")
-        }
-
-        if (state.threadId != null) {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                if (state.canRenameThread) {
-                    TextButton(onClick = { onEvent(ChatUiEvent.RenameThreadRequested) }) {
-                        Icon(
-                            imageVector = Icons.Rename,
-                            contentDescription = null,
-                        )
-                        Text("Rename")
-                    }
-                }
-                if (state.isThreadArchived) {
-                    TextButton(onClick = { onEvent(ChatUiEvent.UnarchiveThreadRequested) }) {
-                        Icon(
-                            imageVector = Icons.ArchiveRestore,
-                            contentDescription = null,
-                        )
-                        Text("Unarchive")
-                    }
-                } else if (state.canArchiveThread) {
-                    TextButton(onClick = { onEvent(ChatUiEvent.ArchiveThreadRequested) }) {
-                        Icon(
-                            imageVector = Icons.Archive,
-                            contentDescription = null,
-                        )
-                        Text("Archive")
-                    }
-                }
-            }
-        }
     }
 }
 

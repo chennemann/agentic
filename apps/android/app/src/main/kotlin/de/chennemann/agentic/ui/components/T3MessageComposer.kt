@@ -1,14 +1,19 @@
 package de.chennemann.agentic.ui.components
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,23 +25,32 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,13 +63,16 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import de.chennemann.agentic.icons.Icons
+import de.chennemann.agentic.icons.Send
 import de.chennemann.agentic.ui.chat.ChatPickerUi
 import de.chennemann.agentic.ui.chat.ChatUiEvent
 import de.chennemann.agentic.ui.chat.ComposerUiState
 import de.chennemann.agentic.ui.chat.InteractionModeUi
 import de.chennemann.agentic.ui.chat.ProjectQuickSwitchUi
-import de.chennemann.agentic.icons.Icons
-import de.chennemann.agentic.icons.Send
+import de.chennemann.agentic.ui.chat.ProviderModelOptionUi
+import de.chennemann.agentic.ui.chat.ProviderOptionUi
+import kotlin.math.roundToInt
 
 private val ModeSwipeThreshold = 28.dp
 
@@ -66,7 +83,14 @@ fun T3MessageComposer(
     onEvent: (ChatUiEvent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
     var commandMenuDismissed by remember { mutableStateOf(false) }
+    val selectedModel = state.providerModels.firstOrNull {
+        it.id == state.selectedProviderModelId
+    }
+    val selectedRuntimeMode = state.runtimeModes.firstOrNull {
+        it.id == state.selectedRuntimeModeId
+    }
     val commandQuery = state.draft
         .takeIf { it.startsWith("/") }
         ?.drop(1)
@@ -77,85 +101,35 @@ fun T3MessageComposer(
     } else {
         state.slashCommands.filter { it.name.startsWith(commandQuery, ignoreCase = true) }
     }
-    val selectedProviderModel = state.providerModels.firstOrNull {
-        it.id == state.selectedProviderModelId
-    }
-    val selectedRuntimeMode = state.runtimeModes.firstOrNull {
-        it.id == state.selectedRuntimeModeId
-    }
+
+    BackHandler(enabled = expanded) { expanded = false }
 
     Surface(
         modifier = modifier.fillMaxWidth(),
         tonalElevation = 2.dp,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
-            Row(
+        Column {
+            Text(
+                text = if (state.selectedInteractionMode == InteractionModeUi.PLAN) {
+                    "Build · Plan"
+                } else {
+                    "Build"
+                },
+                style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace),
+                color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                InteractionModeUi.entries.forEach { mode ->
-                    Text(
-                        text = mode.label,
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            fontFamily = FontFamily.Monospace,
-                        ),
-                        color = if (state.selectedInteractionMode == mode) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.65f)
-                        },
-                        modifier = Modifier.selectable(
-                            selected = state.selectedInteractionMode == mode,
-                            enabled = state.enabled && !state.sending,
-                            role = Role.Tab,
-                            onClick = { onEvent(ChatUiEvent.InteractionModeSelected(mode)) },
-                        ),
-                    )
-                }
-            }
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                FilterChip(
-                    selected = false,
-                    onClick = {
-                        onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROVIDER_MODEL))
-                    },
-                    enabled = state.enabled && state.providerModels.isNotEmpty(),
-                    label = {
-                        Text(
-                            text = selectedProviderModel?.let {
-                                "${it.providerLabel} • ${it.modelLabel}"
-                            } ?: "Provider / model",
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                )
-                if (state.runtimeModes.isNotEmpty()) {
-                    FilterChip(
-                        selected = false,
+                    .clickable(
+                        enabled = state.enabled && !state.sending,
                         onClick = {
-                            onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.RUNTIME_MODE))
-                        },
-                        enabled = state.enabled,
-                        label = {
-                            Text(
-                                text = selectedRuntimeMode?.label ?: "Runtime",
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
+                            onEvent(
+                                ChatUiEvent.InteractionModeSelected(
+                                    state.selectedInteractionMode.next(),
+                                ),
                             )
                         },
                     )
-                }
-            }
+                    .padding(start = 16.dp, top = 10.dp, end = 16.dp, bottom = 2.dp),
+            )
 
             Box(modifier = Modifier.fillMaxWidth()) {
                 TextField(
@@ -184,7 +158,9 @@ fun T3MessageComposer(
                                 onHorizontalDrag = { _, dragAmount ->
                                     if (changed) return@detectHorizontalDragGestures
                                     delta += dragAmount
-                                    if (delta in -threshold..threshold) return@detectHorizontalDragGestures
+                                    if (delta in -threshold..threshold) {
+                                        return@detectHorizontalDragGestures
+                                    }
                                     changed = true
                                     onEvent(
                                         ChatUiEvent.InteractionModeSelected(
@@ -275,6 +251,29 @@ fun T3MessageComposer(
                 }
             }
 
+            if (!expanded) {
+                ComposerSummary(
+                    selectedModel = selectedModel,
+                    providerOptions = state.providerOptions,
+                    accessLabel = selectedRuntimeMode?.label ?: "Access",
+                    enabled = state.enabled,
+                    onExpand = { expanded = true },
+                )
+            }
+
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(expandFrom = Alignment.Bottom),
+                exit = shrinkVertically(shrinkTowards = Alignment.Bottom),
+            ) {
+                ExpandedControls(
+                    state = state,
+                    selectedModel = selectedModel,
+                    onEvent = onEvent,
+                    onCollapse = { expanded = false },
+                )
+            }
+
             state.errorMessage?.let { error ->
                 Text(
                     text = error,
@@ -311,6 +310,243 @@ fun T3MessageComposer(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun ComposerSummary(
+    selectedModel: ProviderModelOptionUi?,
+    providerOptions: List<ProviderOptionUi>,
+    accessLabel: String,
+    enabled: Boolean,
+    onExpand: () -> Unit,
+) {
+    FlowRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onExpand)
+            .semantics { contentDescription = "Open model, reasoning, and access controls" }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = selectedModel?.modelLabel ?: "Choose model",
+            style = MaterialTheme.typography.labelMedium,
+        )
+        providerOptions.forEach { option ->
+            Text(
+                text = when (option) {
+                    is ProviderOptionUi.Select -> option.values
+                        .firstOrNull { it.id == option.selectedValueId }
+                        ?.label
+                        ?: option.label
+
+                    is ProviderOptionUi.Toggle -> "${option.label}: ${if (option.selected) "On" else "Off"}"
+                },
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Text(
+            text = accessLabel,
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+@Composable
+private fun ExpandedControls(
+    state: ComposerUiState,
+    selectedModel: ProviderModelOptionUi?,
+    onEvent: (ChatUiEvent) -> Unit,
+    onCollapse: () -> Unit,
+) {
+    val favorites = state.providerModels
+        .filter(ProviderModelOptionUi::favorite)
+        .sortedBy { it.favoriteOrder }
+    val shortcuts = favorites.ifEmpty { listOfNotNull(selectedModel) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 440.dp)
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onCollapse)
+                .padding(vertical = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text("Model selection", style = MaterialTheme.typography.labelLarge)
+            Text("Collapse", style = MaterialTheme.typography.labelMedium)
+        }
+
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = 3,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            shortcuts.forEach { model ->
+                FilterChip(
+                    selected = model.id == state.selectedProviderModelId,
+                    onClick = { onEvent(ChatUiEvent.ProviderModelSelected(model.id)) },
+                    enabled = state.enabled,
+                    label = {
+                        Text(
+                            text = model.modelLabel,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    },
+                )
+            }
+        }
+        TextButton(
+            onClick = {
+                onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROVIDER_MODEL))
+            },
+            enabled = state.providerModels.isNotEmpty(),
+            modifier = Modifier.align(Alignment.End),
+        ) {
+            Text("More models")
+        }
+
+        state.providerOptions.forEach { option ->
+            HorizontalDivider()
+            when (option) {
+                is ProviderOptionUi.Select -> SelectProviderOption(option, state.enabled, onEvent)
+                is ProviderOptionUi.Toggle -> ToggleProviderOption(option, state.enabled, onEvent)
+            }
+        }
+
+        HorizontalDivider()
+        Text("Access", style = MaterialTheme.typography.labelLarge)
+        state.runtimeModes.forEach { mode ->
+            val selected = mode.id == state.selectedRuntimeModeId
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .selectable(
+                        selected = selected,
+                        enabled = state.enabled,
+                        role = Role.RadioButton,
+                        onClick = { onEvent(ChatUiEvent.RuntimeModeSelected(mode.id)) },
+                    )
+                    .padding(vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                RadioButton(
+                    selected = selected,
+                    onClick = null,
+                    enabled = state.enabled,
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(mode.label)
+                    mode.description?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SelectProviderOption(
+    option: ProviderOptionUi.Select,
+    enabled: Boolean,
+    onEvent: (ChatUiEvent) -> Unit,
+) {
+    val selectedIndex = option.values
+        .indexOfFirst { it.id == option.selectedValueId }
+        .coerceAtLeast(0)
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text(option.label, style = MaterialTheme.typography.labelLarge)
+        option.description?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (option.values.size == 1) {
+            Text(option.values.single().label)
+        } else {
+            Slider(
+                value = selectedIndex.toFloat(),
+                onValueChange = {
+                    val index = it.roundToInt().coerceIn(option.values.indices)
+                    onEvent(
+                        ChatUiEvent.ProviderSelectOptionSelected(
+                            optionId = option.id,
+                            valueId = option.values[index].id,
+                        ),
+                    )
+                },
+                enabled = enabled,
+                valueRange = 0f..option.values.lastIndex.toFloat(),
+                steps = (option.values.size - 2).coerceAtLeast(0),
+            )
+            Row(modifier = Modifier.fillMaxWidth()) {
+                option.values.forEachIndexed { index, value ->
+                    Text(
+                        text = value.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (index == selectedIndex) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.weight(1f),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToggleProviderOption(
+    option: ProviderOptionUi.Toggle,
+    enabled: Boolean,
+    onEvent: (ChatUiEvent) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(option.label, style = MaterialTheme.typography.labelLarge)
+            option.description?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        Switch(
+            checked = option.selected,
+            onCheckedChange = {
+                onEvent(ChatUiEvent.ProviderBooleanOptionChanged(option.id, it))
+            },
+            enabled = enabled,
+        )
     }
 }
 

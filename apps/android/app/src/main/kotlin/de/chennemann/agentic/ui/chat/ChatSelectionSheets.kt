@@ -31,6 +31,8 @@ import de.chennemann.agentic.icons.Add
 import de.chennemann.agentic.icons.ArchiveRestore
 import de.chennemann.agentic.icons.Check
 import de.chennemann.agentic.icons.Icons
+import de.chennemann.agentic.icons.Star
+import de.chennemann.agentic.icons.StarOutline
 
 @Composable
 fun ChatSelectionSheets(
@@ -38,6 +40,94 @@ fun ChatSelectionSheets(
     onEvent: (ChatUiEvent) -> Unit,
 ) {
     when (state.activePicker) {
+        ChatPickerUi.NAVIGATION -> {
+            PickerSheet(
+                title = "Navigation and settings",
+                onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
+            ) {
+                item("environment-heading") {
+                    Text("Environment", style = MaterialTheme.typography.labelLarge)
+                }
+                item("environment") {
+                    PickerRow(
+                        label = state.environmentLabel,
+                        supportingText = "Change active environment",
+                        selected = false,
+                        trailingText = state.environmentPicker.environments
+                            .firstOrNull { it.id == state.environmentPicker.selectedEnvironmentId }
+                            ?.connection
+                            ?.label(),
+                        onClick = {
+                            onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.ENVIRONMENT))
+                        },
+                    )
+                }
+                item("manage-environments") {
+                    TextButton(onClick = { onEvent(ChatUiEvent.PairEnvironmentRequested) }) {
+                        Text("Manage environments")
+                    }
+                }
+                item("conversation-heading") {
+                    Text(
+                        "Conversation",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+                item("conversation") {
+                    PickerRow(
+                        label = state.projectLabel ?: "Choose project",
+                        supportingText = state.title,
+                        selected = state.threadId != null,
+                        onClick = {
+                            onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
+                        },
+                    )
+                }
+                item("conversation-actions") {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        TextButton(onClick = { onEvent(ChatUiEvent.NewThreadRequested) }) {
+                            Text("New thread")
+                        }
+                        if (state.canRenameThread) {
+                            TextButton(onClick = { onEvent(ChatUiEvent.RenameThreadRequested) }) {
+                                Text("Rename")
+                            }
+                        }
+                        if (state.isThreadArchived) {
+                            TextButton(onClick = { onEvent(ChatUiEvent.UnarchiveThreadRequested) }) {
+                                Text("Unarchive")
+                            }
+                        } else if (state.canArchiveThread) {
+                            TextButton(onClick = { onEvent(ChatUiEvent.ArchiveThreadRequested) }) {
+                                Text("Archive")
+                            }
+                        }
+                    }
+                }
+                item("models-heading") {
+                    Text(
+                        "Models",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+                item("models") {
+                    PickerRow(
+                        label = "Models and favorites",
+                        supportingText = "Choose models and manage composer shortcuts",
+                        selected = false,
+                        onClick = {
+                            onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROVIDER_MODEL))
+                        },
+                    )
+                }
+            }
+        }
+
         ChatPickerUi.ENVIRONMENT -> {
             PickerSheet(
                 title = "Environment",
@@ -243,11 +333,18 @@ fun ChatSelectionSheets(
                     items = state.composer.providerModels,
                     key = { "provider-model:${it.id}" },
                 ) { option ->
-                    PickerRow(
-                        label = option.modelLabel,
-                        supportingText = option.supportingText ?: option.providerLabel,
+                    ModelPickerRow(
+                        option = option,
                         selected = option.id == state.composer.selectedProviderModelId,
-                        onClick = { onEvent(ChatUiEvent.ProviderModelSelected(option.id)) },
+                        onSelect = { onEvent(ChatUiEvent.ProviderModelSelected(option.id)) },
+                        onFavoriteChanged = {
+                            onEvent(
+                                ChatUiEvent.ProviderModelFavoriteChanged(
+                                    id = option.id,
+                                    favorite = it,
+                                ),
+                            )
+                        },
                     )
                 }
             }
@@ -273,6 +370,53 @@ fun ChatSelectionSheets(
         }
 
         null -> Unit
+    }
+}
+
+@Composable
+private fun ModelPickerRow(
+    option: ProviderModelOptionUi,
+    selected: Boolean,
+    onSelect: () -> Unit,
+    onFavoriteChanged: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onSelect)
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = option.modelLabel,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = option.supportingText ?: option.providerLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        IconButton(onClick = { onFavoriteChanged(!option.favorite) }) {
+            Icon(
+                imageVector = if (option.favorite) Icons.Star else Icons.StarOutline,
+                contentDescription = if (option.favorite) {
+                    "Remove ${option.modelLabel} from favorites"
+                } else {
+                    "Add ${option.modelLabel} to favorites"
+                },
+            )
+        }
     }
 }
 

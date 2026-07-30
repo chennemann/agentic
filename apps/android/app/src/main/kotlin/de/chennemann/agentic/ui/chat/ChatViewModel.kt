@@ -12,6 +12,8 @@ import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.domain.orchestration.ProjectionState
 import de.chennemann.agentic.domain.orchestration.ThreadService
 import de.chennemann.agentic.domain.orchestration.ThreadActions
+import de.chennemann.agentic.domain.preferences.FavoriteModelId
+import de.chennemann.agentic.domain.preferences.ModelFavoriteRepository
 import de.chennemann.agentic.t3.contract.EnvironmentClientConfig
 import de.chennemann.agentic.t3.contract.ModelSelection
 import de.chennemann.agentic.t3.contract.OrchestrationActivity
@@ -20,6 +22,7 @@ import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import de.chennemann.agentic.t3.contract.PortableJson
 import java.time.Instant
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.collect
@@ -27,6 +30,8 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -39,6 +44,7 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 
+@OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModel(
     private val environments: EnvironmentRepository,
     private val repository: OrchestrationRepository,
@@ -47,6 +53,7 @@ class ChatViewModel(
     private val threads: ThreadActions,
     private val chat: ChatActions,
     private val mappingDispatcher: CoroutineDispatcher,
+    private val modelFavorites: ModelFavoriteRepository? = null,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
     private val orchestration = combine(
@@ -64,6 +71,13 @@ class ChatViewModel(
         connection.state,
     ) { all, active, connection ->
         EnvironmentBundle(all, active, connection)
+    }
+    private val favorites = environments.activeEnvironment.flatMapLatest { active ->
+        if (active == null || modelFavorites == null) {
+            flowOf(emptyList())
+        } else {
+            modelFavorites.observe(active.id)
+        }
     }
 
     init {
@@ -97,10 +111,11 @@ class ChatViewModel(
         orchestration,
         environment,
         local.map(LocalState::structural).distinctUntilChanged(),
-    ) { orchestration, environment, local ->
-        Triple(orchestration, environment, local)
+        favorites,
+    ) { orchestration, environment, local, favorites ->
+        MappedInput(orchestration, environment, local, favorites)
     }.conflate().map { input ->
-        mapState(input.first, input.second, input.third)
+        mapState(input.orchestration, input.environment, input.local, input.favorites)
     }.flowOn(mappingDispatcher)
 
     val state = combine(mappedState, local) { mapped, local ->
@@ -145,6 +160,32 @@ class ChatViewModel(
 
             is ChatUiEvent.ProviderModelSelected -> update {
                 copy(providerModelId = event.id, activePicker = null)
+            }
+
+            is ChatUiEvent.ProviderModelFavoriteChanged -> {
+                val activeEnvironmentId = environments.activeEnvironment.value?.id
+                val model = event.id.toFavoriteModelId()
+                if (activeEnvironmentId != null && model != null && modelFavorites != null) {
+                    launchCommand {
+                        modelFavorites.setFavorite(activeEnvironmentId, model, event.favorite)
+                    }
+                }
+            }
+
+            is ChatUiEvent.ProviderSelectOptionSelected -> update {
+                val modelId = selectedModelId() ?: return@update this
+                copy(
+                    providerOptionValues = providerOptionValues +
+                        (optionValueKey(modelId, event.optionId) to JsonPrimitive(event.valueId)),
+                )
+            }
+
+            is ChatUiEvent.ProviderBooleanOptionChanged -> update {
+                val modelId = selectedModelId() ?: return@update this
+                copy(
+                    providerOptionValues = providerOptionValues +
+                        (optionValueKey(modelId, event.optionId) to JsonPrimitive(event.selected)),
+                )
             }
 
             is ChatUiEvent.RuntimeModeSelected -> {
@@ -224,17 +265,23 @@ class ChatViewModel(
                 update { copy(activePicker = null, pickerProjectId = null) }
             }
             ChatUiEvent.RenameThreadRequested -> update {
-                copy(renameDraft = state.value.title, renameVisible = true)
+                copy(
+                    renameDraft = state.value.title,
+                    renameVisible = true,
+                    activePicker = null,
+                )
             }
 
             is ChatUiEvent.RenameThreadDraftChanged -> update { copy(renameDraft = event.value) }
             ChatUiEvent.RenameThreadDismissed -> update { copy(renameVisible = false) }
             ChatUiEvent.RenameThreadConfirmed -> renameThread()
             ChatUiEvent.ArchiveThreadRequested -> repository.focusedThreadId.value?.let { id ->
+                update { copy(activePicker = null) }
                 launchCommand { threads.archive(id) }
             }
 
             ChatUiEvent.UnarchiveThreadRequested -> repository.focusedThreadId.value?.let { id ->
+                update { copy(activePicker = null) }
                 launchCommand { threads.unarchive(id) }
             }
 
@@ -411,11 +458,30 @@ class ChatViewModel(
             ?: config.providers.firstNotNullOfOrNull { provider ->
                 provider.models.firstOrNull()?.let { provider.instanceId to it.slug }
             }
-        return pair?.let {
-            inheritedSelections.firstOrNull { selection ->
-                selection.instanceId == it.first && selection.model == it.second
-            } ?: ModelSelection(it.first, it.second)
+        return pair?.let { selected ->
+            val base = inheritedSelections.firstOrNull { selection ->
+                selection.instanceId == selected.first && selection.model == selected.second
+            } ?: ModelSelection(selected.first, selected.second)
+            val modelId = optionId(selected.first, selected.second)
+            val descriptors = providerOptionDescriptors(config, modelId)
+            val resolved = resolveProviderOptions(
+                modelId = modelId,
+                descriptors = descriptors,
+                inherited = base.options.orEmpty(),
+                overrides = local.value.providerOptionValues,
+            )
+            base.copy(options = resolved.takeIf(List<de.chennemann.agentic.t3.contract.ProviderOptionSelection>::isNotEmpty))
         }
+    }
+
+    private fun selectedModelId(): String? {
+        val detail = repository.focusedThread.value.value?.thread
+        val project = repository.shell.value.value?.projects
+            ?.firstOrNull { it.id == repository.selectedProjectId.value }
+        return local.value.providerModelId
+            ?: detail?.modelSelection?.optionId()
+            ?: project?.defaultModelSelection?.optionId()
+            ?: modelOptions(repository.clientConfig.value.value).firstOrNull()?.id
     }
 
     private fun launchCommand(block: suspend () -> Unit) {
@@ -440,6 +506,7 @@ class ChatViewModel(
         orchestration: OrchestrationBundle,
         environment: EnvironmentBundle,
         local: LocalState,
+        favorites: List<FavoriteModelId>,
     ): ChatUiState {
         val shell = orchestration.shell.value
         val detail = orchestration.thread.value?.thread?.takeIf { it.id == orchestration.threadId }
@@ -449,7 +516,7 @@ class ChatViewModel(
             ?: shellThread?.projectId
             ?: shell?.projects?.firstOrNull()?.id
         val project = shell?.projects?.firstOrNull { it.id == projectId }
-        val modelOptions = modelOptions(orchestration.config.value)
+        val modelOptions = modelOptions(orchestration.config.value, favorites)
         val selectedModelId = local.providerModelId
             ?: detail?.modelSelection?.optionId()
             ?: project?.defaultModelSelection?.optionId()
@@ -458,6 +525,19 @@ class ChatViewModel(
             it == InteractionModeUi.DEFAULT && detail?.interactionMode == "plan"
         } ?: InteractionModeUi.PLAN
         val runtime = local.runtimeModeId ?: detail?.runtimeMode ?: DefaultRuntimeMode
+        val inheritedOptions = listOfNotNull(
+            detail?.modelSelection?.takeIf { it.optionId() == selectedModelId },
+            project?.defaultModelSelection?.takeIf { it.optionId() == selectedModelId },
+        ).firstOrNull()?.options.orEmpty()
+        val descriptors = providerOptionDescriptors(orchestration.config.value, selectedModelId)
+        val providerOptions = selectedModelId?.let {
+            providerOptionsUi(
+                modelId = it,
+                descriptors = descriptors,
+                inherited = inheritedOptions,
+                overrides = local.providerOptionValues,
+            )
+        }.orEmpty()
         val pickerProjectId = local.pickerProjectId ?: projectId
         val pickerThreads = shell?.threads
             .orEmpty()
@@ -476,6 +556,7 @@ class ChatViewModel(
                 selectedInteractionMode = interaction,
                 selectedProviderModelId = selectedModelId,
                 providerModels = modelOptions,
+                providerOptions = providerOptions,
                 selectedRuntimeModeId = runtime,
                 runtimeModes = RuntimeModes,
                 slashCommands = slashCommands(orchestration.config.value, selectedModelId),
@@ -730,12 +811,20 @@ class ChatViewModel(
         )
     }
 
+    private data class MappedInput(
+        val orchestration: OrchestrationBundle,
+        val environment: EnvironmentBundle,
+        val local: LocalState,
+        val favorites: List<FavoriteModelId>,
+    )
+
     private data class LocalState(
         val draft: String = "",
         val activePicker: ChatPickerUi? = null,
         val showArchived: Boolean = false,
         val showSettled: Boolean = false,
         val providerModelId: String? = null,
+        val providerOptionValues: Map<String, JsonPrimitive> = emptyMap(),
         val runtimeModeId: String? = null,
         val interactionMode: InteractionModeUi = InteractionModeUi.DEFAULT,
         val sending: Boolean = false,
@@ -965,7 +1054,10 @@ private data class ActiveProject(
 private fun de.chennemann.agentic.t3.contract.OrchestrationThreadShell.isSettled(): Boolean =
     settledOverride == "settled" || (settledOverride != "active" && settledAt != null)
 
-private fun modelOptions(config: EnvironmentClientConfig?): List<ProviderModelOptionUi> = config
+private fun modelOptions(
+    config: EnvironmentClientConfig?,
+    favorites: List<FavoriteModelId> = emptyList(),
+): List<ProviderModelOptionUi> = config
     ?.providers
     .orEmpty()
     .filter { it.enabled && it.installed }
@@ -977,9 +1069,163 @@ private fun modelOptions(config: EnvironmentClientConfig?): List<ProviderModelOp
                 providerLabel = provider.displayName,
                 modelLabel = model.name,
                 supportingText = model.slug,
+                favorite = FavoriteModelId(provider.instanceId, model.slug) in favorites,
+                favoriteOrder = favorites.indexOf(
+                    FavoriteModelId(provider.instanceId, model.slug),
+                ).takeIf { it >= 0 },
             )
         }
     }
+
+private sealed interface ProviderOptionDescriptor {
+    val id: String
+    val label: String
+    val description: String?
+    val currentValue: JsonPrimitive?
+
+    data class Select(
+        override val id: String,
+        override val label: String,
+        override val description: String?,
+        override val currentValue: JsonPrimitive?,
+        val values: List<Value>,
+    ) : ProviderOptionDescriptor {
+        data class Value(
+            val id: String,
+            val label: String,
+            val description: String?,
+            val isDefault: Boolean,
+        )
+    }
+
+    data class Toggle(
+        override val id: String,
+        override val label: String,
+        override val description: String?,
+        override val currentValue: JsonPrimitive?,
+    ) : ProviderOptionDescriptor
+}
+
+private fun providerOptionDescriptors(
+    config: EnvironmentClientConfig?,
+    modelId: String?,
+): List<ProviderOptionDescriptor> {
+    if (config == null || modelId == null) return emptyList()
+    val providerId = modelId.substringBefore('/')
+    val modelSlug = modelId.substringAfter('/', missingDelimiterValue = "")
+    val model = config.providers
+        .firstOrNull { it.instanceId == providerId }
+        ?.models
+        ?.firstOrNull { it.slug == modelSlug }
+        ?: return emptyList()
+    val descriptors = model.capabilities["optionDescriptors"] as? JsonArray ?: return emptyList()
+    return descriptors.mapNotNull { element ->
+        val descriptor = element as? JsonObject ?: return@mapNotNull null
+        val id = descriptor.string("id") ?: return@mapNotNull null
+        val label = descriptor.string("label") ?: return@mapNotNull null
+        val description = descriptor.string("description")
+        val current = descriptor["currentValue"] as? JsonPrimitive
+        when (descriptor.string("type")) {
+            "select" -> {
+                val values = (descriptor["options"] as? JsonArray)
+                    .orEmpty()
+                    .mapNotNull { valueElement ->
+                        val value = valueElement as? JsonObject ?: return@mapNotNull null
+                        ProviderOptionDescriptor.Select.Value(
+                            id = value.string("id") ?: return@mapNotNull null,
+                            label = value.string("label") ?: return@mapNotNull null,
+                            description = value.string("description"),
+                            isDefault = (value["isDefault"] as? JsonPrimitive)?.content == "true",
+                        )
+                    }
+                values.takeIf(List<ProviderOptionDescriptor.Select.Value>::isNotEmpty)?.let {
+                    ProviderOptionDescriptor.Select(id, label, description, current, it)
+                }
+            }
+
+            "boolean" -> ProviderOptionDescriptor.Toggle(id, label, description, current)
+            else -> null
+        }
+    }
+}
+
+private fun providerOptionsUi(
+    modelId: String,
+    descriptors: List<ProviderOptionDescriptor>,
+    inherited: List<de.chennemann.agentic.t3.contract.ProviderOptionSelection>,
+    overrides: Map<String, JsonPrimitive>,
+): List<ProviderOptionUi> = descriptors.map { descriptor ->
+    val selected = resolvedProviderOption(modelId, descriptor, inherited, overrides)
+    when (descriptor) {
+        is ProviderOptionDescriptor.Select -> ProviderOptionUi.Select(
+            id = descriptor.id,
+            label = descriptor.label,
+            description = descriptor.description,
+            values = descriptor.values.map {
+                ProviderOptionValueUi(it.id, it.label, it.description)
+            },
+            selectedValueId = selected.content,
+        )
+
+        is ProviderOptionDescriptor.Toggle -> ProviderOptionUi.Toggle(
+            id = descriptor.id,
+            label = descriptor.label,
+            description = descriptor.description,
+            selected = selected.content == "true",
+        )
+    }
+}
+
+private fun resolveProviderOptions(
+    modelId: String,
+    descriptors: List<ProviderOptionDescriptor>,
+    inherited: List<de.chennemann.agentic.t3.contract.ProviderOptionSelection>,
+    overrides: Map<String, JsonPrimitive>,
+): List<de.chennemann.agentic.t3.contract.ProviderOptionSelection> {
+    val resolved = inherited.associateByTo(linkedMapOf()) { it.id }
+    descriptors.forEach { descriptor ->
+        resolved[descriptor.id] = de.chennemann.agentic.t3.contract.ProviderOptionSelection(
+            descriptor.id,
+            resolvedProviderOption(modelId, descriptor, inherited, overrides),
+        )
+    }
+    return resolved.values.toList()
+}
+
+private fun resolvedProviderOption(
+    modelId: String,
+    descriptor: ProviderOptionDescriptor,
+    inherited: List<de.chennemann.agentic.t3.contract.ProviderOptionSelection>,
+    overrides: Map<String, JsonPrimitive>,
+): JsonPrimitive {
+    val candidate = overrides[optionValueKey(modelId, descriptor.id)]
+        ?: inherited.lastOrNull { it.id == descriptor.id }?.value
+        ?: descriptor.currentValue
+    return when (descriptor) {
+        is ProviderOptionDescriptor.Select -> {
+            candidate
+                ?.takeIf { value -> descriptor.values.any { it.id == value.content } }
+                ?: JsonPrimitive(
+                    descriptor.values.firstOrNull { it.isDefault }?.id
+                        ?: descriptor.values.first().id,
+                )
+        }
+
+        is ProviderOptionDescriptor.Toggle ->
+            candidate?.takeIf { it.content == "true" || it.content == "false" } ?: JsonPrimitive(false)
+    }
+}
+
+private fun optionValueKey(
+    modelId: String,
+    optionId: String,
+): String = "$modelId\u0000$optionId"
+
+private fun String.toFavoriteModelId(): FavoriteModelId? {
+    val separator = indexOf('/')
+    if (separator <= 0 || separator == lastIndex) return null
+    return FavoriteModelId(substring(0, separator), substring(separator + 1))
+}
 
 private fun slashCommands(
     config: EnvironmentClientConfig?,
@@ -1057,10 +1303,26 @@ private fun ConnectionState.toIndicator(): EnvironmentConnectionIndicatorUi = wh
 }
 
 private val RuntimeModes = listOf(
-    RuntimeModeOptionUi("approval-required", "Ask before changes"),
-    RuntimeModeOptionUi("auto-accept-edits", "Auto-accept edits"),
-    RuntimeModeOptionUi("auto", "Automatic"),
-    RuntimeModeOptionUi("full-access", "Full access"),
+    RuntimeModeOptionUi(
+        id = "approval-required",
+        label = "Supervised",
+        description = "Ask before changes.",
+    ),
+    RuntimeModeOptionUi(
+        id = "auto-accept-edits",
+        label = "Auto-accept edits",
+        description = "Accept routine file edits automatically.",
+    ),
+    RuntimeModeOptionUi(
+        id = "auto",
+        label = "Auto",
+        description = "An AI reviewer approves routine actions; risky ones still ask.",
+    ),
+    RuntimeModeOptionUi(
+        id = "full-access",
+        label = "Full access",
+        description = "Allow all supported actions without approval.",
+    ),
 )
 private val ActiveSessionStatuses = setOf("starting", "running")
 private const val MaxQuickSwitchProjects = 5

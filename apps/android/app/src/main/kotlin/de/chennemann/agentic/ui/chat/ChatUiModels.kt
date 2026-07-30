@@ -206,6 +206,7 @@ data class ComposerUiState(
     val selectedInteractionMode: InteractionModeUi = InteractionModeUi.DEFAULT,
     val selectedProviderModelId: String? = null,
     val providerModels: List<ProviderModelOptionUi> = emptyList(),
+    val providerOptions: List<ProviderOptionUi> = emptyList(),
     val selectedRuntimeModeId: String? = null,
     val runtimeModes: List<RuntimeModeOptionUi> = emptyList(),
     val slashCommands: List<SlashCommandUi> = emptyList(),
@@ -231,6 +232,35 @@ data class ProviderModelOptionUi(
     val providerLabel: String,
     val modelLabel: String,
     val supportingText: String? = null,
+    val favorite: Boolean = false,
+    val favoriteOrder: Int? = null,
+)
+
+sealed interface ProviderOptionUi {
+    val id: String
+    val label: String
+    val description: String?
+
+    data class Select(
+        override val id: String,
+        override val label: String,
+        override val description: String? = null,
+        val values: List<ProviderOptionValueUi>,
+        val selectedValueId: String,
+    ) : ProviderOptionUi
+
+    data class Toggle(
+        override val id: String,
+        override val label: String,
+        override val description: String? = null,
+        val selected: Boolean,
+    ) : ProviderOptionUi
+}
+
+data class ProviderOptionValueUi(
+    val id: String,
+    val label: String,
+    val description: String? = null,
 )
 
 data class RuntimeModeOptionUi(
@@ -285,6 +315,7 @@ sealed interface ChatConnectionUi {
 }
 
 enum class ChatPickerUi {
+    NAVIGATION,
     ENVIRONMENT,
     PROJECT_THREAD,
     PROVIDER_MODEL,
@@ -306,6 +337,21 @@ sealed interface ChatUiEvent {
 
     data class ProviderModelSelected(
         val id: String,
+    ) : ChatUiEvent
+
+    data class ProviderModelFavoriteChanged(
+        val id: String,
+        val favorite: Boolean,
+    ) : ChatUiEvent
+
+    data class ProviderSelectOptionSelected(
+        val optionId: String,
+        val valueId: String,
+    ) : ChatUiEvent
+
+    data class ProviderBooleanOptionChanged(
+        val optionId: String,
+        val selected: Boolean,
     ) : ChatUiEvent
 
     data class RuntimeModeSelected(

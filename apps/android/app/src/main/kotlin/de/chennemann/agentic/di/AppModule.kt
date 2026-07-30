@@ -5,6 +5,7 @@ import de.chennemann.agentic.data.AndroidNetworkMonitor
 import de.chennemann.agentic.data.auth.CredentialStore
 import de.chennemann.agentic.data.auth.KeystoreCredentialStore
 import de.chennemann.agentic.data.cache.SqlEnvironmentRepository
+import de.chennemann.agentic.data.cache.SqlModelFavoriteRepository
 import de.chennemann.agentic.data.cache.SqlOrchestrationRepository
 import de.chennemann.agentic.data.t3.AndroidClientMetadata
 import de.chennemann.agentic.data.t3.EnvironmentAuthClient
@@ -26,6 +27,7 @@ import de.chennemann.agentic.domain.orchestration.ChatService
 import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.domain.orchestration.ThreadService
 import de.chennemann.agentic.domain.orchestration.ThreadActions
+import de.chennemann.agentic.domain.preferences.ModelFavoriteRepository
 import de.chennemann.agentic.t3.contract.PortableJson
 import de.chennemann.agentic.ui.chat.ChatViewModel
 import de.chennemann.agentic.ui.onboarding.OnboardingViewModel
@@ -93,6 +95,12 @@ val appModule = module {
             scope = get(named(AppScopeName)),
         )
     }
+    single<ModelFavoriteRepository> {
+        SqlModelFavoriteRepository(
+            database = get(),
+            dispatcher = get<DispatcherProvider>().io,
+        )
+    }
     single {
         AndroidClientMetadata(
             label = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}".trim(),
@@ -134,6 +142,7 @@ val appModule = module {
             environmentService = get(),
             threads = get(),
             chat = get(),
+            modelFavorites = get(),
             mappingDispatcher = get<DispatcherProvider>().default,
         )
     }
