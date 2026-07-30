@@ -1,10 +1,6 @@
 package de.chennemann.agentic.ui.components
 
-import android.Manifest
-import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -68,7 +64,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
@@ -77,7 +72,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import de.chennemann.agentic.icons.Brain
 import de.chennemann.agentic.icons.Flame
 import de.chennemann.agentic.icons.Icons
@@ -120,19 +114,11 @@ fun T3MessageComposer(
     var commandMenuDismissed by remember { mutableStateOf(false) }
     val inputInteractionSource = remember { MutableInteractionSource() }
     val focusManager = LocalFocusManager.current
-    val context = LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    val microphonePermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission(),
-    ) { granted ->
-        onEvent(
-            if (granted) {
-                ChatUiEvent.VoiceInputPressed
-            } else {
-                ChatUiEvent.MicrophonePermissionDenied
-            },
-        )
-    }
+    val requestMicrophonePermission = rememberMicrophonePermissionRequest(
+        onGranted = { onEvent(ChatUiEvent.VoiceInputPressed) },
+        onDenied = { onEvent(ChatUiEvent.MicrophonePermissionDenied) },
+    )
     val selectedModel = state.providerModels.firstOrNull {
         it.id == state.selectedProviderModelId
     }
@@ -153,6 +139,10 @@ fun T3MessageComposer(
     val voiceControlVisible = state.voiceInputAvailable &&
         (state.draft.isBlank() || state.voiceInputStatus != VoiceInputStatusUi.IDLE)
 
+    VoiceRecordingLifecycleEffect(
+        status = state.voiceInputStatus,
+        onRecordingCancelled = { onEvent(ChatUiEvent.VoiceInputCancelled) },
+    )
     BackHandler(enabled = expanded) { expanded = false }
     LaunchedEffect(inputInteractionSource) {
         inputInteractionSource.interactions.collect { interaction ->
@@ -321,17 +311,11 @@ fun T3MessageComposer(
                                 if (!voiceControlVisible) {
                                     onEvent(ChatUiEvent.MessageSubmitted)
                                 } else if (
-                                    state.voiceInputStatus == VoiceInputStatusUi.RECORDING ||
-                                    ContextCompat.checkSelfPermission(
-                                        context,
-                                        Manifest.permission.RECORD_AUDIO,
-                                    ) == PackageManager.PERMISSION_GRANTED
+                                    state.voiceInputStatus == VoiceInputStatusUi.RECORDING
                                 ) {
                                     onEvent(ChatUiEvent.VoiceInputPressed)
                                 } else {
-                                    microphonePermissionLauncher.launch(
-                                        Manifest.permission.RECORD_AUDIO,
-                                    )
+                                    requestMicrophonePermission()
                                 }
                             },
                             enabled = state.enabled &&

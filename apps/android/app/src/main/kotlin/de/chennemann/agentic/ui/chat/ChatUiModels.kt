@@ -347,6 +347,8 @@ sealed interface ChatUiEvent {
 
     data object VoiceInputPressed : ChatUiEvent
 
+    data object VoiceInputCancelled : ChatUiEvent
+
     data object MicrophonePermissionDenied : ChatUiEvent
 
     data object GroqSettingsRequested : ChatUiEvent

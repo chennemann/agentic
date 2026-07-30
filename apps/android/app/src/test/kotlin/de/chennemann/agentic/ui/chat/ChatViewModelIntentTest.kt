@@ -139,6 +139,41 @@ class ChatViewModelIntentTest {
     }
 
     @Test
+    fun `leaving foreground cancels active voice recording`() = runTest(dispatcher) {
+        val apiKeys = FakeGroqApiKeyStore()
+        val voiceInput = FakeVoiceInputService("unused")
+        val repository = FakeOrchestrationRepository()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+            groqApiKeys = apiKeys,
+            voiceInput = voiceInput,
+        )
+        viewModel.onEvent(ChatUiEvent.GroqApiKeySaved("gsk_test"))
+        advanceUntilIdle()
+        viewModel.onEvent(ChatUiEvent.VoiceInputPressed)
+        advanceUntilIdle()
+
+        viewModel.onEvent(ChatUiEvent.VoiceInputCancelled)
+        advanceUntilIdle()
+
+        assertEquals(1, voiceInput.cancellations)
+        assertEquals(
+            VoiceInputStatusUi.IDLE,
+            viewModel.state.value.composer.voiceInputStatus,
+        )
+        assertEquals(
+            "Recording stopped because the app left the foreground.",
+            viewModel.state.value.composer.errorMessage,
+        )
+    }
+
+    @Test
     fun `project and thread picker switches projects and focuses a shell thread`() = runTest(dispatcher) {
         val repository = FakeOrchestrationRepository().apply {
             shell.value = ProjectionState(
@@ -1110,6 +1145,7 @@ private class FakeVoiceInputService(
 ) : VoiceInputService {
     var starts = 0
     var transcriptions = 0
+    var cancellations = 0
 
     override fun startRecording() {
         starts += 1
@@ -1120,5 +1156,7 @@ private class FakeVoiceInputService(
         return transcript
     }
 
-    override fun cancelRecording() = Unit
+    override fun cancelRecording() {
+        cancellations += 1
+    }
 }

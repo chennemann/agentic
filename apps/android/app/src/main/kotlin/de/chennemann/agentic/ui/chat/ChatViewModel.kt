@@ -164,6 +164,7 @@ class ChatViewModel(
             }
             ChatUiEvent.MessageSubmitted -> submitMessage()
             ChatUiEvent.VoiceInputPressed -> handleVoiceInput()
+            ChatUiEvent.VoiceInputCancelled -> cancelVoiceInput()
             ChatUiEvent.MicrophonePermissionDenied -> update {
                 copy(commandError = "Microphone permission is required for voice input.")
             }
@@ -397,6 +398,17 @@ class ChatViewModel(
             }
 
             VoiceInputStatusUi.TRANSCRIBING -> Unit
+        }
+    }
+
+    private fun cancelVoiceInput() {
+        if (local.value.voiceInputStatus != VoiceInputStatusUi.RECORDING) return
+        voiceInput?.cancelRecording()
+        update {
+            copy(
+                voiceInputStatus = VoiceInputStatusUi.IDLE,
+                commandError = "Recording stopped because the app left the foreground.",
+            )
         }
     }
 
