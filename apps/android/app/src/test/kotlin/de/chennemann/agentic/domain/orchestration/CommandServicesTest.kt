@@ -56,7 +56,8 @@ class CommandServicesTest {
         )
         val second = commands.recorded.single() as ClientOrchestrationCommand.StartTurn
 
-        assertEquals("First useful line", first.bootstrap?.createThread?.title)
+        assertEquals("First useful line Second", first.bootstrap?.createThread?.title)
+        assertEquals("First useful line Second", first.titleSeed)
         assertEquals("project", first.bootstrap?.createThread?.projectId)
         assertNull(first.bootstrap?.createThread?.branch)
         assertNull(first.bootstrap?.createThread?.worktreePath)

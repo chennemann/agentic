@@ -169,6 +169,15 @@ class ChatViewModel(
             }
 
             is ChatUiEvent.ThreadSelected -> selectThread(event.threadId)
+            is ChatUiEvent.ThreadSettleRequested -> launchCommand {
+                threads.settle(event.threadId)
+            }
+            is ChatUiEvent.ThreadUnsettleRequested -> launchCommand {
+                threads.unsettle(event.threadId)
+            }
+            is ChatUiEvent.PickerThreadUnarchiveRequested -> launchCommand {
+                threads.unarchive(event.threadId)
+            }
 
             is ChatUiEvent.ArchivedThreadsVisibilityChanged -> update {
                 copy(showArchived = event.visible)
@@ -466,9 +475,17 @@ class ChatViewModel(
                 selectedEnvironmentId = environment.active?.id,
             ),
             threadPicker = ThreadPickerUiState(
-                projects = shell?.projects.orEmpty().map {
-                    ProjectPickerItemUi(it.id, it.title, it.workspaceRoot)
-                },
+                projects = shell?.projects.orEmpty()
+                    .sortedWith(
+                        compareBy<de.chennemann.agentic.t3.contract.OrchestrationProject, String>(
+                            String.CASE_INSENSITIVE_ORDER,
+                        ) {
+                            it.title
+                        }.thenBy { it.id },
+                    )
+                    .map {
+                        ProjectPickerItemUi(it.id, it.title, it.workspaceRoot)
+                    },
                 selectedProjectId = pickerProjectId,
                 threads = pickerThreads.filterNot { it.isSettled() }.map {
                     ThreadPickerItemUi(
@@ -536,15 +553,36 @@ class ChatViewModel(
             .minWithOrNull(activityOrder)
             ?.id
         val activities = detail.activities.filter {
+            if (
+                it.kind == "tool.started" ||
+                it.kind == "task.started" ||
+                it.kind == "context-window.updated" ||
+                it.summary == "Checkpoint captured"
+            ) {
+                return@filter false
+            }
             when (it.kind) {
                 "approval.requested" -> it.id == oldestApproval
                 "user-input.requested" -> it.id == oldestUserInput
                 else -> true
             }
         }.map {
-            TimedItem(it.createdAt, ChatTimelineItemUi.Activity(it.toUi(local)))
+            TimedItem(
+                at = it.createdAt,
+                item = ChatTimelineItemUi.Activity(it.toUi(local)),
+                sequence = it.sequence ?: Long.MAX_VALUE,
+                lifecycleRank = activityLifecycleRank(it.kind),
+            )
         }
-        return (messages + activities).sortedWith(compareBy<TimedItem> { it.at }.thenBy { it.item.id }).map { it.item }
+        val sorted = (messages + activities)
+            .sortedWith(
+                compareBy<TimedItem> { it.at }
+                    .thenBy { it.sequence }
+                    .thenBy { it.lifecycleRank }
+                    .thenBy { it.item.id },
+            )
+            .map { it.item }
+        return groupToolActivities(sorted)
     }
 
     private fun OrchestrationActivity.toUi(local: LocalState): ChatActivityUi {
@@ -593,12 +631,7 @@ class ChatViewModel(
             }
 
             else -> when (tone) {
-                "tool" -> ChatActivityUi.Tool(
-                    id = id,
-                    summary = summary,
-                    status = if (kind.endsWith(".completed")) ActivityStatusUi.COMPLETED else ActivityStatusUi.RUNNING,
-                    detail = payload.pretty(),
-                )
+                "tool" -> payload.toToolUi(this)
 
                 "error" -> ChatActivityUi.Error(id, summary, payload.pretty())
                 "info" -> if (kind.startsWith("status.")) {
@@ -610,6 +643,49 @@ class ChatViewModel(
                 else -> ChatActivityUi.Unknown(id, summary, payload.pretty(), kind)
             }
         }
+    }
+
+    private fun JsonObject.toToolUi(activity: OrchestrationActivity): ChatActivityUi.Tool {
+        val command = toolCommand()
+        val output = string("detail")?.stripTrailingExitCode()
+        val changedFiles = changedFiles()
+        val title = (string("title") ?: activity.summary)
+            .replace(Regex("\\s+(complete|completed)$", RegexOption.IGNORE_CASE), "")
+            .replaceFirstChar(Char::uppercase)
+        val preview = command ?: output ?: changedFiles.firstOrNull() ?: string("toolName")
+        val fullDetail = listOfNotNull(
+            command,
+            output?.takeUnless { it == command },
+            changedFiles.takeIf { it.isNotEmpty() }?.joinToString("\n"),
+        ).distinct().joinToString("\n\n").ifBlank {
+            pretty().takeUnless { it == "{}" }
+        }
+        val lifecycleStatus = string("status")
+        val status = when {
+            lifecycleStatus == "failed" || lifecycleStatus == "declined" -> ActivityStatusUi.FAILED
+            lifecycleStatus == "completed" || activity.kind.endsWith(".completed") -> ActivityStatusUi.COMPLETED
+            lifecycleStatus == "inProgress" || activity.kind.endsWith(".updated") -> ActivityStatusUi.RUNNING
+            lifecycleStatus == "stopped" -> ActivityStatusUi.FAILED
+            else -> ActivityStatusUi.PENDING
+        }
+        val item = (this["data"] as? JsonObject)?.get("item") as? JsonObject
+        val lifecycleId = item?.string("id")
+            ?: item?.string("callId")
+            ?: string("callId")
+            ?: string("toolCallId")
+        val lifecycleKey = lifecycleId ?: listOf(
+            string("itemType").orEmpty(),
+            title,
+            command.orEmpty(),
+        ).joinToString("\u001f")
+        return ChatActivityUi.Tool(
+            id = activity.id,
+            summary = title,
+            subtitle = preview?.replace(Regex("\\s+"), " ")?.trim(),
+            status = status,
+            detail = fullDetail,
+            lifecycleKey = lifecycleKey,
+        )
     }
 
     private data class LocalState(
@@ -655,7 +731,127 @@ private data class EnvironmentBundle(
 private data class TimedItem(
     val at: String,
     val item: ChatTimelineItemUi,
+    val sequence: Long = Long.MIN_VALUE,
+    val lifecycleRank: Int = 0,
 )
+
+private fun activityLifecycleRank(kind: String): Int = when {
+    kind.endsWith(".started") -> 0
+    kind.endsWith(".progress") || kind.endsWith(".updated") -> 1
+    kind.endsWith(".completed") || kind.endsWith(".resolved") -> 2
+    else -> 1
+}
+
+private fun groupToolActivities(items: List<ChatTimelineItemUi>): List<ChatTimelineItemUi> {
+    val grouped = mutableListOf<ChatTimelineItemUi>()
+    items.forEach { item ->
+        val tool = (item as? ChatTimelineItemUi.Activity)?.value as? ChatActivityUi.Tool
+        if (tool == null) {
+            grouped += item
+            return@forEach
+        }
+        val previous = grouped.lastOrNull() as? ChatTimelineItemUi.ToolGroup
+        if (previous == null) {
+            grouped += ChatTimelineItemUi.ToolGroup(
+                id = "tool-group:${tool.id}",
+                activities = listOf(tool),
+            )
+            return@forEach
+        }
+        val replaceIndex = previous.activities.indexOfLast {
+            it.lifecycleKey == tool.lifecycleKey &&
+                it.status != ActivityStatusUi.COMPLETED &&
+                it.status != ActivityStatusUi.FAILED
+        }
+        val nextActivities = if (replaceIndex >= 0) {
+            previous.activities.toMutableList().apply { this[replaceIndex] = tool }
+        } else {
+            previous.activities + tool
+        }
+        grouped[grouped.lastIndex] = previous.copy(activities = nextActivities)
+    }
+    return grouped
+}
+
+private fun JsonObject.string(key: String): String? =
+    (this[key] as? JsonPrimitive)?.content?.trim()?.takeIf { it.isNotEmpty() }
+
+private fun JsonObject.toolCommand(): String? {
+    val data = this["data"] as? JsonObject
+    val item = data?.get("item") as? JsonObject
+    val input = item?.get("input") as? JsonObject
+    val result = item?.get("result") as? JsonObject
+    val candidates = listOfNotNull(
+        item?.get("command"),
+        input?.get("command"),
+        result?.get("command"),
+        data?.get("command"),
+    )
+    return candidates.firstNotNullOfOrNull(::commandText)?.unwrapShellCommand()
+        ?: if (string("itemType") == "command_execution") {
+            string("detail")?.stripTrailingExitCode()?.unwrapShellCommand()
+        } else {
+            null
+        }
+}
+
+private fun commandText(value: kotlinx.serialization.json.JsonElement): String? = when (value) {
+    is JsonPrimitive -> value.content.trim().takeIf { it.isNotEmpty() }
+    is JsonArray -> value.mapNotNull {
+        (it as? JsonPrimitive)?.content?.trim()?.takeIf(String::isNotEmpty)
+    }.takeIf(List<String>::isNotEmpty)?.joinToString(" ")
+
+    else -> null
+}
+
+private fun String.unwrapShellCommand(): String {
+    val value = trim()
+    val wrapper = Regex(
+        """^(?:"?[^"]*(?:pwsh|powershell)(?:\.exe)?"?\s+-command|"?[^"]*(?:bash|zsh|sh)"?\s+-(?:l)?c)\s+(.+)$""",
+        RegexOption.IGNORE_CASE,
+    )
+    val command = wrapper.matchEntire(value)?.groupValues?.getOrNull(1)?.trim() ?: return value
+    return command.removeSurrounding("\"").removeSurrounding("'").trim()
+}
+
+private fun String.stripTrailingExitCode(): String? {
+    val output = replace(
+        Regex("""\s*<exited with exit code \d+>\s*$""", RegexOption.IGNORE_CASE),
+        "",
+    ).trim()
+    return output.takeIf { it.isNotEmpty() }
+}
+
+private fun JsonObject.changedFiles(): List<String> {
+    val files = linkedSetOf<String>()
+    fun collect(value: kotlinx.serialization.json.JsonElement?, depth: Int) {
+        if (value == null || depth > 4 || files.size >= 12) return
+        when (value) {
+            is JsonArray -> value.forEach { collect(it, depth + 1) }
+            is JsonObject -> {
+                listOf("path", "filePath", "relativePath", "filename", "newPath", "oldPath")
+                    .mapNotNull(value::string)
+                    .forEach(files::add)
+                listOf(
+                    "item",
+                    "result",
+                    "input",
+                    "data",
+                    "changes",
+                    "files",
+                    "edits",
+                    "patch",
+                    "patches",
+                    "operations",
+                ).forEach { collect(value[it], depth + 1) }
+            }
+
+            else -> Unit
+        }
+    }
+    collect(this["data"], 0)
+    return files.toList()
+}
 
 private val activityOrder = compareBy<OrchestrationActivity>(
     { it.sequence ?: Long.MAX_VALUE },
@@ -674,13 +870,11 @@ private fun quickSwitchProjects(
     return snapshot.projects
         .mapNotNull { project ->
             val projectThreads = activeThreadsByProject[project.id].orEmpty()
-            val lastActiveAt = projectThreads.maxOfOrNull { it.updatedAt }
-                ?: return@mapNotNull null
-            ActiveProject(project, projectThreads, lastActiveAt)
+            if (projectThreads.isEmpty()) return@mapNotNull null
+            ActiveProject(project, projectThreads)
         }
         .sortedWith(
-            compareByDescending<ActiveProject> { it.lastActiveAt }
-                .thenBy(String.CASE_INSENSITIVE_ORDER) { it.project.title }
+            compareBy<ActiveProject, String>(String.CASE_INSENSITIVE_ORDER) { it.project.title }
                 .thenBy { it.project.id },
         )
         .take(MaxQuickSwitchProjects)
@@ -709,7 +903,6 @@ private fun quickSwitchProjects(
 private data class ActiveProject(
     val project: de.chennemann.agentic.t3.contract.OrchestrationProject,
     val threads: List<de.chennemann.agentic.t3.contract.OrchestrationThreadShell>,
-    val lastActiveAt: String,
 )
 
 private fun de.chennemann.agentic.t3.contract.OrchestrationThreadShell.isSettled(): Boolean =
@@ -814,4 +1007,4 @@ private val RuntimeModes = listOf(
 )
 private val ActiveSessionStatuses = setOf("starting", "running")
 private const val MaxQuickSwitchProjects = 5
-private const val DefaultRuntimeMode = "approval-required"
+private const val DefaultRuntimeMode = "full-access"

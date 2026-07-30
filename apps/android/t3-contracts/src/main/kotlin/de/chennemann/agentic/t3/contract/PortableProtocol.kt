@@ -353,6 +353,7 @@ sealed interface ClientOrchestrationCommand {
         val threadId: String,
         val message: TurnMessageInput,
         val modelSelection: ModelSelection,
+        val titleSeed: String? = null,
         val interactionMode: String,
         val runtimeMode: String,
         val createdAt: String,
@@ -384,6 +385,19 @@ sealed interface ClientOrchestrationCommand {
     @Serializable
     @SerialName("thread.unarchive")
     data class UnarchiveThread(override val commandId: String, val threadId: String) : ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("thread.settle")
+    data class SettleThread(override val commandId: String, val threadId: String) : ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("thread.unsettle")
+    data class UnsettleThread(
+        override val commandId: String,
+        val threadId: String,
+        @EncodeDefault
+        val reason: String = "user"
+    ) : ClientOrchestrationCommand
 
     @Serializable
     @SerialName("thread.runtime-mode.set")

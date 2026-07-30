@@ -27,6 +27,10 @@ interface ThreadActions {
     suspend fun archive(threadId: String): DispatchResult
 
     suspend fun unarchive(threadId: String): DispatchResult
+
+    suspend fun settle(threadId: String): DispatchResult
+
+    suspend fun unsettle(threadId: String): DispatchResult
 }
 
 class ThreadService(
@@ -65,6 +69,14 @@ class ThreadService(
 
     override suspend fun unarchive(threadId: String): DispatchResult = dispatch(
         ClientOrchestrationCommand.UnarchiveThread(uuid(), threadId),
+    )
+
+    override suspend fun settle(threadId: String): DispatchResult = dispatch(
+        ClientOrchestrationCommand.SettleThread(uuid(), threadId),
+    )
+
+    override suspend fun unsettle(threadId: String): DispatchResult = dispatch(
+        ClientOrchestrationCommand.UnsettleThread(uuid(), threadId),
     )
 
     private suspend fun dispatch(command: ClientOrchestrationCommand): DispatchResult {
@@ -127,12 +139,12 @@ class ChatService(
     ): StartTurnResult {
         val now = Instant.now().toString()
         val targetThreadId = threadId ?: uuid()
+        val titleSeed = deriveThreadTitle(prompt)
         val bootstrap = if (threadId == null) {
             StartTurnBootstrap(
                 createThread = NewThreadBootstrap(
                     projectId = projectId,
-                    title = prompt.lineSequence().firstOrNull { it.isNotBlank() }?.trim()?.take(120)
-                        ?: "New thread",
+                    title = titleSeed,
                     modelSelection = modelSelection,
                     interactionMode = interactionMode,
                     runtimeMode = runtimeMode,
@@ -153,6 +165,7 @@ class ChatService(
                     text = prompt,
                 ),
                 modelSelection = modelSelection,
+                titleSeed = titleSeed.takeIf { threadId == null },
                 interactionMode = interactionMode,
                 runtimeMode = runtimeMode,
                 createdAt = now,
@@ -232,6 +245,18 @@ class ChatService(
         return commands.dispatch(environment.baseUrl, token, command)
     }
 }
+
+private fun deriveThreadTitle(prompt: String): String {
+    val compact = prompt.trim().replace(Regex("\\s+"), " ")
+    if (compact.isEmpty()) return "New thread"
+    return if (compact.length <= MaxThreadTitleLength) {
+        compact
+    } else {
+        compact.take(MaxThreadTitleLength - 3).trimEnd() + "..."
+    }
+}
+
+private const val MaxThreadTitleLength = 72
 
 data class StartTurnResult(
     val dispatch: DispatchResult,

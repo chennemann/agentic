@@ -37,6 +37,11 @@ sealed interface ChatTimelineItemUi {
     ) : ChatTimelineItemUi {
         override val id: String = value.id
     }
+
+    data class ToolGroup(
+        override val id: String,
+        val activities: List<ChatActivityUi.Tool>,
+    ) : ChatTimelineItemUi
 }
 
 data class ChatMessageUi(
@@ -69,6 +74,7 @@ sealed interface ChatActivityUi {
         val subtitle: String? = null,
         val status: ActivityStatusUi = ActivityStatusUi.PENDING,
         val detail: String? = null,
+        val lifecycleKey: String? = null,
     ) : ChatActivityUi
 
     data class Approval(
@@ -334,6 +340,18 @@ sealed interface ChatUiEvent {
     ) : ChatUiEvent
 
     data class ThreadSelected(
+        val threadId: String,
+    ) : ChatUiEvent
+
+    data class ThreadSettleRequested(
+        val threadId: String,
+    ) : ChatUiEvent
+
+    data class ThreadUnsettleRequested(
+        val threadId: String,
+    ) : ChatUiEvent
+
+    data class PickerThreadUnarchiveRequested(
         val threadId: String,
     ) : ChatUiEvent
 

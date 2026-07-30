@@ -21,6 +21,7 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -46,7 +47,13 @@ import de.chennemann.agentic.streamingmarkdown.StreamingMarkdownText
 import de.chennemann.agentic.ui.components.ChatActivityCard
 import de.chennemann.agentic.ui.components.ConnectionStatusBanner
 import de.chennemann.agentic.ui.components.T3MessageComposer
+import de.chennemann.agentic.ui.components.ToolActivityGroup
 import de.chennemann.agentic.ui.theme.MobileTheme
+import de.chennemann.agentic.icons.Add
+import de.chennemann.agentic.icons.Archive
+import de.chennemann.agentic.icons.ArchiveRestore
+import de.chennemann.agentic.icons.Icons
+import de.chennemann.agentic.icons.Rename
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.launch
@@ -135,6 +142,21 @@ fun T3ChatScreen(
                             ChatActivityCard(
                                 activity = item.value,
                                 expanded = expandedActivities[item.value.id] == true,
+                                onEvent = {
+                                    if (it is ChatUiEvent.ActivityExpansionChanged) {
+                                        expandedActivities[it.activityId] = it.expanded
+                                    } else {
+                                        onEvent(it)
+                                    }
+                                },
+                            )
+                        }
+                        is ChatTimelineItemUi.ToolGroup -> {
+                            ToolActivityGroup(
+                                groupId = item.id,
+                                activities = item.activities,
+                                expanded = expandedActivities[item.id] == true,
+                                activityExpanded = { expandedActivities[it] == true },
                                 onEvent = {
                                     if (it is ChatUiEvent.ActivityExpansionChanged) {
                                         expandedActivities[it.activityId] = it.expanded
@@ -255,7 +277,10 @@ private fun T3ChatHeader(
                 },
             )
             TextButton(onClick = { onEvent(ChatUiEvent.NewThreadRequested) }) {
-                Text("New")
+                Icon(
+                    imageVector = Icons.Add,
+                    contentDescription = "New thread",
+                )
             }
         }
 
@@ -288,15 +313,27 @@ private fun T3ChatHeader(
             Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 if (state.canRenameThread) {
                     TextButton(onClick = { onEvent(ChatUiEvent.RenameThreadRequested) }) {
+                        Icon(
+                            imageVector = Icons.Rename,
+                            contentDescription = null,
+                        )
                         Text("Rename")
                     }
                 }
                 if (state.isThreadArchived) {
                     TextButton(onClick = { onEvent(ChatUiEvent.UnarchiveThreadRequested) }) {
+                        Icon(
+                            imageVector = Icons.ArchiveRestore,
+                            contentDescription = null,
+                        )
                         Text("Unarchive")
                     }
                 } else if (state.canArchiveThread) {
                     TextButton(onClick = { onEvent(ChatUiEvent.ArchiveThreadRequested) }) {
+                        Icon(
+                            imageVector = Icons.Archive,
+                            contentDescription = null,
+                        )
                         Text("Archive")
                     }
                 }
@@ -384,6 +421,10 @@ private fun EmptyChatState(
         )
         if (hasProject) {
             OutlinedButton(onClick = onNewThread) {
+                Icon(
+                    imageVector = Icons.Add,
+                    contentDescription = null,
+                )
                 Text("New thread")
             }
         }
@@ -396,6 +437,10 @@ private fun ChatTimelineItemUi?.contentSignature(): Any? = when (this) {
         is ChatActivityUi.Tool -> Triple(activity.id, activity.status, activity.detail?.length)
         is ChatActivityUi.Unknown -> activity.id to activity.formattedDetail.length
         else -> activity.id
+    }
+    is ChatTimelineItemUi.ToolGroup -> {
+        val last = activities.lastOrNull()
+        Triple(id, activities.size, last?.let { it.id to it.status })
     }
 
     null -> null

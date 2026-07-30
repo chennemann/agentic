@@ -19,6 +19,7 @@ import de.chennemann.agentic.t3.contract.EnvironmentPlatform
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentCapabilities
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
 import de.chennemann.agentic.t3.contract.ModelSelection
+import de.chennemann.agentic.t3.contract.OrchestrationActivity
 import de.chennemann.agentic.t3.contract.OrchestrationProject
 import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
@@ -29,6 +30,7 @@ import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.ProviderInstance
 import de.chennemann.agentic.t3.contract.ProviderModel
 import de.chennemann.agentic.t3.contract.ProviderOptionSelection
+import de.chennemann.agentic.t3.contract.PortableJson
 import de.chennemann.agentic.t3.contract.ServerAuthDescriptor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -41,6 +43,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertSame
@@ -115,7 +118,7 @@ class ChatViewModelIntentTest {
         assertEquals(listOf("thread-settled"), viewModel.state.value.threadPicker.settledThreads.map { it.id })
         assertEquals(false, viewModel.state.value.threadPicker.showSettled)
         assertEquals(
-            listOf("project-2", "project-1"),
+            listOf("project-1", "project-2"),
             viewModel.state.value.composer.quickSwitchProjects.map { it.id },
         )
         val timelineBeforeTyping = viewModel.state.value.timeline
@@ -134,6 +137,13 @@ class ChatViewModelIntentTest {
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.threadPicker.showSettled)
+
+        viewModel.onEvent(ChatUiEvent.ThreadSettleRequested("thread-1"))
+        viewModel.onEvent(ChatUiEvent.ThreadUnsettleRequested("thread-settled"))
+        advanceUntilIdle()
+
+        assertEquals(listOf("thread-1"), threadActions.settledThreads)
+        assertEquals(listOf("thread-settled"), threadActions.unsettledThreads)
 
         viewModel.onEvent(ChatUiEvent.ProjectSelected("project-2"))
         advanceUntilIdle()
@@ -189,7 +199,7 @@ class ChatViewModelIntentTest {
         advanceUntilIdle()
 
         assertEquals(
-            listOf("project-8", "project-6", "project-5", "project-4", "project-3"),
+            listOf("project-1", "project-2", "project-3", "project-4", "project-5"),
             viewModel.state.value.composer.quickSwitchProjects.map { it.id },
         )
     }
@@ -229,6 +239,83 @@ class ChatViewModelIntentTest {
         assertEquals("", viewModel.state.value.composer.draft)
         assertEquals(false, viewModel.state.value.composer.sending)
         assertEquals(null, viewModel.state.value.composer.errorMessage)
+    }
+
+    @Test
+    fun `new thread submission defaults to full access`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model")).apply {
+            focusedThreadId.value = null
+            focusedThread.value = ProjectionState()
+        }
+        val chat = NoOpChatActions()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = chat,
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        viewModel.onEvent(ChatUiEvent.DraftChanged("start a task"))
+        viewModel.onEvent(ChatUiEvent.MessageSubmitted)
+        advanceUntilIdle()
+
+        assertEquals("full-access", chat.startTurnCalls.single().runtimeMode)
+    }
+
+    @Test
+    fun `tool lifecycle rows collapse into a command-aware group`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val current = requireNotNull(repository.focusedThread.value.value)
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = current.copy(
+                thread = current.thread.copy(
+                    activities = listOf(
+                        toolActivity(
+                            id = "tool-1-update",
+                            kind = "tool.updated",
+                            status = "inProgress",
+                            callId = "call-1",
+                            command = "pwsh -Command './gradlew test'",
+                        ),
+                        toolActivity(
+                            id = "tool-1-complete",
+                            kind = "tool.completed",
+                            status = "completed",
+                            callId = "call-1",
+                            command = "pwsh -Command './gradlew test'",
+                        ),
+                        toolActivity(
+                            id = "tool-2-update",
+                            kind = "tool.updated",
+                            status = "inProgress",
+                            callId = "call-2",
+                            command = "git status --short",
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        val group = viewModel.state.value.timeline.single() as ChatTimelineItemUi.ToolGroup
+        assertEquals(2, group.activities.size)
+        assertEquals(ActivityStatusUi.COMPLETED, group.activities.first().status)
+        assertEquals(ActivityStatusUi.RUNNING, group.activities.last().status)
+        assertEquals("./gradlew test", group.activities.first().subtitle)
+        assertEquals("git status --short", group.activities.last().subtitle)
     }
 
     @Test
@@ -275,6 +362,8 @@ private class RecordingThreadActions(
 ) : ThreadActions {
     val selectedProjects = mutableListOf<String?>()
     val selectedThreads = mutableListOf<String?>()
+    val settledThreads = mutableListOf<String>()
+    val unsettledThreads = mutableListOf<String>()
 
     override suspend fun selectProject(projectId: String?) {
         selectedProjects += projectId
@@ -296,6 +385,16 @@ private class RecordingThreadActions(
     override suspend fun archive(threadId: String) = DispatchResult(1)
 
     override suspend fun unarchive(threadId: String) = DispatchResult(1)
+
+    override suspend fun settle(threadId: String): DispatchResult {
+        settledThreads += threadId
+        return DispatchResult(1)
+    }
+
+    override suspend fun unsettle(threadId: String): DispatchResult {
+        unsettledThreads += threadId
+        return DispatchResult(1)
+    }
 }
 
 private class NoOpChatActions(
@@ -574,3 +673,32 @@ private fun submissionRepository(selection: ModelSelection) = FakeOrchestrationR
         synchronized = true,
     )
 }
+
+private fun toolActivity(
+    id: String,
+    kind: String,
+    status: String,
+    callId: String,
+    command: String,
+) = OrchestrationActivity(
+    id = id,
+    kind = kind,
+    tone = "tool",
+    summary = "Run command",
+    payload = PortableJson.parseToJsonElement(
+        """
+        {
+          "title": "Run command",
+          "itemType": "command_execution",
+          "status": "$status",
+          "data": {
+            "item": {
+              "id": "$callId",
+              "command": "$command"
+            }
+          }
+        }
+        """.trimIndent(),
+    ).jsonObject,
+    createdAt = "2026-07-29T10:00:00Z",
+)

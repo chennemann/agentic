@@ -15,6 +15,8 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
@@ -25,6 +27,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import de.chennemann.agentic.icons.Add
+import de.chennemann.agentic.icons.ArchiveRestore
+import de.chennemann.agentic.icons.Check
+import de.chennemann.agentic.icons.Icons
 
 @Composable
 fun ChatSelectionSheets(
@@ -130,6 +136,10 @@ fun ChatSelectionSheets(
                             style = MaterialTheme.typography.labelLarge,
                         )
                         TextButton(onClick = { onEvent(ChatUiEvent.NewThreadRequested) }) {
+                            Icon(
+                                imageVector = Icons.Add,
+                                contentDescription = null,
+                            )
                             Text("New thread")
                         }
                     }
@@ -160,12 +170,19 @@ fun ChatSelectionSheets(
                     items = state.threadPicker.threads,
                     key = { "thread:${it.id}" },
                 ) { thread ->
-                    PickerRow(
-                        label = thread.title,
-                        supportingText = thread.supportingText,
+                    ThreadPickerRow(
+                        thread = thread,
                         selected = thread.id == state.threadPicker.selectedThreadId,
-                        trailingText = if (thread.archived) "Archived" else null,
                         onClick = { onEvent(ChatUiEvent.ThreadSelected(thread.id)) },
+                        onLifecycleClick = {
+                            onEvent(
+                                if (thread.archived) {
+                                    ChatUiEvent.PickerThreadUnarchiveRequested(thread.id)
+                                } else {
+                                    ChatUiEvent.ThreadSettleRequested(thread.id)
+                                },
+                            )
+                        },
                     )
                 }
                 item("settled-thread-heading") {
@@ -203,12 +220,14 @@ fun ChatSelectionSheets(
                         items = state.threadPicker.settledThreads,
                         key = { "settled-thread:${it.id}" },
                     ) { thread ->
-                        PickerRow(
-                            label = thread.title,
-                            supportingText = thread.supportingText,
+                        ThreadPickerRow(
+                            thread = thread,
                             selected = thread.id == state.threadPicker.selectedThreadId,
-                            trailingText = if (thread.archived) "Archived" else null,
                             onClick = { onEvent(ChatUiEvent.ThreadSelected(thread.id)) },
+                            onLifecycleClick = {
+                                onEvent(ChatUiEvent.ThreadUnsettleRequested(thread.id))
+                            },
+                            settled = true,
                         )
                     }
                 }
@@ -291,6 +310,59 @@ private fun PickerSheet(
                 )
             }
             content()
+        }
+    }
+}
+
+@Composable
+private fun ThreadPickerRow(
+    thread: ThreadPickerItemUi,
+    selected: Boolean,
+    onClick: () -> Unit,
+    onLifecycleClick: () -> Unit,
+    settled: Boolean = false,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = thread.title,
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            thread.supportingText?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        IconButton(onClick = onLifecycleClick) {
+            Icon(
+                imageVector = if (thread.archived || settled) Icons.ArchiveRestore else Icons.Check,
+                contentDescription = when {
+                    thread.archived -> "Unarchive ${thread.title}"
+                    settled -> "Un-settle ${thread.title}"
+                    else -> "Settle ${thread.title}"
+                },
+            )
         }
     }
 }

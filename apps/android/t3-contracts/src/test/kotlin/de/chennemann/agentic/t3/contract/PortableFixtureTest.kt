@@ -67,6 +67,22 @@ class PortableFixtureTest {
     }
 
     @Test
+    fun `settlement commands encode the portable lifecycle fields`() {
+        val settle = PortableCommandJson.encodeToJsonElement(
+            ClientOrchestrationCommand.serializer(),
+            ClientOrchestrationCommand.SettleThread("settle-command", "thread-golden")
+        ).jsonObject
+        val unsettle = PortableCommandJson.encodeToJsonElement(
+            ClientOrchestrationCommand.serializer(),
+            ClientOrchestrationCommand.UnsettleThread("unsettle-command", "thread-golden")
+        ).jsonObject
+
+        assertEquals("thread.settle", settle.getValue("type").jsonPrimitive.content)
+        assertEquals("thread.unsettle", unsettle.getValue("type").jsonPrimitive.content)
+        assertEquals("user", unsettle.getValue("reason").jsonPrimitive.content)
+    }
+
+    @Test
     fun `every canonical shell stream variant decodes`() {
         val items = PortableJson.decodeFromString(
             ListSerializer(OrchestrationShellStreamItem.serializer()),
