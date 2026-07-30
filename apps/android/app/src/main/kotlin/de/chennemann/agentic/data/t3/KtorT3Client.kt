@@ -9,6 +9,7 @@ import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
+import de.chennemann.agentic.t3.contract.PortableCommandJson
 import de.chennemann.agentic.t3.contract.PortableJson
 import de.chennemann.agentic.t3.contract.TokenExchangeResponse
 import io.ktor.client.HttpClient
@@ -102,7 +103,7 @@ class KtorT3Client(
             bearerAuth(bearerToken)
             contentType(ContentType.Application.Json)
             accept(ContentType.Application.Json)
-            setBody(PortableJson.encodeToString(ClientOrchestrationCommand.serializer(), command))
+            setBody(PortableCommandJson.encodeToString(ClientOrchestrationCommand.serializer(), command))
         }
         response.checked()
         PortableJson.decodeFromString(response.body<String>())

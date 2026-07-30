@@ -1,5 +1,8 @@
+@file:OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
+
 package de.chennemann.agentic.t3.contract
 
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -19,6 +22,11 @@ val PortableJson = Json {
     ignoreUnknownKeys = true
     explicitNulls = false
     prettyPrint = false
+}
+
+@OptIn(ExperimentalSerializationApi::class)
+val PortableCommandJson = Json(PortableJson) {
+    explicitNulls = true
 }
 
 @Serializable
@@ -308,8 +316,10 @@ data class DispatchResult(val sequence: Long)
 @Serializable
 data class TurnMessageInput(
     val messageId: String,
+    @EncodeDefault
     val role: String = "user",
     val text: String,
+    @EncodeDefault
     val attachments: List<JsonElement> = emptyList()
 )
 
@@ -320,7 +330,9 @@ data class NewThreadBootstrap(
     val modelSelection: ModelSelection,
     val interactionMode: String,
     val runtimeMode: String,
+    @EncodeDefault
     val branch: String? = null,
+    @EncodeDefault
     val worktreePath: String? = null,
     val createdAt: String
 )

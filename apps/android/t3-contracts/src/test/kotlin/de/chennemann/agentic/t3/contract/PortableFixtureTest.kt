@@ -1,6 +1,7 @@
 package de.chennemann.agentic.t3.contract
 
 import kotlinx.serialization.builtins.ListSerializer
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.boolean
 import kotlinx.serialization.json.jsonArray
@@ -34,6 +35,35 @@ class PortableFixtureTest {
         assertInstanceOf(ClientOrchestrationCommand.StartTurn::class.java, commands[0])
         assertInstanceOf(ClientOrchestrationCommand.RespondToApproval::class.java, commands[8])
         assertInstanceOf(ClientOrchestrationCommand.RespondToUserInput::class.java, commands[9])
+    }
+
+    @Test
+    fun `turn commands encode every required portable wire field`() {
+        val commands = PortableJson.decodeFromString(
+            ListSerializer(ClientOrchestrationCommand.serializer()),
+            fixture("commands.json")
+        )
+
+        val existing = PortableCommandJson.encodeToJsonElement(
+            ClientOrchestrationCommand.serializer(),
+            commands[0]
+        ).jsonObject
+        val existingMessage = existing.getValue("message").jsonObject
+        assertEquals("user", existingMessage.getValue("role").jsonPrimitive.content)
+        assertEquals(0, existingMessage.getValue("attachments").jsonArray.size)
+        assertTrue("bootstrap" !in existing)
+
+        val newThread = PortableCommandJson.encodeToJsonElement(
+            ClientOrchestrationCommand.serializer(),
+            commands[1]
+        ).jsonObject
+        val createThread = newThread
+            .getValue("bootstrap")
+            .jsonObject
+            .getValue("createThread")
+            .jsonObject
+        assertEquals(JsonNull, createThread.getValue("branch"))
+        assertEquals(JsonNull, createThread.getValue("worktreePath"))
     }
 
     @Test
