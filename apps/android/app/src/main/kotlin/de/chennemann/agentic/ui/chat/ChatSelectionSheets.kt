@@ -125,6 +125,25 @@ fun ChatSelectionSheets(
                         },
                     )
                 }
+                item("voice-input-heading") {
+                    Text(
+                        "Voice input",
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
+                }
+                item("voice-input") {
+                    PickerRow(
+                        label = "Groq transcription",
+                        supportingText = if (state.groqSettings.apiKeyConfigured) {
+                            "API key configured"
+                        } else {
+                            "Set up an API key to enable the microphone"
+                        },
+                        selected = state.groqSettings.apiKeyConfigured,
+                        onClick = { onEvent(ChatUiEvent.GroqSettingsRequested) },
+                    )
+                }
             }
         }
 

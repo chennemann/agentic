@@ -15,6 +15,9 @@ import de.chennemann.agentic.data.t3.KtorT3Client
 import de.chennemann.agentic.data.t3.OrchestrationCommandClient
 import de.chennemann.agentic.data.t3.OrchestrationSnapshotClient
 import de.chennemann.agentic.data.t3.OrchestrationStreamClient
+import de.chennemann.agentic.data.voice.AndroidAudioRecorder
+import de.chennemann.agentic.data.voice.KeystoreGroqApiKeyStore
+import de.chennemann.agentic.data.voice.KtorGroqTranscriptionClient
 import de.chennemann.agentic.db.AgenticDb
 import de.chennemann.agentic.domain.connection.ConnectionSupervisor
 import de.chennemann.agentic.domain.connection.ConnectionController
@@ -28,6 +31,11 @@ import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.domain.orchestration.ThreadService
 import de.chennemann.agentic.domain.orchestration.ThreadActions
 import de.chennemann.agentic.domain.preferences.ModelFavoriteRepository
+import de.chennemann.agentic.domain.voice.AudioRecorder
+import de.chennemann.agentic.domain.voice.AudioTranscriptionClient
+import de.chennemann.agentic.domain.voice.GroqApiKeyStore
+import de.chennemann.agentic.domain.voice.GroqVoiceInputService
+import de.chennemann.agentic.domain.voice.VoiceInputService
 import de.chennemann.agentic.t3.contract.PortableJson
 import de.chennemann.agentic.ui.chat.ChatViewModel
 import de.chennemann.agentic.ui.onboarding.OnboardingViewModel
@@ -71,6 +79,17 @@ val appModule = module {
         )
     }
     single<CredentialStore> { KeystoreCredentialStore(get()) }
+    single<GroqApiKeyStore> { KeystoreGroqApiKeyStore(get()) }
+    single<AudioRecorder> { AndroidAudioRecorder(get()) }
+    single<AudioTranscriptionClient> { KtorGroqTranscriptionClient(get()) }
+    single<VoiceInputService> {
+        GroqVoiceInputService(
+            recorder = get(),
+            apiKeys = get(),
+            transcriptions = get(),
+            ioDispatcher = get<DispatcherProvider>().io,
+        )
+    }
     single<NetworkMonitor> { AndroidNetworkMonitor(get()) }
     single {
         KtorT3Client(get())
@@ -144,6 +163,8 @@ val appModule = module {
             chat = get(),
             modelFavorites = get(),
             mappingDispatcher = get<DispatcherProvider>().default,
+            groqApiKeys = get(),
+            voiceInput = get(),
         )
     }
 }

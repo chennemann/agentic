@@ -12,6 +12,8 @@ import de.chennemann.agentic.domain.orchestration.ProjectionState
 import de.chennemann.agentic.domain.orchestration.Reduction
 import de.chennemann.agentic.domain.orchestration.StartTurnResult
 import de.chennemann.agentic.domain.orchestration.ThreadActions
+import de.chennemann.agentic.domain.voice.GroqApiKeyStore
+import de.chennemann.agentic.domain.voice.VoiceInputService
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.DispatchResult
 import de.chennemann.agentic.t3.contract.EnvironmentClientConfig
@@ -90,6 +92,50 @@ class ChatViewModelIntentTest {
         assertEquals("hello", viewModel.state.value.composer.draft)
         assertEquals(listOf("project-2"), threadActions.selectedProjects)
         assertTrue(controller.woken)
+    }
+
+    @Test
+    fun `saving Groq key enables recording and transcription fills draft`() = runTest(dispatcher) {
+        val apiKeys = FakeGroqApiKeyStore()
+        val voiceInput = FakeVoiceInputService("transcribed prompt")
+        val repository = FakeOrchestrationRepository()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+            groqApiKeys = apiKeys,
+            voiceInput = voiceInput,
+        )
+
+        viewModel.onEvent(ChatUiEvent.GroqSettingsRequested)
+        viewModel.onEvent(ChatUiEvent.GroqApiKeySaved("  gsk_test  "))
+        advanceUntilIdle()
+
+        assertEquals("gsk_test", apiKeys.apiKey)
+        assertEquals(true, viewModel.state.value.composer.voiceInputAvailable)
+        assertEquals(false, viewModel.state.value.groqSettings.dialogVisible)
+
+        viewModel.onEvent(ChatUiEvent.VoiceInputPressed)
+        advanceUntilIdle()
+        assertEquals(1, voiceInput.starts)
+        assertEquals(
+            VoiceInputStatusUi.RECORDING,
+            viewModel.state.value.composer.voiceInputStatus,
+        )
+
+        viewModel.onEvent(ChatUiEvent.VoiceInputPressed)
+        advanceUntilIdle()
+
+        assertEquals(1, voiceInput.transcriptions)
+        assertEquals("transcribed prompt", viewModel.state.value.composer.draft)
+        assertEquals(
+            VoiceInputStatusUi.IDLE,
+            viewModel.state.value.composer.voiceInputStatus,
+        )
     }
 
     @Test
@@ -1039,3 +1085,40 @@ private fun orchestrationMessage(
     createdAt = createdAt,
     updatedAt = createdAt,
 )
+
+private class FakeGroqApiKeyStore : GroqApiKeyStore {
+    private val mutableConfigured = MutableStateFlow(false)
+
+    override val configured: StateFlow<Boolean> = mutableConfigured
+    var apiKey: String? = null
+
+    override suspend fun read(): String? = apiKey
+
+    override suspend fun write(apiKey: String) {
+        this.apiKey = apiKey
+        mutableConfigured.value = true
+    }
+
+    override suspend fun remove() {
+        apiKey = null
+        mutableConfigured.value = false
+    }
+}
+
+private class FakeVoiceInputService(
+    private val transcript: String,
+) : VoiceInputService {
+    var starts = 0
+    var transcriptions = 0
+
+    override fun startRecording() {
+        starts += 1
+    }
+
+    override suspend fun stopAndTranscribe(): String {
+        transcriptions += 1
+        return transcript
+    }
+
+    override fun cancelRecording() = Unit
+}

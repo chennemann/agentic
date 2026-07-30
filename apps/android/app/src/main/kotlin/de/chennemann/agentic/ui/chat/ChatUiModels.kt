@@ -16,6 +16,7 @@ data class ChatUiState(
     val canArchiveThread: Boolean = false,
     val isThreadArchived: Boolean = false,
     val renameDialog: RenameThreadUi? = null,
+    val groqSettings: GroqSettingsUiState = GroqSettingsUiState(),
 )
 
 data class RenameThreadUi(
@@ -214,6 +215,21 @@ data class ComposerUiState(
     val sending: Boolean = false,
     val errorMessage: String? = null,
     val enabled: Boolean = true,
+    val voiceInputAvailable: Boolean = false,
+    val voiceInputStatus: VoiceInputStatusUi = VoiceInputStatusUi.IDLE,
+)
+
+enum class VoiceInputStatusUi {
+    IDLE,
+    RECORDING,
+    TRANSCRIBING,
+}
+
+data class GroqSettingsUiState(
+    val dialogVisible: Boolean = false,
+    val apiKeyConfigured: Boolean = false,
+    val saving: Boolean = false,
+    val errorMessage: String? = null,
 )
 
 data class ProjectQuickSwitchUi(
@@ -328,6 +344,20 @@ sealed interface ChatUiEvent {
     ) : ChatUiEvent
 
     data object MessageSubmitted : ChatUiEvent
+
+    data object VoiceInputPressed : ChatUiEvent
+
+    data object MicrophonePermissionDenied : ChatUiEvent
+
+    data object GroqSettingsRequested : ChatUiEvent
+
+    data object GroqSettingsDismissed : ChatUiEvent
+
+    data class GroqApiKeySaved(
+        val apiKey: String,
+    ) : ChatUiEvent
+
+    data object GroqApiKeyRemoved : ChatUiEvent
 
     data object TurnInterruptRequested : ChatUiEvent
 

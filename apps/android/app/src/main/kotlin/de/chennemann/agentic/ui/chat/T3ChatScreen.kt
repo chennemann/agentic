@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -42,6 +43,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -256,6 +259,88 @@ fun T3ChatScreen(
             },
         )
     }
+
+    if (state.groqSettings.dialogVisible) {
+        GroqSettingsDialog(
+            state = state.groqSettings,
+            onDismiss = { onEvent(ChatUiEvent.GroqSettingsDismissed) },
+            onSave = { onEvent(ChatUiEvent.GroqApiKeySaved(it)) },
+            onRemove = { onEvent(ChatUiEvent.GroqApiKeyRemoved) },
+        )
+    }
+}
+
+@Composable
+private fun GroqSettingsDialog(
+    state: GroqSettingsUiState,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit,
+    onRemove: () -> Unit,
+) {
+    var apiKey by remember(state.dialogVisible) { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Groq transcription") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    if (state.apiKeyConfigured) {
+                        "Voice input is enabled. Enter a new key to replace the saved key."
+                    } else {
+                        "Add a Groq API key to enable microphone transcription in the composer."
+                    },
+                )
+                OutlinedTextField(
+                    value = apiKey,
+                    onValueChange = { apiKey = it },
+                    enabled = !state.saving,
+                    label = { Text("Groq API key") },
+                    singleLine = true,
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                )
+                state.errorMessage?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                Text(
+                    text = "The key is encrypted with Android Keystore and is only sent to Groq.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = { onSave(apiKey) },
+                enabled = apiKey.isNotBlank() && !state.saving,
+            ) {
+                Text(if (state.saving) "Saving…" else "Save key")
+            }
+        },
+        dismissButton = {
+            Row {
+                if (state.apiKeyConfigured) {
+                    TextButton(
+                        onClick = onRemove,
+                        enabled = !state.saving,
+                    ) {
+                        Text("Remove key")
+                    }
+                }
+                TextButton(
+                    onClick = onDismiss,
+                    enabled = !state.saving,
+                ) {
+                    Text("Cancel")
+                }
+            }
+        },
+    )
 }
 
 @Composable

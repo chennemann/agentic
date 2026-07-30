@@ -1,6 +1,10 @@
 package de.chennemann.agentic.ui.components
 
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
@@ -64,6 +68,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.Role
@@ -72,13 +77,16 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import de.chennemann.agentic.icons.Brain
 import de.chennemann.agentic.icons.Flame
 import de.chennemann.agentic.icons.Icons
 import de.chennemann.agentic.icons.Lock
+import de.chennemann.agentic.icons.Microphone
 import de.chennemann.agentic.icons.Pencil
 import de.chennemann.agentic.icons.Send
 import de.chennemann.agentic.icons.Sparkles
+import de.chennemann.agentic.icons.Stop
 import de.chennemann.agentic.icons.Tune
 import de.chennemann.agentic.icons.Unlock
 import de.chennemann.agentic.ui.chat.ChatPickerUi
@@ -90,6 +98,7 @@ import de.chennemann.agentic.ui.chat.ProviderModelOptionUi
 import de.chennemann.agentic.ui.chat.ProviderOptionUi
 import de.chennemann.agentic.ui.chat.ProviderOptionValueUi
 import de.chennemann.agentic.ui.chat.RuntimeModeOptionUi
+import de.chennemann.agentic.ui.chat.VoiceInputStatusUi
 import kotlin.math.roundToInt
 
 private val ModeSwipeThreshold = 28.dp
@@ -111,7 +120,19 @@ fun T3MessageComposer(
     var commandMenuDismissed by remember { mutableStateOf(false) }
     val inputInteractionSource = remember { MutableInteractionSource() }
     val focusManager = LocalFocusManager.current
+    val context = LocalContext.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val microphonePermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted ->
+        onEvent(
+            if (granted) {
+                ChatUiEvent.VoiceInputPressed
+            } else {
+                ChatUiEvent.MicrophonePermissionDenied
+            },
+        )
+    }
     val selectedModel = state.providerModels.firstOrNull {
         it.id == state.selectedProviderModelId
     }
@@ -129,6 +150,8 @@ fun T3MessageComposer(
         state.slashCommands.filter { it.name.startsWith(commandQuery, ignoreCase = true) }
     }
     val visibleProviderOptions = state.providerOptions.filterNot(ProviderOptionUi::isServiceMode)
+    val voiceControlVisible = state.voiceInputAvailable &&
+        (state.draft.isBlank() || state.voiceInputStatus != VoiceInputStatusUi.IDLE)
 
     BackHandler(enabled = expanded) { expanded = false }
     LaunchedEffect(inputInteractionSource) {
@@ -181,8 +204,15 @@ fun T3MessageComposer(
                             state.selectedInteractionMode,
                             state.enabled,
                             state.sending,
+                            state.voiceInputStatus,
                         ) {
-                            if (!state.enabled || state.sending) return@pointerInput
+                            if (
+                                !state.enabled ||
+                                state.sending ||
+                                state.voiceInputStatus != VoiceInputStatusUi.IDLE
+                            ) {
+                                return@pointerInput
+                            }
                             val threshold = ModeSwipeThreshold.toPx()
                             var delta = 0f
                             var changed = false
@@ -206,8 +236,17 @@ fun T3MessageComposer(
                                 },
                             )
                     },
-                    enabled = state.enabled,
-                    placeholder = { Text("Message") },
+                    enabled = state.enabled &&
+                        state.voiceInputStatus == VoiceInputStatusUi.IDLE,
+                    placeholder = {
+                        Text(
+                            when (state.voiceInputStatus) {
+                                VoiceInputStatusUi.RECORDING -> "Recording…"
+                                VoiceInputStatusUi.TRANSCRIBING -> "Transcribing…"
+                                VoiceInputStatusUi.IDLE -> "Message"
+                            },
+                        )
+                    },
                     interactionSource = inputInteractionSource,
                     maxLines = 12,
                     colors = TextFieldDefaults.colors(
@@ -278,18 +317,67 @@ fun T3MessageComposer(
                         }
                     } else {
                         IconButton(
-                            onClick = { onEvent(ChatUiEvent.MessageSubmitted) },
-                            enabled = state.enabled && state.draft.isNotBlank() && !state.sending,
+                            onClick = {
+                                if (!voiceControlVisible) {
+                                    onEvent(ChatUiEvent.MessageSubmitted)
+                                } else if (
+                                    state.voiceInputStatus == VoiceInputStatusUi.RECORDING ||
+                                    ContextCompat.checkSelfPermission(
+                                        context,
+                                        Manifest.permission.RECORD_AUDIO,
+                                    ) == PackageManager.PERMISSION_GRANTED
+                                ) {
+                                    onEvent(ChatUiEvent.VoiceInputPressed)
+                                } else {
+                                    microphonePermissionLauncher.launch(
+                                        Manifest.permission.RECORD_AUDIO,
+                                    )
+                                }
+                            },
+                            enabled = state.enabled &&
+                                !state.sending &&
+                                if (voiceControlVisible) {
+                                    state.voiceInputStatus != VoiceInputStatusUi.TRANSCRIBING
+                                } else {
+                                    state.draft.isNotBlank()
+                                },
                             modifier = Modifier.size(48.dp),
                             colors = IconButtonDefaults.iconButtonColors(
-                                contentColor = MaterialTheme.colorScheme.primary,
+                                contentColor = if (
+                                    state.voiceInputStatus == VoiceInputStatusUi.RECORDING
+                                ) {
+                                    MaterialTheme.colorScheme.error
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                },
                                 disabledContentColor = ComposerDisabled,
                             ),
                         ) {
-                            if (state.sending) {
+                            if (
+                                state.sending ||
+                                state.voiceInputStatus == VoiceInputStatusUi.TRANSCRIBING
+                            ) {
                                 CircularProgressIndicator(
                                     modifier = Modifier.size(20.dp),
                                     strokeWidth = 2.dp,
+                                )
+                            } else if (voiceControlVisible) {
+                                Icon(
+                                    imageVector = if (
+                                        state.voiceInputStatus == VoiceInputStatusUi.RECORDING
+                                    ) {
+                                        Icons.Stop
+                                    } else {
+                                        Icons.Microphone
+                                    },
+                                    contentDescription = if (
+                                        state.voiceInputStatus == VoiceInputStatusUi.RECORDING
+                                    ) {
+                                        "Stop recording and transcribe"
+                                    } else {
+                                        "Start voice input"
+                                    },
+                                    modifier = Modifier.size(28.dp),
                                 )
                             } else {
                                 Icon(

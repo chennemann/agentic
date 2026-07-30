@@ -14,6 +14,8 @@ import de.chennemann.agentic.domain.orchestration.ThreadService
 import de.chennemann.agentic.domain.orchestration.ThreadActions
 import de.chennemann.agentic.domain.preferences.FavoriteModelId
 import de.chennemann.agentic.domain.preferences.ModelFavoriteRepository
+import de.chennemann.agentic.domain.voice.GroqApiKeyStore
+import de.chennemann.agentic.domain.voice.VoiceInputService
 import de.chennemann.agentic.t3.contract.EnvironmentClientConfig
 import de.chennemann.agentic.t3.contract.ModelSelection
 import de.chennemann.agentic.t3.contract.OrchestrationActivity
@@ -55,6 +57,8 @@ class ChatViewModel(
     private val chat: ChatActions,
     private val mappingDispatcher: CoroutineDispatcher,
     private val modelFavorites: ModelFavoriteRepository? = null,
+    private val groqApiKeys: GroqApiKeyStore? = null,
+    private val voiceInput: VoiceInputService? = null,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
     private val orchestration = combine(
@@ -119,12 +123,24 @@ class ChatViewModel(
         mapState(input.orchestration, input.environment, input.local, input.favorites)
     }.flowOn(mappingDispatcher)
 
-    val state = combine(mappedState, local) { mapped, local ->
+    val state = combine(
+        mappedState,
+        local,
+        groqApiKeys?.configured ?: flowOf(false),
+    ) { mapped, local, groqConfigured ->
         mapped.copy(
             composer = mapped.composer.copy(
                 draft = local.draft,
                 sending = local.sending,
                 errorMessage = local.commandError,
+                voiceInputAvailable = groqConfigured && voiceInput != null,
+                voiceInputStatus = local.voiceInputStatus,
+            ),
+            groqSettings = GroqSettingsUiState(
+                dialogVisible = local.groqSettingsVisible,
+                apiKeyConfigured = groqConfigured,
+                saving = local.groqSettingsSaving,
+                errorMessage = local.groqSettingsError,
             ),
         )
     }.stateIn(
@@ -147,6 +163,25 @@ class ChatViewModel(
                 copy(draft = event.value, commandError = null)
             }
             ChatUiEvent.MessageSubmitted -> submitMessage()
+            ChatUiEvent.VoiceInputPressed -> handleVoiceInput()
+            ChatUiEvent.MicrophonePermissionDenied -> update {
+                copy(commandError = "Microphone permission is required for voice input.")
+            }
+            ChatUiEvent.GroqSettingsRequested -> update {
+                copy(
+                    activePicker = null,
+                    groqSettingsVisible = true,
+                    groqSettingsError = null,
+                )
+            }
+            ChatUiEvent.GroqSettingsDismissed -> update {
+                copy(
+                    groqSettingsVisible = false,
+                    groqSettingsError = null,
+                )
+            }
+            is ChatUiEvent.GroqApiKeySaved -> saveGroqApiKey(event.apiKey)
+            ChatUiEvent.GroqApiKeyRemoved -> removeGroqApiKey()
             ChatUiEvent.TurnInterruptRequested -> launchCommand {
                 val detail = repository.focusedThread.value.value?.thread ?: return@launchCommand
                 chat.interrupt(detail.id, detail.latestTurn?.turnId ?: return@launchCommand)
@@ -308,6 +343,128 @@ class ChatViewModel(
             -> Unit
 
             ChatUiEvent.ConnectionRetryRequested -> connection.wake()
+        }
+    }
+
+    private fun handleVoiceInput() {
+        val service = voiceInput ?: return
+        if (groqApiKeys?.configured?.value != true) return
+        when (local.value.voiceInputStatus) {
+            VoiceInputStatusUi.IDLE -> {
+                runCatching { service.startRecording() }
+                    .onSuccess {
+                        update {
+                            copy(
+                                voiceInputStatus = VoiceInputStatusUi.RECORDING,
+                                commandError = null,
+                            )
+                        }
+                    }
+                    .onFailure {
+                        update {
+                            copy(commandError = it.message ?: "Unable to start recording.")
+                        }
+                    }
+            }
+
+            VoiceInputStatusUi.RECORDING -> {
+                update {
+                    copy(
+                        voiceInputStatus = VoiceInputStatusUi.TRANSCRIBING,
+                        commandError = null,
+                    )
+                }
+                viewModelScope.launch {
+                    runCatching { service.stopAndTranscribe() }
+                        .onSuccess { transcript ->
+                            update {
+                                copy(
+                                    draft = transcript,
+                                    voiceInputStatus = VoiceInputStatusUi.IDLE,
+                                    commandError = null,
+                                )
+                            }
+                        }
+                        .onFailure {
+                            update {
+                                copy(
+                                    voiceInputStatus = VoiceInputStatusUi.IDLE,
+                                    commandError = it.message ?: "Unable to transcribe the recording.",
+                                )
+                            }
+                        }
+                }
+            }
+
+            VoiceInputStatusUi.TRANSCRIBING -> Unit
+        }
+    }
+
+    private fun saveGroqApiKey(apiKey: String) {
+        val store = groqApiKeys ?: return
+        val value = apiKey.trim()
+        if (value.isEmpty()) {
+            update { copy(groqSettingsError = "Enter a Groq API key.") }
+            return
+        }
+        update {
+            copy(
+                groqSettingsSaving = true,
+                groqSettingsError = null,
+            )
+        }
+        viewModelScope.launch {
+            runCatching { store.write(value) }
+                .onSuccess {
+                    update {
+                        copy(
+                            groqSettingsVisible = false,
+                            groqSettingsSaving = false,
+                            groqSettingsError = null,
+                        )
+                    }
+                }
+                .onFailure {
+                    update {
+                        copy(
+                            groqSettingsSaving = false,
+                            groqSettingsError = it.message ?: "Unable to save the Groq API key.",
+                        )
+                    }
+                }
+        }
+    }
+
+    private fun removeGroqApiKey() {
+        val store = groqApiKeys ?: return
+        if (local.value.voiceInputStatus == VoiceInputStatusUi.RECORDING) {
+            voiceInput?.cancelRecording()
+        }
+        update {
+            copy(
+                voiceInputStatus = VoiceInputStatusUi.IDLE,
+                groqSettingsSaving = true,
+                groqSettingsError = null,
+            )
+        }
+        viewModelScope.launch {
+            runCatching { store.remove() }
+                .onSuccess {
+                    update {
+                        copy(
+                            groqSettingsVisible = false,
+                            groqSettingsSaving = false,
+                        )
+                    }
+                }
+                .onFailure {
+                    update {
+                        copy(
+                            groqSettingsSaving = false,
+                            groqSettingsError = it.message ?: "Unable to remove the Groq API key.",
+                        )
+                    }
+                }
         }
     }
 
@@ -501,6 +658,11 @@ class ChatViewModel(
 
     private fun update(transform: LocalState.() -> LocalState) {
         local.value = local.value.transform()
+    }
+
+    override fun onCleared() {
+        voiceInput?.cancelRecording()
+        super.onCleared()
     }
 
     private fun mapState(
@@ -839,6 +1001,10 @@ class ChatViewModel(
         val optionAnswers: Map<String, Set<String>> = emptyMap(),
         val pickerProjectId: String? = null,
         val unreadThreadIds: Set<String> = emptySet(),
+        val voiceInputStatus: VoiceInputStatusUi = VoiceInputStatusUi.IDLE,
+        val groqSettingsVisible: Boolean = false,
+        val groqSettingsSaving: Boolean = false,
+        val groqSettingsError: String? = null,
     ) {
         fun structural(): LocalState = copy(
             draft = "",
