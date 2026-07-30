@@ -377,6 +377,78 @@ class ChatViewModelIntentTest {
     }
 
     @Test
+    fun `structured user input options map without crashing the timeline`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val current = requireNotNull(repository.focusedThread.value.value)
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = current.copy(
+                thread = current.thread.copy(
+                    activities = listOf(
+                        OrchestrationActivity(
+                            id = "input-activity",
+                            kind = "user-input.requested",
+                            tone = "info",
+                            summary = "Choose an approach",
+                            payload = PortableJson.parseToJsonElement(
+                                """
+                                {
+                                  "requestId": "request-1",
+                                  "questions": [
+                                    {
+                                      "id": "approach",
+                                      "question": "How should this work?",
+                                      "options": [
+                                        {
+                                          "label": "Keep current behavior",
+                                          "description": "Make no workflow changes."
+                                        },
+                                        {
+                                          "id": "replace",
+                                          "label": "Replace it"
+                                        },
+                                        "Decide later"
+                                      ]
+                                    }
+                                  ]
+                                }
+                                """.trimIndent(),
+                            ).jsonObject,
+                            createdAt = "2026-07-29T10:00:00Z",
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        val activity = viewModel.state.value.timeline.single() as ChatTimelineItemUi.Activity
+        val input = activity.value as ChatActivityUi.UserInput
+        val question = input.request.questions.single()
+        assertEquals("How should this work?", question.label)
+        assertEquals(
+            listOf(
+                UserInputOptionUi(
+                    id = "Keep current behavior",
+                    label = "Keep current behavior",
+                    description = "Make no workflow changes.",
+                ),
+                UserInputOptionUi(id = "replace", label = "Replace it"),
+                UserInputOptionUi(id = "Decide later", label = "Decide later"),
+            ),
+            question.options,
+        )
+    }
+
+    @Test
     fun `tool lifecycle rows collapse into a command-aware group`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model"))
         val current = requireNotNull(repository.focusedThread.value.value)

@@ -38,6 +38,7 @@ import kotlinx.coroutines.launch
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
@@ -708,49 +709,50 @@ class ChatViewModel(
     }
 
     private fun OrchestrationActivity.toUi(local: LocalState): ChatActivityUi {
-        val inFlight = payload["requestId"]?.jsonPrimitive?.content in local.inFlightRequests
+        val requestId = payload.string("requestId") ?: id
+        val inFlight = requestId in local.inFlightRequests
         return when (kind) {
             "approval.requested" -> ChatActivityUi.Approval(
                 id,
                 PendingApprovalUi(
-                    requestId = payload["requestId"]?.jsonPrimitive?.content ?: id,
+                    requestId = requestId,
                     title = summary,
-                    description = payload["command"]?.jsonPrimitive?.content,
-                    decisions = payload["decisions"]?.jsonArray.orEmpty().mapNotNull {
-                        approvalDecisionFromContract(it.jsonPrimitive.content)
+                    description = payload.string("command"),
+                    decisions = (payload["decisions"] as? JsonArray).orEmpty().mapNotNull {
+                        (it as? JsonPrimitive)?.content?.let(::approvalDecisionFromContract)
                     },
                     responseInFlight = inFlight,
                 ),
             )
 
-            "user-input.requested" -> {
-                val requestId = payload["requestId"]?.jsonPrimitive?.content ?: id
-                ChatActivityUi.UserInput(
-                    id,
-                    PendingUserInputUi(
-                        requestId = requestId,
-                        title = summary,
-                        description = null,
-                        questions = payload["questions"]?.jsonArray.orEmpty().map { element ->
-                            val question = element.jsonObject
-                            val questionId = question["id"]?.jsonPrimitive?.content.orEmpty()
-                            val key = answerKey(requestId, questionId)
-                            UserInputQuestionUi(
-                                id = questionId,
-                                label = question["prompt"]?.jsonPrimitive?.content ?: questionId,
-                                required = true,
-                                allowsMultiple = question["multiple"]?.jsonPrimitive?.content == "true",
-                                options = question["options"]?.jsonArray.orEmpty().map {
-                                    UserInputOptionUi(it.jsonPrimitive.content, it.jsonPrimitive.content)
-                                },
-                                textAnswer = local.textAnswers[key].orEmpty(),
-                                selectedOptionIds = local.optionAnswers[key].orEmpty(),
-                            )
-                        },
-                        responseInFlight = inFlight,
-                    ),
-                )
-            }
+            "user-input.requested" -> ChatActivityUi.UserInput(
+                id,
+                PendingUserInputUi(
+                    requestId = requestId,
+                    title = summary,
+                    description = payload.string("description"),
+                    questions = (payload["questions"] as? JsonArray).orEmpty().mapNotNull { element ->
+                        val question = element as? JsonObject ?: return@mapNotNull null
+                        val questionId = question.string("id") ?: return@mapNotNull null
+                        val key = answerKey(requestId, questionId)
+                        UserInputQuestionUi(
+                            id = questionId,
+                            label = question.string("prompt")
+                                ?: question.string("question")
+                                ?: questionId,
+                            description = question.string("description"),
+                            required = question.string("required")?.toBooleanStrictOrNull() ?: true,
+                            allowsMultiple = question.string("multiple") == "true",
+                            options = (question["options"] as? JsonArray)
+                                .orEmpty()
+                                .mapNotNull(JsonElement::toUserInputOptionUi),
+                            textAnswer = local.textAnswers[key].orEmpty(),
+                            selectedOptionIds = local.optionAnswers[key].orEmpty(),
+                        )
+                    },
+                    responseInFlight = inFlight,
+                ),
+            )
 
             else -> when {
                 summary.equals("Plan updated", ignoreCase = true) ->
@@ -909,6 +911,23 @@ private fun groupToolActivities(items: List<ChatTimelineItemUi>): List<ChatTimel
 
 private fun JsonObject.string(key: String): String? =
     (this[key] as? JsonPrimitive)?.content?.trim()?.takeIf { it.isNotEmpty() }
+
+private fun JsonElement.toUserInputOptionUi(): UserInputOptionUi? = when (this) {
+    is JsonPrimitive -> content.trim().takeIf(String::isNotEmpty)?.let {
+        UserInputOptionUi(id = it, label = it)
+    }
+
+    is JsonObject -> {
+        val id = string("id") ?: string("value") ?: string("label") ?: return null
+        UserInputOptionUi(
+            id = id,
+            label = string("label") ?: string("value") ?: id,
+            description = string("description"),
+        )
+    }
+
+    else -> null
+}
 
 private fun JsonObject.toolCommand(): String? {
     val data = this["data"] as? JsonObject
