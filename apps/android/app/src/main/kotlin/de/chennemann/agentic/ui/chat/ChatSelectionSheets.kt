@@ -25,6 +25,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.chennemann.agentic.icons.Add
@@ -388,7 +389,73 @@ fun ChatSelectionSheets(
             }
         }
 
+        ChatPickerUi.LATEST_TURN_CHANGES -> {
+            PickerSheet(
+                title = "Latest turn changes",
+                onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
+            ) {
+                item("changes-summary") {
+                    Text(
+                        text = fileCountLabel(state.latestTurnChanges.files.size),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                items(
+                    items = state.latestTurnChanges.files,
+                    key = { "changed-file:${it.path}" },
+                ) { file ->
+                    ChangedFileRow(file)
+                }
+            }
+        }
+
         null -> Unit
+    }
+}
+
+@Composable
+private fun ChangedFileRow(file: ChangedFileUi) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = file.path,
+                style = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = file.kind
+                    .ifBlank { "modified" }
+                    .replace('-', ' ')
+                    .replaceFirstChar(Char::uppercase),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        if (file.additions > 0 || file.deletions > 0) {
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = "+${file.additions}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.tertiary,
+                )
+                Text(
+                    text = "−${file.deletions}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+        }
     }
 }
 
@@ -587,3 +654,5 @@ private fun EnvironmentConnectionIndicatorUi.label(): String = when (this) {
     EnvironmentConnectionIndicatorUi.OFFLINE -> "Offline"
     EnvironmentConnectionIndicatorUi.BLOCKED -> "Blocked"
 }
+
+private fun fileCountLabel(count: Int): String = "$count changed ${if (count == 1) "file" else "files"}"

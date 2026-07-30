@@ -1,11 +1,15 @@
 package de.chennemann.agentic.domain.orchestration
 
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
+import de.chennemann.agentic.t3.contract.OrchestrationEvent
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.PortableJson
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertInstanceOf
 import org.junit.jupiter.api.Assertions.assertSame
@@ -105,6 +109,66 @@ class ProjectionReducersTest {
             afterAccumulated.state.value?.thread?.messages
                 ?.first { it.id == "message-assistant" }
                 ?.text,
+        )
+    }
+
+    @Test
+    fun `thread reducer preserves completed turn diff checkpoints`() {
+        val snapshot = ThreadProjectionReducer.reduce(
+            ProjectionState(),
+            threadItems().first(),
+        ) as Reduction.Applied
+        val payload = PortableJson.parseToJsonElement(
+            """
+            {
+              "threadId": "thread-golden",
+              "turnId": "turn-golden",
+              "checkpointTurnCount": 1,
+              "checkpointRef": "checkpoint-1",
+              "status": "ready",
+              "files": [
+                {
+                  "path": "app/src/main/App.kt",
+                  "kind": "modified",
+                  "additions": 8,
+                  "deletions": 2
+                }
+              ],
+              "assistantMessageId": "message-assistant",
+              "completedAt": "2026-01-01T00:00:02.000Z"
+            }
+            """.trimIndent(),
+        ).jsonObject
+        val event = OrchestrationThreadStreamItem.Event(
+            OrchestrationEvent(
+                aggregateId = "thread-golden",
+                aggregateKind = "thread",
+                eventId = "event-diff",
+                commandId = "command-diff",
+                correlationId = "command-diff",
+                sequence = 41,
+                type = "thread.turn-diff-completed",
+                payload = payload,
+                occurredAt = "2026-01-01T00:00:02.000Z",
+            ),
+        )
+
+        val result = ThreadProjectionReducer.reduce(snapshot.state, event) as Reduction.Applied
+        val checkpoint = result.state.value?.thread?.checkpoints?.single()?.jsonObject
+
+        assertEquals("turn-golden", result.state.value?.thread?.latestTurn?.turnId)
+        assertEquals("completed", result.state.value?.thread?.latestTurn?.state)
+        assertEquals("turn-golden", checkpoint?.get("turnId")?.jsonPrimitive?.content)
+        assertEquals(
+            "app/src/main/App.kt",
+            checkpoint
+                ?.get("files")
+                ?.jsonArray
+                ?.single()
+                ?.jsonObject
+                ?.get("path")
+                ?.jsonPrimitive
+                ?.content,
         )
     }
 

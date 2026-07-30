@@ -1,6 +1,7 @@
 package de.chennemann.agentic.domain.orchestration
 
 import de.chennemann.agentic.t3.contract.ModelSelection
+import de.chennemann.agentic.t3.contract.LatestTurn
 import de.chennemann.agentic.t3.contract.OrchestrationActivity
 import de.chennemann.agentic.t3.contract.OrchestrationMessage
 import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
@@ -201,6 +202,8 @@ object ThreadProjectionReducer {
             thread.copy(activities = thread.activities.replaceById(activity) { it.id })
         } ?: thread
 
+        "thread.turn-diff-completed" -> thread.applyTurnDiff(payload)
+
         "thread.archived" -> thread.copy(archivedAt = payload.string("archivedAt") ?: payload.string("updatedAt"))
         "thread.unarchived" -> thread.copy(archivedAt = null)
         "thread.approval-response-requested" -> thread.removeRequestActivity(
@@ -215,6 +218,30 @@ object ThreadProjectionReducer {
 
         else -> thread
     }
+}
+
+private fun OrchestrationThreadDetail.applyTurnDiff(payload: JsonObject): OrchestrationThreadDetail {
+    val turnId = payload.string("turnId") ?: return this
+    val completedAt = payload.string("completedAt") ?: updatedAt
+    val currentTurn = latestTurn?.takeIf { it.turnId == turnId }
+    return copy(
+        checkpoints = checkpoints
+            .filterNot { checkpoint ->
+                (checkpoint as? JsonObject)?.string("turnId") == turnId
+            } + payload,
+        latestTurn = currentTurn?.copy(
+            state = "completed",
+            assistantMessageId = payload.string("assistantMessageId") ?: currentTurn.assistantMessageId,
+            completedAt = completedAt,
+        ) ?: LatestTurn(
+            turnId = turnId,
+            state = "completed",
+            assistantMessageId = payload.string("assistantMessageId"),
+            requestedAt = completedAt,
+            completedAt = completedAt,
+        ),
+        updatedAt = completedAt,
+    )
 }
 
 private fun OrchestrationShellStreamItem.sequence(): Long = when (this) {

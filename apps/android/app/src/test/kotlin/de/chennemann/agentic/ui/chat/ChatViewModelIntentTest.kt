@@ -20,6 +20,7 @@ import de.chennemann.agentic.t3.contract.EnvironmentClientConfig
 import de.chennemann.agentic.t3.contract.EnvironmentPlatform
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentCapabilities
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
+import de.chennemann.agentic.t3.contract.LatestTurn
 import de.chennemann.agentic.t3.contract.ModelSelection
 import de.chennemann.agentic.t3.contract.OrchestrationActivity
 import de.chennemann.agentic.t3.contract.OrchestrationMessage
@@ -695,6 +696,58 @@ class ChatViewModelIntentTest {
     }
 
     @Test
+    fun `latest turn changes only include files from its ready checkpoint`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val current = requireNotNull(repository.focusedThread.value.value)
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = current.copy(
+                thread = current.thread.copy(
+                    latestTurn = LatestTurn(
+                        turnId = "turn-2",
+                        state = "completed",
+                        requestedAt = "2026-07-29T10:00:00Z",
+                        completedAt = "2026-07-29T10:01:00Z",
+                    ),
+                    checkpoints = listOf(
+                        turnDiffCheckpoint(
+                            turnId = "turn-1",
+                            files = """[{"path":"old.kt","kind":"modified","additions":1,"deletions":1}]""",
+                        ),
+                        turnDiffCheckpoint(
+                            turnId = "turn-2",
+                            files = """
+                                [
+                                  {"path":"z.kt","kind":"modified","additions":4,"deletions":1},
+                                  {"path":"a.kt","kind":"added","additions":10,"deletions":0}
+                                ]
+                            """.trimIndent(),
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        assertEquals("turn-2", viewModel.state.value.latestTurnChanges.turnId)
+        assertEquals(
+            listOf(
+                ChangedFileUi("a.kt", "added", additions = 10, deletions = 0),
+                ChangedFileUi("z.kt", "modified", additions = 4, deletions = 1),
+            ),
+            viewModel.state.value.latestTurnChanges.files,
+        )
+    }
+
+    @Test
     fun `message submission failure restores composer and displays the rejection`() = runTest(dispatcher) {
         val selection = ModelSelection("provider", "model")
         val repository = submissionRepository(selection)
@@ -1119,6 +1172,19 @@ private fun orchestrationMessage(
     text = text,
     createdAt = createdAt,
     updatedAt = createdAt,
+)
+
+private fun turnDiffCheckpoint(
+    turnId: String,
+    files: String,
+): kotlinx.serialization.json.JsonElement = PortableJson.parseToJsonElement(
+    """
+    {
+      "turnId": "$turnId",
+      "status": "ready",
+      "files": $files
+    }
+    """.trimIndent(),
 )
 
 private class FakeGroqApiKeyStore : GroqApiKeyStore {

@@ -17,11 +17,24 @@ data class ChatUiState(
     val isThreadArchived: Boolean = false,
     val renameDialog: RenameThreadUi? = null,
     val groqSettings: GroqSettingsUiState = GroqSettingsUiState(),
+    val latestTurnChanges: LatestTurnChangesUiState = LatestTurnChangesUiState(),
 )
 
 data class RenameThreadUi(
     val draft: String,
     val saving: Boolean = false,
+)
+
+data class LatestTurnChangesUiState(
+    val turnId: String? = null,
+    val files: List<ChangedFileUi> = emptyList(),
+)
+
+data class ChangedFileUi(
+    val path: String,
+    val kind: String,
+    val additions: Int,
+    val deletions: Int,
 )
 
 sealed interface ChatTimelineItemUi {
@@ -336,6 +349,7 @@ enum class ChatPickerUi {
     PROJECT_THREAD,
     PROVIDER_MODEL,
     RUNTIME_MODE,
+    LATEST_TURN_CHANGES,
 }
 
 sealed interface ChatUiEvent {

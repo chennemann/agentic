@@ -2,7 +2,6 @@ package de.chennemann.agentic.ui.components
 
 import androidx.activity.compose.setContent
 import androidx.compose.ui.test.assertCountEquals
-import androidx.compose.ui.test.assertDoesNotExist
 import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.assertIsDisplayed
@@ -10,6 +9,7 @@ import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.performClick
 import de.chennemann.agentic.MainActivity
 import de.chennemann.agentic.ui.chat.ComposerUiState
@@ -116,6 +116,6 @@ class T3MessageComposerTest {
         }
 
         compose.onNodeWithContentDescription("Start voice input").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Send message").assertDoesNotExist()
+        compose.onAllNodesWithContentDescription("Send message").assertCountEquals(0)
     }
 }

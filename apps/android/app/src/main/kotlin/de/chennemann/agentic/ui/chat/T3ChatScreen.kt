@@ -213,6 +213,30 @@ fun T3ChatScreen(
                         contentDescription = "Open navigation and settings",
                     )
                 }
+
+                if (state.latestTurnChanges.files.isNotEmpty()) {
+                    OutlinedButton(
+                        onClick = {
+                            onEvent(
+                                ChatUiEvent.PickerRequested(
+                                    ChatPickerUi.LATEST_TURN_CHANGES,
+                                ),
+                            )
+                        },
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(end = 8.dp, top = 8.dp)
+                            .zIndex(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            contentColor = MaterialTheme.colorScheme.primary,
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                    ) {
+                        Text("Changes (${state.latestTurnChanges.files.size})")
+                    }
+                }
             }
 
             T3MessageComposer(

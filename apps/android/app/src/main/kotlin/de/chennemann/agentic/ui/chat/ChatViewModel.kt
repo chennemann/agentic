@@ -43,6 +43,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
@@ -795,6 +796,7 @@ class ChatViewModel(
                 showSettled = local.showSettled,
                 loading = orchestration.threadId != null && detail?.id != orchestration.threadId,
             ),
+            latestTurnChanges = detail?.latestTurnChanges() ?: LatestTurnChangesUiState(),
             activePicker = local.activePicker,
             isTurnRunning = detail?.session?.status in ActiveSessionStatuses,
             canRenameThread = detail != null,
@@ -806,6 +808,34 @@ class ChatViewModel(
                 null
             },
         )
+    }
+
+    private fun de.chennemann.agentic.t3.contract.OrchestrationThreadDetail.latestTurnChanges():
+        LatestTurnChangesUiState {
+        val turnId = latestTurn?.turnId ?: return LatestTurnChangesUiState()
+        val checkpoint = checkpoints
+            .filterIsInstance<JsonObject>()
+            .lastOrNull { it.string("turnId") == turnId }
+            ?.takeIf { it.string("status") == "ready" }
+            ?: return LatestTurnChangesUiState(turnId = turnId)
+        val files = (checkpoint["files"] as? JsonArray)
+            .orEmpty()
+            .mapNotNull { element ->
+                val file = element as? JsonObject ?: return@mapNotNull null
+                val path = file.string("path")?.trim()?.takeIf(String::isNotEmpty)
+                    ?: return@mapNotNull null
+                ChangedFileUi(
+                    path = path,
+                    kind = file.string("kind").orEmpty(),
+                    additions = file["additions"]?.jsonPrimitive?.intOrNull ?: 0,
+                    deletions = file["deletions"]?.jsonPrimitive?.intOrNull ?: 0,
+                )
+            }
+            .distinctBy(ChangedFileUi::path)
+            .sortedWith(
+                compareBy<ChangedFileUi, String>(String.CASE_INSENSITIVE_ORDER) { it.path },
+            )
+        return LatestTurnChangesUiState(turnId = turnId, files = files)
     }
 
     private fun timeline(
