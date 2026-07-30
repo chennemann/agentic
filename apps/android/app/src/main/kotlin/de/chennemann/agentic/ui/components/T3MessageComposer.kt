@@ -2,6 +2,7 @@ package de.chennemann.agentic.ui.components
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.selection.selectable
@@ -342,6 +343,16 @@ private fun ProjectQuickSwitchButton(
                     modifier = Modifier.size(44.dp),
                     strokeWidth = 2.dp,
                 )
+            } else if (project.unreadCount > 0) {
+                Box(
+                    modifier = Modifier
+                        .size(44.dp)
+                        .border(
+                            width = 2.dp,
+                            color = MaterialTheme.colorScheme.primary,
+                            shape = CircleShape,
+                        ),
+                )
             }
             Surface(
                 shape = CircleShape,
@@ -368,17 +379,6 @@ private fun ProjectQuickSwitchButton(
                 ) {
                     Text(project.label)
                 }
-            }
-            if (project.unreadCount > 0) {
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .size(10.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.error,
-                            shape = CircleShape,
-                        ),
-                )
             }
         }
         Box(
