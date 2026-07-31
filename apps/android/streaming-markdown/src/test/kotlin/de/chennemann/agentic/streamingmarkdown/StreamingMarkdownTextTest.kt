@@ -138,6 +138,16 @@ class StreamingMarkdownTextTest {
     }
 
     @Test
+    fun renders_incomplete_streamed_link_as_literal_text() {
+        val content = "["
+        val runs = StreamingMarkdownState(streaming = true).update(content)
+
+        val text = toAnnotatedString(runs = runs)
+
+        assertEquals(content, text.text)
+    }
+
+    @Test
     fun renders_autolinks_and_adds_url_annotation() {
         val text = toAnnotatedString(
             runs = listOf(

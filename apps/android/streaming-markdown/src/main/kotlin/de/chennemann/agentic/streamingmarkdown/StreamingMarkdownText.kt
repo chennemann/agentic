@@ -261,7 +261,7 @@ private fun linkify(runs: List<MarkdownRun>): List<MarkdownRun> {
             if (run.value[index] == '[') {
                 val close = run.value.indexOf(']', index + 1)
                 val open = if (close == -1) -1 else close + 1
-                val start = if (open >= run.value.length || run.value[open] != '(') -1 else open + 1
+                val start = if (open == -1 || open >= run.value.length || run.value[open] != '(') -1 else open + 1
                 val end = if (start == -1) -1 else run.value.indexOf(')', start)
                 if (close != -1 && start != -1 && end != -1) {
                     val label = run.value.substring(index + 1, close)
