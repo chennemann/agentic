@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -214,6 +215,22 @@ fun T3ChatScreen(
                     )
                 }
 
+                state.projectLabel
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { projectName ->
+                        ProjectNameBubble(
+                            projectName = projectName,
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .padding(
+                                    start = 72.dp,
+                                    top = 8.dp,
+                                    end = if (state.latestTurnChanges.files.isEmpty()) 72.dp else 124.dp,
+                                )
+                                .zIndex(1f),
+                        )
+                    }
+
                 if (state.latestTurnChanges.files.isNotEmpty()) {
                     OutlinedButton(
                         onClick = {
@@ -290,6 +307,29 @@ fun T3ChatScreen(
             onDismiss = { onEvent(ChatUiEvent.GroqSettingsDismissed) },
             onSave = { onEvent(ChatUiEvent.GroqApiKeySaved(it)) },
             onRemove = { onEvent(ChatUiEvent.GroqApiKeyRemoved) },
+        )
+    }
+}
+
+@Composable
+private fun ProjectNameBubble(
+    projectName: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.extraLarge,
+        color = MaterialTheme.colorScheme.surface,
+        contentColor = MaterialTheme.colorScheme.primary,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+        shadowElevation = 2.dp,
+    ) {
+        Text(
+            text = projectName,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
