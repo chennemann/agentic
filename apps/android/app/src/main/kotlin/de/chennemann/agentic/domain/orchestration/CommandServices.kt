@@ -6,8 +6,6 @@ import de.chennemann.agentic.domain.environment.EnvironmentRepository
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.DispatchResult
 import de.chennemann.agentic.t3.contract.ModelSelection
-import de.chennemann.agentic.t3.contract.NewThreadBootstrap
-import de.chennemann.agentic.t3.contract.StartTurnBootstrap
 import de.chennemann.agentic.t3.contract.TurnMessageInput
 import java.time.Instant
 import java.util.UUID
@@ -140,9 +138,11 @@ class ChatService(
         val now = Instant.now().toString()
         val targetThreadId = threadId ?: uuid()
         val titleSeed = deriveThreadTitle(prompt)
-        val bootstrap = if (threadId == null) {
-            StartTurnBootstrap(
-                createThread = NewThreadBootstrap(
+        if (threadId == null) {
+            dispatch(
+                ClientOrchestrationCommand.CreateThread(
+                    commandId = uuid(),
+                    threadId = targetThreadId,
                     projectId = projectId,
                     title = titleSeed,
                     modelSelection = modelSelection,
@@ -153,8 +153,6 @@ class ChatService(
                     createdAt = now,
                 ),
             )
-        } else {
-            null
         }
         val result = dispatch(
             ClientOrchestrationCommand.StartTurn(
@@ -168,7 +166,6 @@ class ChatService(
                 interactionMode = interactionMode,
                 runtimeMode = runtimeMode,
                 createdAt = now,
-                bootstrap = bootstrap,
             ),
         )
         return StartTurnResult(result, targetThreadId)

@@ -347,6 +347,23 @@ sealed interface ClientOrchestrationCommand {
     val commandId: String
 
     @Serializable
+    @SerialName("thread.create")
+    data class CreateThread(
+        override val commandId: String,
+        val threadId: String,
+        val projectId: String,
+        val title: String,
+        val modelSelection: ModelSelection,
+        val interactionMode: String,
+        val runtimeMode: String,
+        @EncodeDefault
+        val branch: String? = null,
+        @EncodeDefault
+        val worktreePath: String? = null,
+        val createdAt: String
+    ) : ClientOrchestrationCommand
+
+    @Serializable
     @SerialName("thread.turn.start")
     data class StartTurn(
         override val commandId: String,

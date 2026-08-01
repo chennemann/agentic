@@ -18,6 +18,7 @@ import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
+import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class CommandServicesTest {
@@ -37,7 +38,7 @@ class CommandServicesTest {
     private val service = ChatService(environments, credentials, commands)
 
     @Test
-    fun `new turn uses one atomic bootstrap command with unique client ids`() = runTest {
+    fun `new turn creates the thread before starting it with unique client ids`() = runTest {
         service.startTurn(
             threadId = null,
             projectId = "project",
@@ -46,7 +47,8 @@ class CommandServicesTest {
             interactionMode = "plan",
             runtimeMode = "approval-required",
         )
-        val first = commands.recorded.single() as ClientOrchestrationCommand.StartTurn
+        val firstCreate = commands.recorded[0] as ClientOrchestrationCommand.CreateThread
+        val firstStart = commands.recorded[1] as ClientOrchestrationCommand.StartTurn
         commands.recorded.clear()
         service.startTurn(
             threadId = null,
@@ -56,19 +58,38 @@ class CommandServicesTest {
             interactionMode = "default",
             runtimeMode = "full-access",
         )
-        val second = commands.recorded.single() as ClientOrchestrationCommand.StartTurn
+        val secondCreate = commands.recorded[0] as ClientOrchestrationCommand.CreateThread
+        val secondStart = commands.recorded[1] as ClientOrchestrationCommand.StartTurn
 
-        assertEquals("First useful line Second", first.bootstrap?.createThread?.title)
+        assertEquals("First useful line Second", firstCreate.title)
         val encoded = PortableCommandJson
-            .encodeToJsonElement(ClientOrchestrationCommand.serializer(), first)
+            .encodeToJsonElement(ClientOrchestrationCommand.serializer(), firstStart)
             .jsonObject
         assertNull(encoded["titleSeed"])
-        assertEquals("project", first.bootstrap?.createThread?.projectId)
-        assertNull(first.bootstrap?.createThread?.branch)
-        assertNull(first.bootstrap?.createThread?.worktreePath)
-        assertNotEquals(first.commandId, second.commandId)
-        assertNotEquals(first.threadId, second.threadId)
-        assertNotEquals(first.message.messageId, second.message.messageId)
+        assertTrue("bootstrap" !in encoded)
+        assertEquals("project", firstCreate.projectId)
+        assertNull(firstCreate.branch)
+        assertNull(firstCreate.worktreePath)
+        assertEquals(firstCreate.threadId, firstStart.threadId)
+        assertNotEquals(firstCreate.commandId, firstStart.commandId)
+        assertNotEquals(firstCreate.commandId, secondCreate.commandId)
+        assertNotEquals(firstCreate.threadId, secondCreate.threadId)
+        assertNotEquals(firstStart.message.messageId, secondStart.message.messageId)
+    }
+
+    @Test
+    fun `existing turn starts without creating a thread`() = runTest {
+        service.startTurn(
+            threadId = "existing-thread",
+            projectId = "project",
+            prompt = "Continue",
+            modelSelection = ModelSelection("instance", "model"),
+            interactionMode = "default",
+            runtimeMode = "full-access",
+        )
+
+        val start = commands.recorded.single() as ClientOrchestrationCommand.StartTurn
+        assertEquals("existing-thread", start.threadId)
     }
 
     @Test
