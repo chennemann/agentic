@@ -4,6 +4,7 @@ import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import de.chennemann.agentic.data.AndroidNetworkMonitor
 import de.chennemann.agentic.data.auth.CredentialStore
 import de.chennemann.agentic.data.auth.KeystoreCredentialStore
+import de.chennemann.agentic.data.cache.SqlComposerDraftRepository
 import de.chennemann.agentic.data.cache.SqlEnvironmentRepository
 import de.chennemann.agentic.data.cache.SqlModelFavoriteRepository
 import de.chennemann.agentic.data.cache.SqlOrchestrationRepository
@@ -30,6 +31,7 @@ import de.chennemann.agentic.domain.orchestration.ChatService
 import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.domain.orchestration.ThreadService
 import de.chennemann.agentic.domain.orchestration.ThreadActions
+import de.chennemann.agentic.domain.preferences.ComposerDraftRepository
 import de.chennemann.agentic.domain.preferences.ModelFavoriteRepository
 import de.chennemann.agentic.domain.voice.AudioRecorder
 import de.chennemann.agentic.domain.voice.AudioTranscriptionClient
@@ -120,6 +122,12 @@ val appModule = module {
             dispatcher = get<DispatcherProvider>().io,
         )
     }
+    single<ComposerDraftRepository> {
+        SqlComposerDraftRepository(
+            database = get(),
+            dispatcher = get<DispatcherProvider>().io,
+        )
+    }
     single {
         AndroidClientMetadata(
             label = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}".trim(),
@@ -161,6 +169,7 @@ val appModule = module {
             environmentService = get(),
             threads = get(),
             chat = get(),
+            composerDrafts = get(),
             modelFavorites = get(),
             mappingDispatcher = get<DispatcherProvider>().default,
             groqApiKeys = get(),

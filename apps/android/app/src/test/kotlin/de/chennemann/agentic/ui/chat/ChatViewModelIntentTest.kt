@@ -12,6 +12,7 @@ import de.chennemann.agentic.domain.orchestration.ProjectionState
 import de.chennemann.agentic.domain.orchestration.Reduction
 import de.chennemann.agentic.domain.orchestration.StartTurnResult
 import de.chennemann.agentic.domain.orchestration.ThreadActions
+import de.chennemann.agentic.domain.preferences.ComposerDraftRepository
 import de.chennemann.agentic.domain.voice.GroqApiKeyStore
 import de.chennemann.agentic.domain.voice.VoiceInputService
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
@@ -40,6 +41,7 @@ import de.chennemann.agentic.t3.contract.ThreadSession
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -774,6 +776,85 @@ class ChatViewModelIntentTest {
         advanceUntilIdle()
 
         assertEquals(null, viewModel.state.value.composer.errorMessage)
+    }
+
+    @Test
+    fun `drafts are isolated by thread when switching between conversations`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        viewModel.onEvent(ChatUiEvent.DraftChanged("draft for thread one"))
+        viewModel.onEvent(ChatUiEvent.ThreadSelected("thread-2"))
+        advanceUntilIdle()
+
+        assertEquals("", viewModel.state.value.composer.draft)
+
+        viewModel.onEvent(ChatUiEvent.DraftChanged("draft for thread two"))
+        viewModel.onEvent(ChatUiEvent.ThreadSelected("thread-1"))
+        advanceUntilIdle()
+
+        assertEquals("draft for thread one", viewModel.state.value.composer.draft)
+    }
+
+    @Test
+    fun `draft survives view model recreation`() = runTest(dispatcher) {
+        val drafts = FakeComposerDraftRepository()
+        val firstRepository = submissionRepository(ModelSelection("provider", "model"))
+        val firstViewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = firstRepository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(firstRepository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+            composerDrafts = drafts,
+        )
+        advanceUntilIdle()
+
+        firstViewModel.onEvent(ChatUiEvent.DraftChanged("survive app replacement"))
+        advanceUntilIdle()
+
+        val recreatedRepository = submissionRepository(ModelSelection("provider", "model"))
+        val recreatedViewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = recreatedRepository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(recreatedRepository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+            composerDrafts = drafts,
+        )
+        advanceUntilIdle()
+
+        assertEquals("survive app replacement", recreatedViewModel.state.value.composer.draft)
+    }
+}
+
+private class FakeComposerDraftRepository : ComposerDraftRepository {
+    private val drafts = mutableMapOf<Pair<String, String>, MutableStateFlow<String>>()
+
+    override fun observe(
+        environmentId: String,
+        threadId: String,
+    ): Flow<String> = drafts.getOrPut(environmentId to threadId) { MutableStateFlow("") }
+
+    override suspend fun setDraft(
+        environmentId: String,
+        threadId: String,
+        draft: String,
+    ) {
+        drafts.getOrPut(environmentId to threadId) { MutableStateFlow("") }.value = draft
     }
 }
 
