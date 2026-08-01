@@ -207,7 +207,7 @@ fun T3ChatScreen(
                         contentColor = MaterialTheme.colorScheme.primary,
                     ),
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
-                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 10.dp),
+                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
                 ) {
                     Icon(
                         imageVector = Icons.Tune,
