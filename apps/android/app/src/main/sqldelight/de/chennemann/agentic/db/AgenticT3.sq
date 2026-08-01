@@ -55,7 +55,12 @@ deleteEnvironment:
 DELETE FROM environment_entity WHERE environment_id = ?;
 
 selectProjection:
-SELECT * FROM projection_cache
+SELECT sequence, payload_json FROM projection_cache
+WHERE environment_id = ? AND cache_kind = ? AND cache_key = ?
+LIMIT 1;
+
+selectProjectionPayloadByteCount:
+SELECT length(CAST(payload_json AS BLOB)) FROM projection_cache
 WHERE environment_id = ? AND cache_kind = ? AND cache_key = ?
 LIMIT 1;
 

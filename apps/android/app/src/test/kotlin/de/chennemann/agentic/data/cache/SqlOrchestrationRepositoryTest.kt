@@ -9,12 +9,17 @@ import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetail
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationThreadShell
+import de.chennemann.agentic.t3.contract.PortableJson
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -129,12 +134,75 @@ class SqlOrchestrationRepositoryTest {
         driver.close()
     }
 
+    @Test
+    fun `oversized persisted thread projection is evicted instead of restored`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AgenticDb.Schema.create(driver)
+        val database = AgenticDb(driver)
+        database.agenticT3Queries.upsertPreference(
+            EnvironmentId,
+            "last-thread",
+            ThreadId,
+        )
+        database.agenticT3Queries.upsertProjection(
+            EnvironmentId,
+            "thread",
+            ThreadId,
+            1,
+            1,
+            PortableJson.encodeToString(oversizedThreadSnapshot()),
+            1,
+        )
+
+        val repository = SqlOrchestrationRepository(
+            database = database,
+            dispatcher = StandardTestDispatcher(testScheduler),
+            scope = backgroundScope,
+        )
+        repository.loadCached(EnvironmentId)
+
+        assertEquals(ThreadId, repository.focusedThreadId.value)
+        assertNull(repository.focusedThread.value.value)
+        assertNull(cachedThreadPayload(database))
+        driver.close()
+    }
+
+    @Test
+    fun `oversized live thread projection is not persisted`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AgenticDb.Schema.create(driver)
+        val database = AgenticDb(driver)
+        val repository = SqlOrchestrationRepository(
+            database = database,
+            dispatcher = StandardTestDispatcher(testScheduler),
+            scope = backgroundScope,
+        )
+        repository.loadCached(EnvironmentId)
+        repository.focusThread(EnvironmentId, ThreadId)
+
+        repository.setThreadSnapshot(
+            environmentId = EnvironmentId,
+            snapshot = oversizedThreadSnapshot(),
+            source = ProjectionSource.LIVE,
+        )
+
+        assertNull(cachedThreadPayload(database))
+        driver.close()
+    }
+
     private fun cachedShellSequence(database: AgenticDb): Long =
         database.agenticT3Queries.selectProjection<Long>(
             EnvironmentId,
             "shell",
             "current",
-        ) { _, _, _, _, sequence, _, _ -> sequence ?: -1 }.executeAsOne()
+        ) { sequence, _ -> sequence ?: -1 }.executeAsOne()
+
+    private fun cachedThreadPayload(database: AgenticDb): String? =
+        database.agenticT3Queries.selectProjection<String>(
+            EnvironmentId,
+            "thread",
+            ThreadId,
+        ) { _, payload -> payload }.executeAsOneOrNull()
 
     private fun shellSnapshot(
         projects: List<OrchestrationProject> = emptyList(),
@@ -162,7 +230,7 @@ class SqlOrchestrationRepositoryTest {
         updatedAt = Timestamp,
     )
 
-    private fun threadSnapshot() = OrchestrationThreadDetailSnapshot(
+    private fun threadSnapshot(checkpoints: List<JsonElement> = emptyList()) = OrchestrationThreadDetailSnapshot(
         snapshotSequence = 1,
         thread = OrchestrationThreadDetail(
             id = ThreadId,
@@ -170,7 +238,12 @@ class SqlOrchestrationRepositoryTest {
             title = "Thread",
             createdAt = Timestamp,
             updatedAt = Timestamp,
+            checkpoints = checkpoints,
         ),
+    )
+
+    private fun oversizedThreadSnapshot() = threadSnapshot(
+        checkpoints = listOf(JsonPrimitive("x".repeat(OversizedPayloadCharacters))),
     )
 
     private companion object {
@@ -178,5 +251,6 @@ class SqlOrchestrationRepositoryTest {
         const val ProjectId = "project"
         const val ThreadId = "thread"
         const val Timestamp = "2026-01-01T00:00:00Z"
+        const val OversizedPayloadCharacters = 1_600_000
     }
 }

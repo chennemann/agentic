@@ -322,13 +322,24 @@ class SqlOrchestrationRepository(
         environmentId: String,
         kind: String,
         key: String,
-    ): CachedProjection? = database.agenticT3Queries.selectProjection(
-        environmentId,
-        kind,
-        key,
-    ) { _, _, _, _, sequence, payload, _ ->
-        CachedProjection(sequence, payload)
-    }.executeAsOneOrNull()
+    ): CachedProjection? {
+        val payloadByteCount = database.agenticT3Queries.selectProjectionPayloadByteCount(
+            environmentId,
+            kind,
+            key,
+        ).executeAsOneOrNull() ?: return null
+        if (payloadByteCount > MaxCachedProjectionPayloadBytes) {
+            database.agenticT3Queries.deleteProjection(environmentId, kind, key)
+            return null
+        }
+        return database.agenticT3Queries.selectProjection(
+            environmentId,
+            kind,
+            key,
+        ) { sequence, payload ->
+            CachedProjection(sequence, payload)
+        }.executeAsOneOrNull()
+    }
 
     private fun preference(
         environmentId: String,
@@ -342,6 +353,10 @@ class SqlOrchestrationRepository(
         sequence: Long?,
         payload: String,
     ) {
+        if (payload.encodeToByteArray().size > MaxCachedProjectionPayloadBytes) {
+            database.agenticT3Queries.deleteProjection(environmentId, kind, key)
+            return
+        }
         database.agenticT3Queries.upsertProjection(
             environmentId,
             kind,
@@ -411,6 +426,8 @@ class SqlOrchestrationRepository(
     private companion object {
         const val CacheSchemaVersion = 1L
         const val CacheWriteDebounceMillis = 500L
+        // Leave headroom below Android's commonly 2 MiB CursorWindow limit.
+        const val MaxCachedProjectionPayloadBytes = 1_500_000
         const val ClientConfigKind = "client-config"
         const val ShellKind = "shell"
         const val ThreadKind = "thread"
