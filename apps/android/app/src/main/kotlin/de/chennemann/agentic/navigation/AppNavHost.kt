@@ -60,6 +60,7 @@ fun AppNavHost() {
                     val state by viewModel.state.collectAsStateWithLifecycle()
                     T3ChatScreen(
                         state = state,
+                        composerDraft = viewModel.draft,
                         onEvent = {
                             if (it == ChatUiEvent.PairEnvironmentRequested) {
                                 manualOnboarding = true

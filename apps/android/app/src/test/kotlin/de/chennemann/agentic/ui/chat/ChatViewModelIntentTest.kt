@@ -94,7 +94,7 @@ class ChatViewModelIntentTest {
         viewModel.onEvent(ChatUiEvent.ConnectionRetryRequested)
         advanceUntilIdle()
 
-        assertEquals("hello", viewModel.state.value.composer.draft)
+        assertEquals("hello", viewModel.draft.value)
         assertEquals(listOf("project-2"), threadActions.selectedProjects)
         assertTrue(controller.woken)
     }
@@ -136,7 +136,7 @@ class ChatViewModelIntentTest {
         advanceUntilIdle()
 
         assertEquals(1, voiceInput.transcriptions)
-        assertEquals("transcribed prompt", viewModel.state.value.composer.draft)
+        assertEquals("transcribed prompt", viewModel.draft.value)
         assertEquals(
             VoiceInputStatusUi.IDLE,
             viewModel.state.value.composer.voiceInputStatus,
@@ -393,7 +393,7 @@ class ChatViewModelIntentTest {
         assertEquals(selection, call.modelSelection)
         assertEquals("plan", call.interactionMode)
         assertEquals("full-access", call.runtimeMode)
-        assertEquals("", viewModel.state.value.composer.draft)
+        assertEquals("", viewModel.draft.value)
         assertEquals(false, viewModel.state.value.composer.sending)
         assertEquals(null, viewModel.state.value.composer.errorMessage)
     }
@@ -770,7 +770,7 @@ class ChatViewModelIntentTest {
         viewModel.onEvent(ChatUiEvent.MessageSubmitted)
         advanceUntilIdle()
 
-        assertEquals("keep this", viewModel.state.value.composer.draft)
+        assertEquals("keep this", viewModel.draft.value)
         assertEquals(false, viewModel.state.value.composer.sending)
         assertEquals("Turn rejected", viewModel.state.value.composer.errorMessage)
 
@@ -798,13 +798,13 @@ class ChatViewModelIntentTest {
         viewModel.onEvent(ChatUiEvent.ThreadSelected("thread-2"))
         advanceUntilIdle()
 
-        assertEquals("", viewModel.state.value.composer.draft)
+        assertEquals("", viewModel.draft.value)
 
         viewModel.onEvent(ChatUiEvent.DraftChanged("draft for thread two"))
         viewModel.onEvent(ChatUiEvent.ThreadSelected("thread-1"))
         advanceUntilIdle()
 
-        assertEquals("draft for thread one", viewModel.state.value.composer.draft)
+        assertEquals("draft for thread one", viewModel.draft.value)
     }
 
     @Test
@@ -839,7 +839,7 @@ class ChatViewModelIntentTest {
         )
         advanceUntilIdle()
 
-        assertEquals("survive app replacement", recreatedViewModel.state.value.composer.draft)
+        assertEquals("survive app replacement", recreatedViewModel.draft.value)
     }
 
     @Test
@@ -864,7 +864,7 @@ class ChatViewModelIntentTest {
         runCurrent()
 
         assertEquals(emptyList<String>(), drafts.writes.map { it.third })
-        assertEquals("draft 99", viewModel.state.value.composer.draft)
+        assertEquals("draft 99", viewModel.draft.value)
 
         advanceTimeBy(299)
         runCurrent()
@@ -900,6 +900,31 @@ class ChatViewModelIntentTest {
         advanceTimeBy(300)
         runCurrent()
         assertEquals(listOf("flush before switching"), drafts.writes.map { it.third })
+    }
+
+    @Test
+    fun `typing does not emit a new whole screen state`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+            composerDrafts = FakeComposerDraftRepository(),
+        )
+        advanceUntilIdle()
+        val screenStateBeforeTyping = viewModel.state.value
+
+        repeat(100) { index ->
+            viewModel.onEvent(ChatUiEvent.DraftChanged("isolated draft $index"))
+        }
+        runCurrent()
+
+        assertSame(screenStateBeforeTyping, viewModel.state.value)
+        assertEquals("isolated draft 99", viewModel.draft.value)
     }
 }
 

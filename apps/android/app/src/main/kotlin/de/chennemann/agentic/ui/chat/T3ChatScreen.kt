@@ -62,6 +62,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.chennemann.agentic.streamingmarkdown.StreamingMarkdownText
 import de.chennemann.agentic.ui.components.ChatActivityCard
 import de.chennemann.agentic.ui.components.ConnectionStatusBanner
@@ -76,12 +77,14 @@ import de.chennemann.agentic.icons.Rename
 import de.chennemann.agentic.icons.Tune
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
 @Composable
 fun T3ChatScreen(
     state: ChatUiState,
     onEvent: (ChatUiEvent) -> Unit,
+    composerDraft: StateFlow<String>? = null,
     modifier: Modifier = Modifier,
 ) {
     val listState = rememberLazyListState()
@@ -297,8 +300,9 @@ fun T3ChatScreen(
                 .imePadding()
                 .zIndex(2f),
         ) {
-            T3MessageComposer(
+            IsolatedDraftComposer(
                 state = state.composer,
+                draft = composerDraft,
                 turnRunning = state.isTurnRunning,
                 onEvent = onEvent,
                 modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
@@ -348,6 +352,32 @@ fun T3ChatScreen(
             onDismiss = { onEvent(ChatUiEvent.GroqSettingsDismissed) },
             onSave = { onEvent(ChatUiEvent.GroqApiKeySaved(it)) },
             onRemove = { onEvent(ChatUiEvent.GroqApiKeyRemoved) },
+        )
+    }
+}
+
+@Composable
+private fun IsolatedDraftComposer(
+    state: ComposerUiState,
+    draft: StateFlow<String>?,
+    turnRunning: Boolean,
+    onEvent: (ChatUiEvent) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (draft == null) {
+        T3MessageComposer(
+            state = state,
+            turnRunning = turnRunning,
+            onEvent = onEvent,
+            modifier = modifier,
+        )
+    } else {
+        val value by draft.collectAsStateWithLifecycle()
+        T3MessageComposer(
+            state = state.copy(draft = value),
+            turnRunning = turnRunning,
+            onEvent = onEvent,
+            modifier = modifier,
         )
     }
 }

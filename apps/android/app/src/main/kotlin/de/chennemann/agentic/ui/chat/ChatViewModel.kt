@@ -31,6 +31,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
@@ -69,6 +70,8 @@ class ChatViewModel(
     private val voiceInput: VoiceInputService? = null,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
+    private val mutableDraft = MutableStateFlow("")
+    val draft = mutableDraft.asStateFlow()
     private val draftCache = mutableMapOf<DraftKey, String>()
     private val dirtyDraftKeys = mutableSetOf<DraftKey>()
     private val draftWrites = Channel<DraftWrite>(Channel.UNLIMITED)
@@ -168,7 +171,6 @@ class ChatViewModel(
     ) { mapped, local, groqConfigured ->
         mapped.copy(
             composer = mapped.composer.copy(
-                draft = local.draft,
                 sending = local.sending,
                 errorMessage = local.commandError,
                 voiceInputAvailable = groqConfigured && voiceInput != null,
@@ -520,7 +522,7 @@ class ChatViewModel(
     private fun submitMessage() {
         if (local.value.sending) return
         val draftKey = displayedDraftKey
-        val prompt = local.value.draft.trim()
+        val prompt = mutableDraft.value.trim()
         if (prompt.isEmpty()) return
         val shell = repository.shell.value.value
             ?: return submissionUnavailable("Projects are not available yet.")
@@ -736,7 +738,10 @@ class ChatViewModel(
             }
         }
         if (key == displayedDraftKey) {
-            update { copy(draft = value, commandError = null) }
+            mutableDraft.value = value
+            if (local.value.commandError != null) {
+                update { copy(commandError = null) }
+            }
         }
     }
 
@@ -750,19 +755,26 @@ class ChatViewModel(
         draftSelectionInitialized = true
 
         if (key == null) {
-            update { copy(draft = unthreadedDraft, commandError = null) }
+            showDraft(unthreadedDraft)
             return
         }
         if (draftCache.containsKey(key)) {
-            update { copy(draft = draftCache.getValue(key), commandError = null) }
+            showDraft(draftCache.getValue(key))
             return
         }
 
-        update { copy(draft = "", commandError = null) }
+        showDraft("")
         val restored = drafts?.observe(key.environmentId, key.threadId)?.first().orEmpty()
         if (key == displayedDraftKey && key !in dirtyDraftKeys) {
             draftCache[key] = restored
-            update { copy(draft = restored, commandError = null) }
+            showDraft(restored)
+        }
+    }
+
+    private fun showDraft(value: String) {
+        mutableDraft.value = value
+        if (local.value.commandError != null) {
+            update { copy(commandError = null) }
         }
     }
 
@@ -848,7 +860,7 @@ class ChatViewModel(
             timeline = detail?.let { timeline(it, local) }.orEmpty(),
             connection = environment.connection.toUi(),
             composer = ComposerUiState(
-                draft = local.draft,
+                draft = "",
                 selectedInteractionMode = interaction,
                 selectedProviderModelId = selectedModelId,
                 providerModels = modelOptions,
@@ -1145,7 +1157,6 @@ class ChatViewModel(
     )
 
     private data class LocalState(
-        val draft: String = "",
         val activePicker: ChatPickerUi? = null,
         val showArchived: Boolean = false,
         val showSettled: Boolean = false,
@@ -1169,7 +1180,6 @@ class ChatViewModel(
         val groqSettingsError: String? = null,
     ) {
         fun structural(): LocalState = copy(
-            draft = "",
             sending = false,
             commandError = null,
         )
