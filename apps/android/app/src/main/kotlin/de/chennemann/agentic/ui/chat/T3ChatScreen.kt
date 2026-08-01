@@ -1,5 +1,9 @@
 package de.chennemann.agentic.ui.chat
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.view.WindowManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -9,9 +13,11 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -34,8 +40,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,6 +52,9 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -78,7 +89,21 @@ fun T3ChatScreen(
     val dragging by listState.interactionSource.collectIsDraggedAsState()
     val expandedActivities = remember(state.threadId) { mutableStateMapOf<String, Boolean>() }
     var followLatest by remember(state.threadId) { mutableStateOf(true) }
+    var composerHeightPx by remember { mutableIntStateOf(0) }
+    val density = LocalDensity.current
+    val composerHeight = with(density) { composerHeightPx.toDp() }
+    val imeHeight = with(density) { WindowInsets.ime.getBottom(this).toDp() }
     val lastItemSignature = state.timeline.lastOrNull().contentSignature()
+    val activity = LocalContext.current.findActivity()
+
+    DisposableEffect(activity) {
+        val window = activity?.window
+        val previousSoftInputMode = window?.attributes?.softInputMode
+        window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
+        onDispose {
+            previousSoftInputMode?.let(window::setSoftInputMode)
+        }
+    }
 
     LaunchedEffect(listState, dragging) {
         snapshotFlow { dragging to listState.isAtEnd() }
@@ -97,6 +122,7 @@ fun T3ChatScreen(
         state.timeline.size,
         lastItemSignature,
         expandedActivities.toMap(),
+        composerHeightPx,
         followLatest,
     ) {
         if (followLatest) {
@@ -106,9 +132,7 @@ fun T3ChatScreen(
 
     Box(modifier = modifier.fillMaxSize()) {
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .imePadding(),
+            modifier = Modifier.fillMaxSize(),
         ) {
             ConnectionStatusBanner(
                 connection = state.connection,
@@ -124,9 +148,11 @@ fun T3ChatScreen(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                        horizontal = 16.dp,
-                        vertical = 12.dp,
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        top = 12.dp,
+                        end = 16.dp,
+                        bottom = 12.dp + composerHeight + imeHeight,
                     ),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -189,7 +215,12 @@ fun T3ChatScreen(
                         },
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
-                            .padding(16.dp),
+                            .padding(
+                                start = 16.dp,
+                                top = 16.dp,
+                                end = 16.dp,
+                                bottom = 16.dp + composerHeight,
+                            ),
                     ) {
                         Text("↓")
                     }
@@ -257,14 +288,22 @@ fun T3ChatScreen(
                     }
                 }
             }
+        }
 
+        Box(
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .fillMaxWidth()
+                .imePadding()
+                .zIndex(2f),
+        ) {
             T3MessageComposer(
                 state = state.composer,
                 turnRunning = state.isTurnRunning,
                 onEvent = onEvent,
+                modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
             )
         }
-
     }
 
     ChatSelectionSheets(
@@ -635,3 +674,9 @@ private fun previewChatState(): ChatUiState = ChatUiState(
 private const val EndTolerancePx = 8
 private const val MaxEndVisibilityPasses = 8
 private const val LayoutSettleDelayMillis = 16L
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
