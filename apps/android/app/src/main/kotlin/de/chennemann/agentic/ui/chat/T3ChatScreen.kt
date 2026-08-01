@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -212,6 +213,7 @@ fun T3ChatScreen(
                     Icon(
                         imageVector = Icons.Tune,
                         contentDescription = "Open navigation and settings",
+                        modifier = Modifier.size(20.dp),
                     )
                 }
 
@@ -224,7 +226,7 @@ fun T3ChatScreen(
                                 .align(Alignment.TopCenter)
                                 .padding(
                                     start = 72.dp,
-                                    top = 8.dp,
+                                    top = 12.dp,
                                     end = if (state.latestTurnChanges.files.isEmpty()) 72.dp else 124.dp,
                                 )
                                 .zIndex(1f),
