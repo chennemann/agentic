@@ -8,11 +8,13 @@ import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.DispatchResult
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
 import de.chennemann.agentic.t3.contract.ModelSelection
+import de.chennemann.agentic.t3.contract.PortableCommandJson
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNotEquals
 import org.junit.jupiter.api.Assertions.assertNull
@@ -57,7 +59,10 @@ class CommandServicesTest {
         val second = commands.recorded.single() as ClientOrchestrationCommand.StartTurn
 
         assertEquals("First useful line Second", first.bootstrap?.createThread?.title)
-        assertEquals("First useful line Second", first.titleSeed)
+        val encoded = PortableCommandJson
+            .encodeToJsonElement(ClientOrchestrationCommand.serializer(), first)
+            .jsonObject
+        assertNull(encoded["titleSeed"])
         assertEquals("project", first.bootstrap?.createThread?.projectId)
         assertNull(first.bootstrap?.createThread?.branch)
         assertNull(first.bootstrap?.createThread?.worktreePath)

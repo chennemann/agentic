@@ -165,7 +165,6 @@ class ChatService(
                     text = prompt,
                 ),
                 modelSelection = modelSelection,
-                titleSeed = titleSeed.takeIf { threadId == null },
                 interactionMode = interactionMode,
                 runtimeMode = runtimeMode,
                 createdAt = now,
