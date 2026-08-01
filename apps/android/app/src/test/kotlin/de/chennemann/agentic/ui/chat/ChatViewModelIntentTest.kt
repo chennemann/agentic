@@ -44,8 +44,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.serialization.json.JsonObject
@@ -839,10 +841,71 @@ class ChatViewModelIntentTest {
 
         assertEquals("survive app replacement", recreatedViewModel.state.value.composer.draft)
     }
+
+    @Test
+    fun `rapid typing coalesces persistence into one database write`() = runTest(dispatcher) {
+        val drafts = FakeComposerDraftRepository()
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+            composerDrafts = drafts,
+        )
+        advanceUntilIdle()
+
+        repeat(100) { index ->
+            viewModel.onEvent(ChatUiEvent.DraftChanged("draft $index"))
+        }
+        runCurrent()
+
+        assertEquals(emptyList<String>(), drafts.writes.map { it.third })
+        assertEquals("draft 99", viewModel.state.value.composer.draft)
+
+        advanceTimeBy(299)
+        runCurrent()
+        assertEquals(emptyList<String>(), drafts.writes.map { it.third })
+
+        advanceTimeBy(1)
+        runCurrent()
+        assertEquals(listOf("draft 99"), drafts.writes.map { it.third })
+    }
+
+    @Test
+    fun `switching threads flushes a pending draft without waiting for the debounce`() = runTest(dispatcher) {
+        val drafts = FakeComposerDraftRepository()
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+            composerDrafts = drafts,
+        )
+        advanceUntilIdle()
+
+        viewModel.onEvent(ChatUiEvent.DraftChanged("flush before switching"))
+        viewModel.onEvent(ChatUiEvent.ThreadSelected("thread-2"))
+        runCurrent()
+
+        assertEquals(listOf("flush before switching"), drafts.writes.map { it.third })
+
+        advanceTimeBy(300)
+        runCurrent()
+        assertEquals(listOf("flush before switching"), drafts.writes.map { it.third })
+    }
 }
 
 private class FakeComposerDraftRepository : ComposerDraftRepository {
     private val drafts = mutableMapOf<Pair<String, String>, MutableStateFlow<String>>()
+    val writes = mutableListOf<Triple<String, String, String>>()
 
     override fun observe(
         environmentId: String,
@@ -854,6 +917,7 @@ private class FakeComposerDraftRepository : ComposerDraftRepository {
         threadId: String,
         draft: String,
     ) {
+        writes += Triple(environmentId, threadId, draft)
         drafts.getOrPut(environmentId to threadId) { MutableStateFlow("") }.value = draft
     }
 }

@@ -26,13 +26,17 @@ import de.chennemann.agentic.t3.contract.PortableJson
 import java.time.Instant
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.conflate
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flowOn
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flowOf
@@ -65,17 +69,20 @@ class ChatViewModel(
     private val voiceInput: VoiceInputService? = null,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
+    private val draftCache = mutableMapOf<DraftKey, String>()
+    private val dirtyDraftKeys = mutableSetOf<DraftKey>()
     private val draftWrites = Channel<DraftWrite>(Channel.UNLIMITED)
     private val currentDraftKey = combine(
         environments.activeEnvironment,
         repository.focusedThreadId,
     ) { environment, threadId ->
         if (environment == null || threadId == null) null else DraftKey(environment.id, threadId)
-    }.distinctUntilChanged().stateIn(
-        viewModelScope,
-        SharingStarted.Eagerly,
-        activeDraftKey(),
-    )
+    }.distinctUntilChanged()
+    private var displayedDraftKey: DraftKey? = null
+    private var draftSelectionInitialized = false
+    private var unthreadedDraft = ""
+    private var pendingDraftWrite: DraftWrite? = null
+    private var pendingDraftWriteJob: Job? = null
     private val orchestration = combine(
         repository.clientConfig,
         repository.shell,
@@ -113,26 +120,9 @@ class ChatViewModel(
                     }
                 }
             }
-            viewModelScope.launch {
-                currentDraftKey.flatMapLatest { key ->
-                    if (key == null) {
-                        flowOf<StoredDraft?>(null)
-                    } else {
-                        drafts.observe(key.environmentId, key.threadId)
-                            .map { value -> StoredDraft(key, value) }
-                    }
-                }.collect { stored ->
-                    if (stored != null) {
-                        update {
-                            if (stored.key in dirtyDraftKeys) {
-                                this
-                            } else {
-                                copy(threadDrafts = threadDrafts + (stored.key to stored.value))
-                            }
-                        }
-                    }
-                }
-            }
+        }
+        viewModelScope.launch {
+            currentDraftKey.collectLatest { key -> selectDraft(key, composerDrafts) }
         }
         viewModelScope.launch {
             var activeThreadIds: Set<String>? = null
@@ -175,11 +165,10 @@ class ChatViewModel(
         mappedState,
         local,
         groqApiKeys?.configured ?: flowOf(false),
-        currentDraftKey,
-    ) { mapped, local, groqConfigured, draftKey ->
+    ) { mapped, local, groqConfigured ->
         mapped.copy(
             composer = mapped.composer.copy(
-                draft = local.draftFor(draftKey),
+                draft = local.draft,
                 sending = local.sending,
                 errorMessage = local.commandError,
                 voiceInputAvailable = groqConfigured && voiceInput != null,
@@ -530,8 +519,8 @@ class ChatViewModel(
 
     private fun submitMessage() {
         if (local.value.sending) return
-        val draftKey = activeDraftKey()
-        val prompt = local.value.draftFor(draftKey).trim()
+        val draftKey = displayedDraftKey
+        val prompt = local.value.draft.trim()
         if (prompt.isEmpty()) return
         val shell = repository.shell.value.value
             ?: return submissionUnavailable("Projects are not available yet.")
@@ -559,7 +548,7 @@ class ChatViewModel(
                 interactionMode = interactionMode.contractValue(),
                 runtimeMode = runtimeMode,
             )
-            setDraft(draftKey, "")
+            setDraft(draftKey, "", persistImmediately = true)
             update { copy(sending = false, commandError = null) }
             if (threadId == null) threads.selectThread(result.threadId)
         }
@@ -723,33 +712,85 @@ class ChatViewModel(
     }
 
     private fun setDraft(value: String) {
-        setDraft(activeDraftKey(), value)
+        setDraft(displayedDraftKey, value)
     }
 
     private fun setDraft(
         key: DraftKey?,
         value: String,
+        persistImmediately: Boolean = false,
     ) {
-        update {
-            if (key == null) {
-                copy(draft = value, commandError = null)
-            } else {
-                copy(
-                    threadDrafts = threadDrafts + (key to value),
-                    dirtyDraftKeys = dirtyDraftKeys + key,
-                    commandError = null,
-                )
+        if (key == null) {
+            unthreadedDraft = value
+        } else {
+            draftCache[key] = value
+            dirtyDraftKeys += key
+            if (composerDrafts != null) {
+                val write = DraftWrite(key, value)
+                if (persistImmediately) {
+                    cancelPendingDraftWrite(key)
+                    draftWrites.trySend(write)
+                } else {
+                    scheduleDraftWrite(write)
+                }
             }
         }
-        if (key != null && composerDrafts != null) {
-            draftWrites.trySend(DraftWrite(key, value))
+        if (key == displayedDraftKey) {
+            update { copy(draft = value, commandError = null) }
         }
     }
 
-    private fun activeDraftKey(): DraftKey? {
-        val environmentId = environments.activeEnvironment.value?.id ?: return null
-        val threadId = repository.focusedThreadId.value ?: return null
-        return DraftKey(environmentId, threadId)
+    private suspend fun selectDraft(
+        key: DraftKey?,
+        drafts: ComposerDraftRepository?,
+    ) {
+        if (draftSelectionInitialized && key == displayedDraftKey) return
+        if (draftSelectionInitialized) flushPendingDraftWrite(displayedDraftKey)
+        displayedDraftKey = key
+        draftSelectionInitialized = true
+
+        if (key == null) {
+            update { copy(draft = unthreadedDraft, commandError = null) }
+            return
+        }
+        if (draftCache.containsKey(key)) {
+            update { copy(draft = draftCache.getValue(key), commandError = null) }
+            return
+        }
+
+        update { copy(draft = "", commandError = null) }
+        val restored = drafts?.observe(key.environmentId, key.threadId)?.first().orEmpty()
+        if (key == displayedDraftKey && key !in dirtyDraftKeys) {
+            draftCache[key] = restored
+            update { copy(draft = restored, commandError = null) }
+        }
+    }
+
+    private fun scheduleDraftWrite(write: DraftWrite) {
+        if (composerDrafts == null) return
+        pendingDraftWriteJob?.cancel()
+        pendingDraftWrite = write
+        pendingDraftWriteJob = viewModelScope.launch {
+            delay(DraftPersistenceDelayMillis)
+            if (pendingDraftWrite == write) {
+                pendingDraftWrite = null
+                pendingDraftWriteJob = null
+                draftWrites.send(write)
+            }
+        }
+    }
+
+    private fun flushPendingDraftWrite(key: DraftKey?) {
+        val write = pendingDraftWrite?.takeIf { it.key == key } ?: return
+        cancelPendingDraftWrite(key)
+        draftWrites.trySend(write)
+    }
+
+    private fun cancelPendingDraftWrite(key: DraftKey?) {
+        if (pendingDraftWrite?.key != key) return
+        pendingDraftWriteJob?.cancel()
+        pendingDraftWrite = null
+        pendingDraftWriteJob = null
     }
 
     override fun onCleared() {
@@ -1105,8 +1146,6 @@ class ChatViewModel(
 
     private data class LocalState(
         val draft: String = "",
-        val threadDrafts: Map<DraftKey, String> = emptyMap(),
-        val dirtyDraftKeys: Set<DraftKey> = emptySet(),
         val activePicker: ChatPickerUi? = null,
         val showArchived: Boolean = false,
         val showSettled: Boolean = false,
@@ -1129,12 +1168,8 @@ class ChatViewModel(
         val groqSettingsSaving: Boolean = false,
         val groqSettingsError: String? = null,
     ) {
-        fun draftFor(key: DraftKey?): String = if (key == null) draft else threadDrafts[key].orEmpty()
-
         fun structural(): LocalState = copy(
             draft = "",
-            threadDrafts = emptyMap(),
-            dirtyDraftKeys = emptySet(),
             sending = false,
             commandError = null,
         )
@@ -1150,10 +1185,6 @@ class ChatViewModel(
         val value: String,
     )
 
-    private data class StoredDraft(
-        val key: DraftKey,
-        val value: String,
-    )
 }
 
 private data class OrchestrationBundle(
@@ -1654,6 +1685,7 @@ private val RuntimeModes = listOf(
 private val ActiveSessionStatuses = setOf("starting", "running")
 private const val MaxQuickSwitchProjects = 5
 private const val DefaultRuntimeMode = "full-access"
+private const val DraftPersistenceDelayMillis = 300L
 private const val TurnPhaseUser = 0
 private const val TurnPhaseActivity = 1
 private const val TurnPhaseAssistant = 2
