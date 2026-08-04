@@ -18,3 +18,9 @@ _Avoid_: Environment registration, pairing
 A client-observable capability that the portable T3 contract does not currently expose and that
 must be communicated to the T3 Code project without prescribing its server implementation.
 _Avoid_: Server implementation task, shim implementation plan
+
+**Capability-parity inventory entry**:
+A single user-observable capability or behavioral guarantee, paired with separate source evidence
+from the frozen T3 reference clients, portable protocol, and Agentic rather than represented as a
+screen or feature bundle.
+_Avoid_: Gap item, screen inventory, reference-client feature bundle
