@@ -1043,8 +1043,8 @@ class ChatViewModel(
             .sortedWith(
                 compareBy<TimedItem> { it.turnId?.let(turnStartedAt::get) ?: it.at }
                     .thenBy { it.turnId.orEmpty() }
-                    .thenBy { it.turnPhase }
                     .thenBy { it.at }
+                    .thenBy { it.turnPhase }
                     .thenBy { it.sequence }
                     .thenBy { it.lifecycleRank }
                     .thenBy { it.item.id },
@@ -1720,5 +1720,5 @@ private const val MaxQuickSwitchProjects = 5
 private const val DefaultRuntimeMode = "full-access"
 private const val DraftPersistenceDelayMillis = 300L
 private const val TurnPhaseUser = 0
-private const val TurnPhaseActivity = 1
-private const val TurnPhaseAssistant = 2
+private const val TurnPhaseAssistant = 1
+private const val TurnPhaseActivity = 2
