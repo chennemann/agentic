@@ -89,6 +89,7 @@ sealed interface ChatActivityUi {
         val status: ActivityStatusUi = ActivityStatusUi.PENDING,
         val detail: String? = null,
         val lifecycleKey: String? = null,
+        val lifecycleFallbackKey: String? = null,
     ) : ChatActivityUi
 
     data class Approval(

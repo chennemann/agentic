@@ -1136,7 +1136,7 @@ class ChatViewModel(
         val output = string("detail")?.stripTrailingExitCode()
         val changedFiles = changedFiles()
         val title = (string("title") ?: activity.summary)
-            .replace(Regex("\\s+(complete|completed)$", RegexOption.IGNORE_CASE), "")
+            .replace(Regex("\\s+(started|complete|completed)$", RegexOption.IGNORE_CASE), "")
             .replaceFirstChar(Char::uppercase)
         val preview = command ?: output ?: changedFiles.firstOrNull() ?: string("toolName")
         val fullDetail = listOfNotNull(
@@ -1150,7 +1150,9 @@ class ChatViewModel(
         val status = when {
             lifecycleStatus == "failed" || lifecycleStatus == "declined" -> ActivityStatusUi.FAILED
             lifecycleStatus == "completed" || activity.kind.endsWith(".completed") -> ActivityStatusUi.COMPLETED
-            lifecycleStatus == "inProgress" || activity.kind.endsWith(".updated") -> ActivityStatusUi.RUNNING
+            lifecycleStatus == "inProgress" ||
+                activity.kind.endsWith(".started") ||
+                activity.kind.endsWith(".updated") -> ActivityStatusUi.RUNNING
             lifecycleStatus == "stopped" -> ActivityStatusUi.FAILED
             else -> ActivityStatusUi.PENDING
         }
@@ -1159,7 +1161,7 @@ class ChatViewModel(
             ?: item?.string("callId")
             ?: string("callId")
             ?: string("toolCallId")
-        val lifecycleKey = lifecycleId ?: listOf(
+        val lifecycleFallbackKey = listOf(
             string("itemType").orEmpty(),
             title,
             command.orEmpty(),
@@ -1170,7 +1172,8 @@ class ChatViewModel(
             subtitle = preview?.replace(Regex("\\s+"), " ")?.trim(),
             status = status,
             detail = fullDetail,
-            lifecycleKey = lifecycleKey,
+            lifecycleKey = lifecycleId,
+            lifecycleFallbackKey = lifecycleFallbackKey,
         )
     }
 
@@ -1283,7 +1286,11 @@ private fun groupToolActivities(items: List<ChatTimelineItemUi>): List<ChatTimel
             return@forEach
         }
         val replaceIndex = previous.activities.indexOfLast {
-            it.lifecycleKey == tool.lifecycleKey &&
+            (
+                it.lifecycleKey != null && it.lifecycleKey == tool.lifecycleKey ||
+                    (it.lifecycleKey == null || tool.lifecycleKey == null) &&
+                    it.lifecycleFallbackKey == tool.lifecycleFallbackKey
+            ) &&
                 it.status != ActivityStatusUi.COMPLETED &&
                 it.status != ActivityStatusUi.FAILED
         }

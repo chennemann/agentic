@@ -982,6 +982,53 @@ class ChatViewModelIntentTest {
         assertSame(screenStateBeforeTyping, viewModel.state.value)
         assertEquals("isolated draft 99", viewModel.draft.value)
     }
+
+    @Test
+    fun `started tool call without provider id merges with identified completion`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val current = requireNotNull(repository.focusedThread.value.value)
+        val started = OrchestrationActivity(
+            id = "tool-started",
+            kind = "tool.started",
+            tone = "tool",
+            summary = "Run command started",
+            payload = PortableJson.parseToJsonElement(
+                """
+                {
+                  "itemType": "command_execution",
+                  "detail": "./gradlew build"
+                }
+                """.trimIndent(),
+            ).jsonObject,
+            createdAt = "2026-07-29T10:00:00Z",
+        )
+        val completed = toolActivity(
+            id = "tool-completed",
+            kind = "tool.completed",
+            status = "completed",
+            callId = "call-active",
+            command = "./gradlew build",
+        )
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = current.copy(
+                thread = current.thread.copy(activities = listOf(started, completed)),
+            ),
+        )
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        val group = viewModel.state.value.timeline.single() as ChatTimelineItemUi.ToolGroup
+        assertEquals(1, group.activities.size)
+        assertEquals(ActivityStatusUi.COMPLETED, group.activities.single().status)
+    }
 }
 
 private class FakeComposerDraftRepository : ComposerDraftRepository {
