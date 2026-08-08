@@ -153,6 +153,9 @@ class ChatViewModel(
         }
     }
 
+    private var mappedTimelineInput: TimelineInput? = null
+    private var mappedTimeline: List<ChatTimelineItemUi> = emptyList()
+
     private val mappedState = combine(
         orchestration,
         environment,
@@ -161,7 +164,12 @@ class ChatViewModel(
     ) { orchestration, environment, local, favorites ->
         MappedInput(orchestration, environment, local, favorites)
     }.conflate().map { input ->
-        mapState(input.orchestration, input.environment, input.local, input.favorites)
+        val timelineInput = input.timelineInput()
+        if (timelineInput != mappedTimelineInput) {
+            mappedTimelineInput = timelineInput
+            mappedTimeline = timelineInput.detail?.let { timeline(it, input.local) }.orEmpty()
+        }
+        mapState(input.orchestration, input.environment, input.local, input.favorites, mappedTimeline)
     }.flowOn(mappingDispatcher)
 
     val state = combine(
@@ -815,6 +823,7 @@ class ChatViewModel(
         environment: EnvironmentBundle,
         local: LocalState,
         favorites: List<FavoriteModelId>,
+        timeline: List<ChatTimelineItemUi>,
     ): ChatUiState {
         val shell = orchestration.shell.value
         val detail = orchestration.thread.value?.thread?.takeIf { it.id == orchestration.threadId }
@@ -857,7 +866,7 @@ class ChatViewModel(
             environmentLabel = environment.active?.label ?: "T3",
             projectLabel = project?.title,
             threadId = orchestration.threadId,
-            timeline = detail?.let { timeline(it, local) }.orEmpty(),
+            timeline = timeline,
             connection = environment.connection.toUi(),
             composer = ComposerUiState(
                 draft = "",
@@ -1154,6 +1163,20 @@ class ChatViewModel(
         val environment: EnvironmentBundle,
         val local: LocalState,
         val favorites: List<FavoriteModelId>,
+    ) {
+        fun timelineInput() = TimelineInput(
+            detail = orchestration.thread.value?.thread?.takeIf { it.id == orchestration.threadId },
+            inFlightRequests = local.inFlightRequests,
+            textAnswers = local.textAnswers,
+            optionAnswers = local.optionAnswers,
+        )
+    }
+
+    private data class TimelineInput(
+        val detail: de.chennemann.agentic.t3.contract.OrchestrationThreadDetail?,
+        val inFlightRequests: Set<String>,
+        val textAnswers: Map<String, String>,
+        val optionAnswers: Map<String, Set<String>>,
     )
 
     private data class LocalState(

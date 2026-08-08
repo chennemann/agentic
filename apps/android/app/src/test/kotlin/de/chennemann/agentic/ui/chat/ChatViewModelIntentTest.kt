@@ -266,6 +266,62 @@ class ChatViewModelIntentTest {
     }
 
     @Test
+    fun `background thread updates do not rebuild the focused timeline`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val detail = requireNotNull(repository.focusedThread.value.value)
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = detail.copy(
+                thread = detail.thread.copy(
+                    messages = listOf(
+                        OrchestrationMessage(
+                            id = "message-1",
+                            role = "assistant",
+                            text = "Existing response",
+                            createdAt = "2026-07-29T10:01:00Z",
+                            updatedAt = "2026-07-29T10:01:00Z",
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+        val focusedTimeline = viewModel.state.value.timeline
+        val shell = requireNotNull(repository.shell.value.value)
+
+        repository.shell.value = repository.shell.value.copy(
+            value = shell.copy(
+                threads = shell.threads.map { thread ->
+                    if (thread.id == "thread-2") {
+                        thread.copy(
+                            session = ThreadSession(
+                                threadId = thread.id,
+                                status = "running",
+                                updatedAt = "2026-07-29T10:03:00Z",
+                            ),
+                            updatedAt = "2026-07-29T10:03:00Z",
+                        )
+                    } else {
+                        thread
+                    }
+                },
+            ),
+            sequence = 8,
+        )
+        advanceUntilIdle()
+
+        assertSame(focusedTimeline, viewModel.state.value.timeline)
+    }
+
+    @Test
     fun `quick switch shows five recent projects with unsettled threads`() = runTest(dispatcher) {
         val repository = FakeOrchestrationRepository().apply {
             shell.value = ProjectionState(
