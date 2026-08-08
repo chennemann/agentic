@@ -1010,6 +1010,9 @@ class ChatViewModel(
             .filter { it.kind == "user-input.requested" }
             .minWithOrNull(activityOrder)
             ?.id
+        val finishedTurnId = detail.latestTurn
+            ?.takeIf { it.state !in ActiveSessionStatuses }
+            ?.turnId
         val activities = detail.activities.filter {
             if (
                 it.kind == "task.started" ||
@@ -1024,9 +1027,12 @@ class ChatViewModel(
                 else -> true
             }
         }.map {
+            val activity = it.toUi(local).completeIfTurnFinished(
+                finished = finishedTurnId != null && it.turnId == finishedTurnId,
+            )
             TimedItem(
                 at = it.createdAt,
-                item = ChatTimelineItemUi.Activity(it.toUi(local)),
+                item = ChatTimelineItemUi.Activity(activity),
                 sequence = it.sequence ?: Long.MAX_VALUE,
                 lifecycleRank = activityLifecycleRank(it.kind),
                 turnId = it.turnId,
@@ -1113,6 +1119,17 @@ class ChatViewModel(
             }
         }
     }
+
+    private fun ChatActivityUi.completeIfTurnFinished(finished: Boolean): ChatActivityUi =
+        if (
+            finished &&
+            this is ChatActivityUi.Tool &&
+            status in setOf(ActivityStatusUi.PENDING, ActivityStatusUi.RUNNING)
+        ) {
+            copy(status = ActivityStatusUi.COMPLETED)
+        } else {
+            this
+        }
 
     private fun JsonObject.toToolUi(activity: OrchestrationActivity): ChatActivityUi.Tool {
         val command = toolCommand()
