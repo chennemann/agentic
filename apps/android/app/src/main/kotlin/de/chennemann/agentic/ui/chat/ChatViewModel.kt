@@ -1012,7 +1012,6 @@ class ChatViewModel(
             ?.id
         val activities = detail.activities.filter {
             if (
-                it.kind == "tool.started" ||
                 it.kind == "task.started" ||
                 it.kind == "context-window.updated" ||
                 it.summary == "Checkpoint captured"
