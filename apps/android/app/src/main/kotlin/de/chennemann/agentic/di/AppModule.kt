@@ -5,6 +5,12 @@ import de.chennemann.agentic.data.AndroidNetworkMonitor
 import de.chennemann.agentic.data.auth.CredentialStore
 import de.chennemann.agentic.data.auth.KeystoreCredentialStore
 import de.chennemann.agentic.data.cache.SqlComposerDraftRepository
+import de.chennemann.agentic.data.cache.SqlCommandOutbox
+import de.chennemann.agentic.data.cache.SqlSharedTextImportRepository
+import de.chennemann.agentic.data.cache.SqlInterfacePreferencesRepository
+import de.chennemann.agentic.data.cache.SqlEnvironmentCacheInspector
+import de.chennemann.agentic.data.shortcuts.AndroidDynamicShortcutPublisher
+import de.chennemann.agentic.data.shortcuts.AndroidShortcutRouteInbox
 import de.chennemann.agentic.data.cache.SqlEnvironmentRepository
 import de.chennemann.agentic.data.cache.SqlModelFavoriteRepository
 import de.chennemann.agentic.data.cache.SqlOrchestrationRepository
@@ -24,15 +30,41 @@ import de.chennemann.agentic.domain.connection.ConnectionSupervisor
 import de.chennemann.agentic.domain.connection.ConnectionController
 import de.chennemann.agentic.domain.connection.NetworkMonitor
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
+import de.chennemann.agentic.domain.environment.EnvironmentRemover
+import de.chennemann.agentic.domain.environment.EnvironmentCacheRemover
 import de.chennemann.agentic.domain.environment.EnvironmentService
 import de.chennemann.agentic.domain.environment.EnvironmentSelector
+import de.chennemann.agentic.domain.environment.EnvironmentCacheInspector
+import de.chennemann.agentic.domain.environment.EnvironmentCacheActions
+import de.chennemann.agentic.domain.environment.EnvironmentCacheService
+import de.chennemann.agentic.domain.environment.RegisteredEnvironmentRemover
 import de.chennemann.agentic.domain.orchestration.ChatActions
 import de.chennemann.agentic.domain.orchestration.ChatService
+import de.chennemann.agentic.domain.orchestration.CommandDispatcher
+import de.chennemann.agentic.domain.orchestration.CommandOutbox
+import de.chennemann.agentic.domain.sharing.SharedTextImportRepository
+import de.chennemann.agentic.domain.shortcuts.DynamicShortcutPublisher
+import de.chennemann.agentic.domain.shortcuts.ShortcutRouteInbox
+import de.chennemann.agentic.domain.shortcuts.DefaultShortcutCoordinator
+import de.chennemann.agentic.domain.shortcuts.ShortcutCoordinator
+import de.chennemann.agentic.domain.orchestration.DurableCommandDispatcher
 import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
+import de.chennemann.agentic.domain.orchestration.PendingCommandReplayer
+import de.chennemann.agentic.domain.orchestration.ProjectActions
+import de.chennemann.agentic.domain.orchestration.ProjectService
+import de.chennemann.agentic.ui.chat.workflow.CacheAdministration
+import de.chennemann.agentic.ui.chat.workflow.DefaultCacheAdministration
+import de.chennemann.agentic.ui.chat.workflow.DefaultProjectWorkflow
+import de.chennemann.agentic.ui.chat.workflow.DefaultSharedTextWorkflow
+import de.chennemann.agentic.ui.chat.workflow.DefaultShortcutWorkflow
+import de.chennemann.agentic.ui.chat.workflow.ProjectWorkflow
+import de.chennemann.agentic.ui.chat.workflow.SharedTextWorkflow
+import de.chennemann.agentic.ui.chat.workflow.ShortcutWorkflow
 import de.chennemann.agentic.domain.orchestration.ThreadService
 import de.chennemann.agentic.domain.orchestration.ThreadActions
 import de.chennemann.agentic.domain.preferences.ComposerDraftRepository
 import de.chennemann.agentic.domain.preferences.ModelFavoriteRepository
+import de.chennemann.agentic.domain.preferences.InterfacePreferencesRepository
 import de.chennemann.agentic.domain.voice.AudioRecorder
 import de.chennemann.agentic.domain.voice.AudioTranscriptionClient
 import de.chennemann.agentic.domain.voice.GroqApiKeyStore
@@ -128,6 +160,26 @@ val appModule = module {
             dispatcher = get<DispatcherProvider>().io,
         )
     }
+    single<CommandOutbox> { SqlCommandOutbox(get(), get<DispatcherProvider>().io) }
+    single<SharedTextImportRepository> { SqlSharedTextImportRepository(get(), get<DispatcherProvider>().io) }
+    single<InterfacePreferencesRepository> { SqlInterfacePreferencesRepository(get(), get<DispatcherProvider>().io) }
+    single<EnvironmentCacheInspector> { SqlEnvironmentCacheInspector(get(), get<DispatcherProvider>().io) }
+    single<EnvironmentCacheActions> { EnvironmentCacheService(get(), get(), get(), get()) }
+    single<DynamicShortcutPublisher> { AndroidDynamicShortcutPublisher(get()) }
+    single<ShortcutRouteInbox> { AndroidShortcutRouteInbox() }
+    single<ShortcutCoordinator>(createdAtStart = true) {
+        DefaultShortcutCoordinator(get(), get(), get(), get(), get(), get(), get(named(AppScopeName)))
+    }
+    single {
+        DurableCommandDispatcher(
+            environments = get(),
+            credentials = get(),
+            client = get(),
+            outbox = get(),
+        )
+    }
+    single<CommandDispatcher> { get<DurableCommandDispatcher>() }
+    single<PendingCommandReplayer> { get<DurableCommandDispatcher>() }
     single {
         AndroidClientMetadata(
             label = "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}".trim(),
@@ -135,17 +187,31 @@ val appModule = module {
         )
     }
     single {
-        EnvironmentService(get(), get(), get(), get(), get(), get(), get())
+        EnvironmentService(get(), get(), get(), get(), get(), get())
     }
     single<EnvironmentSelector> { get<EnvironmentService>() }
+    single<EnvironmentCacheRemover> {
+        EnvironmentCacheRemover { get<OrchestrationRepository>().clearEnvironment(it) }
+    }
+    single<EnvironmentRemover> { RegisteredEnvironmentRemover(get(), get(), get()) }
     single {
-        ThreadService(get(), get(), get(), get())
+        ThreadService(get(), get(), get())
     }
     single<ThreadActions> { get<ThreadService>() }
     single {
-        ChatService(get(), get(), get())
+        ChatService(get())
     }
     single<ChatActions> { get<ChatService>() }
+    single { ProjectService(get(), get()) }
+    single<ProjectActions> { get<ProjectService>() }
+    factory<ProjectWorkflow> { DefaultProjectWorkflow(get(), get(), get()) }
+    factory<SharedTextWorkflow> {
+        DefaultSharedTextWorkflow(get(), get(), get(), get(), get(), get())
+    }
+    factory<ShortcutWorkflow> {
+        DefaultShortcutWorkflow(get())
+    }
+    factory<CacheAdministration> { DefaultCacheAdministration(get()) }
     single(createdAtStart = true) {
         ConnectionSupervisor(
             environments = get(),
@@ -156,17 +222,20 @@ val appModule = module {
             snapshots = get(),
             streams = get(),
             network = get(),
+            pendingCommands = get(),
             scope = get(named(AppScopeName)),
         )
     }
     single<ConnectionController> { get<ConnectionSupervisor>() }
-    viewModel { OnboardingViewModel(get(), get()) }
+    viewModel { OnboardingViewModel(get(), get(), get()) }
     viewModel {
         ChatViewModel(
             environments = get(),
             repository = get(),
             connection = get(),
             environmentService = get(),
+            environmentRemover = get(),
+            projectWorkflow = get(),
             threads = get(),
             chat = get(),
             composerDrafts = get(),
@@ -174,6 +243,11 @@ val appModule = module {
             mappingDispatcher = get<DispatcherProvider>().default,
             groqApiKeys = get(),
             voiceInput = get(),
+            commandOutbox = get(),
+            sharedTextWorkflow = get(),
+            shortcutWorkflow = get(),
+            interfacePreferences = get(),
+            cacheAdministration = get(),
         )
     }
 }

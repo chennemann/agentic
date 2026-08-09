@@ -3,16 +3,39 @@ package de.chennemann.agentic.ui.chat
 import de.chennemann.agentic.domain.connection.ConnectionController
 import de.chennemann.agentic.domain.connection.ConnectionState
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
+import de.chennemann.agentic.domain.environment.EnvironmentCacheActions
+import de.chennemann.agentic.domain.environment.EnvironmentCacheUsage
+import de.chennemann.agentic.domain.environment.CacheCategoryUsage
 import de.chennemann.agentic.domain.environment.EnvironmentSelector
 import de.chennemann.agentic.domain.environment.SavedEnvironment
 import de.chennemann.agentic.domain.orchestration.ChatActions
+import de.chennemann.agentic.domain.orchestration.CommandOutbox
+import de.chennemann.agentic.domain.orchestration.OutboxCommand
+import de.chennemann.agentic.domain.orchestration.OutboxCommandStatus
 import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.domain.orchestration.ProjectionSource
 import de.chennemann.agentic.domain.orchestration.ProjectionState
+import de.chennemann.agentic.domain.orchestration.ProjectActions
 import de.chennemann.agentic.domain.orchestration.Reduction
 import de.chennemann.agentic.domain.orchestration.StartTurnResult
 import de.chennemann.agentic.domain.orchestration.ThreadActions
 import de.chennemann.agentic.domain.preferences.ComposerDraftRepository
+import de.chennemann.agentic.domain.preferences.InterfacePreferences
+import de.chennemann.agentic.domain.preferences.InterfacePreferencesRepository
+import de.chennemann.agentic.domain.preferences.ThemePreference
+import de.chennemann.agentic.domain.sharing.PendingSharedText
+import de.chennemann.agentic.domain.sharing.SharedTextImportRepository
+import de.chennemann.agentic.domain.sharing.SharedTextParseResult
+import de.chennemann.agentic.domain.shortcuts.DynamicShortcutPublisher
+import de.chennemann.agentic.domain.shortcuts.DynamicShortcutSpec
+import de.chennemann.agentic.domain.shortcuts.DefaultShortcutCoordinator
+import de.chennemann.agentic.domain.shortcuts.ShortcutParseResult
+import de.chennemann.agentic.domain.shortcuts.ShortcutRoute
+import de.chennemann.agentic.domain.shortcuts.ShortcutRouteInbox
+import de.chennemann.agentic.ui.chat.workflow.DefaultCacheAdministration
+import de.chennemann.agentic.ui.chat.workflow.DefaultProjectWorkflow
+import de.chennemann.agentic.ui.chat.workflow.DefaultSharedTextWorkflow
+import de.chennemann.agentic.ui.chat.workflow.DefaultShortcutWorkflow
 import de.chennemann.agentic.domain.voice.GroqApiKeyStore
 import de.chennemann.agentic.domain.voice.VoiceInputService
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
@@ -35,14 +58,17 @@ import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.ProviderInstance
 import de.chennemann.agentic.t3.contract.ProviderModel
 import de.chennemann.agentic.t3.contract.ProviderOptionSelection
+import de.chennemann.agentic.t3.contract.ProposedPlan
 import de.chennemann.agentic.t3.contract.PortableJson
 import de.chennemann.agentic.t3.contract.ServerAuthDescriptor
 import de.chennemann.agentic.t3.contract.ThreadSession
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.advanceUntilIdle
@@ -62,6 +88,676 @@ import org.junit.jupiter.api.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModelIntentTest {
+    @Test
+    fun `new view model resets workflow forms while durable shared text restores`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val environments = FakeViewModelEnvironmentRepository()
+        val imports = FakeSharedTextImportRepository(PendingSharedText("durable", "restore me"))
+        val drafts = FakeComposerDraftRepository()
+        fun createViewModel() = ChatViewModel(
+            environments = environments,
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+            projectWorkflow = DefaultProjectWorkflow(repository, RecordingProjectActions(), RecordingThreadActions(repository)),
+            sharedTextWorkflow = DefaultSharedTextWorkflow(
+                imports,
+                environments,
+                EnvironmentSelector {},
+                repository,
+                RecordingThreadActions(repository),
+                drafts,
+            ),
+        )
+
+        val first = createViewModel()
+        advanceUntilIdle()
+        first.onEvent(ChatUiEvent.ProjectCreationRequested)
+        first.onEvent(ChatUiEvent.ProjectCreationSourceChanged("/stale/path"))
+        first.onEvent(ChatUiEvent.SharedImportEnvironmentSelected("environment"))
+        advanceUntilIdle()
+        assertEquals("/stale/path", first.state.value.projectCreation?.source)
+        assertEquals("environment", first.state.value.sharedTextImport?.environmentId)
+
+        val recreated = createViewModel()
+        advanceUntilIdle()
+
+        assertEquals(null, recreated.state.value.projectCreation)
+        assertEquals("restore me", recreated.state.value.sharedTextImport?.text)
+        assertEquals(null, recreated.state.value.sharedTextImport?.environmentId)
+    }
+
+    @Test
+    fun `durable outbox failure maps safely retries and acknowledgement removes it`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val outbox = ReactiveCommandOutbox(
+            OutboxCommand(
+                "environment",
+                ClientOrchestrationCommand.ArchiveThread("command", "thread-1"),
+                OutboxCommandStatus.FAILED,
+                2,
+                "Network unavailable",
+            ),
+        )
+        val connection = FakeConnectionController()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = connection, environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository), chat = NoOpChatActions(), mappingDispatcher = dispatcher,
+            commandOutbox = outbox,
+        )
+        advanceUntilIdle()
+        val work = viewModel.state.value.durableWork.single()
+        assertEquals("Update thread", work.label)
+        assertEquals("thread-1", work.threadId)
+        assertEquals("Network unavailable", work.errorMessage)
+        assertTrue(work.awaitsReplay)
+
+        viewModel.onEvent(ChatUiEvent.DurableWorkRetryRequested)
+        assertTrue(connection.pendingCommandsRetried)
+        outbox.remove("environment", "command")
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.durableWork.isEmpty())
+    }
+
+    @Test
+    fun `cache inspection maps protected categories and confirmation retries clear`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val cache = RecordingEnvironmentCacheActions()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository), chat = NoOpChatActions(), mappingDispatcher = dispatcher,
+            cacheAdministration = DefaultCacheAdministration(cache),
+        )
+        advanceUntilIdle()
+        viewModel.onEvent(ChatUiEvent.CacheInspectionRequested("environment"))
+        advanceUntilIdle()
+        assertEquals(160L, viewModel.state.value.cacheClearance?.clearableBytes)
+        assertTrue(viewModel.state.value.cacheClearance?.categories?.any { "protected" in it } == true)
+
+        cache.failure = IllegalStateException("Clear rejected")
+        viewModel.onEvent(ChatUiEvent.CacheClearConfirmed)
+        advanceUntilIdle()
+        assertEquals("Clear rejected", viewModel.state.value.cacheClearance?.errorMessage)
+        cache.failure = null
+        viewModel.onEvent(ChatUiEvent.CacheClearConfirmed)
+        advanceUntilIdle()
+        assertEquals(listOf("environment", "environment"), cache.cleared)
+        assertTrue(viewModel.state.value.cacheClearance?.success == true)
+    }
+
+    @Test
+    fun `workflow flow maps directly without a local state mirror`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val workflow = DefaultCacheAdministration(RecordingEnvironmentCacheActions())
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository), chat = NoOpChatActions(), mappingDispatcher = dispatcher,
+            cacheAdministration = workflow,
+        )
+        advanceUntilIdle()
+
+        workflow.accept(de.chennemann.agentic.ui.chat.workflow.CacheAdministrationIntent.Inspect("environment"))
+        advanceUntilIdle()
+
+        assertEquals(160L, viewModel.state.value.cacheClearance?.clearableBytes)
+    }
+
+    @Test
+    fun `interface preferences map reactively and settings events use repository values`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val preferences = RecordingInterfacePreferencesRepository(
+            InterfacePreferences(ThemePreference.DARK, interfaceScale = 1.15f, codeScale = 0.9f),
+        )
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository), chat = NoOpChatActions(), mappingDispatcher = dispatcher,
+            interfacePreferences = preferences,
+        )
+        advanceUntilIdle()
+
+        assertEquals(ThemePreference.DARK, viewModel.state.value.interfaceSettings.theme)
+        assertEquals(1.15f, viewModel.state.value.interfaceSettings.interfaceScale)
+        assertEquals(0.9f, viewModel.state.value.interfaceSettings.codeScale)
+
+        viewModel.onEvent(ChatUiEvent.ThemeSelected(ThemePreference.LIGHT))
+        viewModel.onEvent(ChatUiEvent.InterfaceScaleSelected(0.9f))
+        viewModel.onEvent(ChatUiEvent.CodeScaleSelected(1.15f))
+        viewModel.onEvent(ChatUiEvent.InterfaceScaleSelected(9f))
+        viewModel.onEvent(ChatUiEvent.CodeScaleSelected(-1f))
+        advanceUntilIdle()
+
+        assertEquals(listOf(ThemePreference.LIGHT), preferences.themes)
+        assertEquals(listOf(0.9f), preferences.interfaceScales)
+        assertEquals(listOf(1.15f), preferences.codeScales)
+        assertEquals(ThemePreference.LIGHT, viewModel.state.value.interfaceSettings.theme)
+        assertEquals(0.9f, viewModel.state.value.interfaceSettings.interfaceScale)
+        assertEquals(1.15f, viewModel.state.value.interfaceSettings.codeScale)
+    }
+
+    @Test
+    fun `keyboard mapped events retain public ViewModel guards`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val chat = NoOpChatActions()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository), chat = chat, mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        KeyboardAction.SEND.toChatUiEvent()?.let(viewModel::onEvent)
+        KeyboardAction.STOP_TURN.toChatUiEvent()?.let(viewModel::onEvent)
+        advanceUntilIdle()
+        assertTrue(chat.startTurnCalls.isEmpty())
+        assertTrue(chat.interruptedTurns.isEmpty())
+
+        KeyboardAction.OPEN_NAVIGATION.toChatUiEvent()?.let(viewModel::onEvent)
+        advanceUntilIdle()
+        assertEquals(ChatPickerUi.NAVIGATION, viewModel.state.value.activePicker)
+        KeyboardAction.NEW_TASK.toChatUiEvent()?.let(viewModel::onEvent)
+        advanceUntilIdle()
+        assertEquals(null, repository.focusedThreadId.value)
+    }
+
+    @Test
+    fun `dynamic shortcuts publish recent server threads and validate routes before navigation`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val actions = RecordingThreadActions(repository)
+        val publisher = RecordingShortcutPublisher()
+        val inbox = FakeShortcutRouteInbox()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = actions, chat = NoOpChatActions(), mappingDispatcher = dispatcher,
+            shortcutWorkflow = DefaultShortcutWorkflow(
+                DefaultShortcutCoordinator(
+                    FakeViewModelEnvironmentRepository(), repository, EnvironmentSelector {}, actions,
+                    publisher, inbox, CoroutineScope(dispatcher),
+                ),
+            ),
+        )
+        runCurrent()
+        advanceUntilIdle()
+
+        assertEquals("new-task:environment", publisher.latest.first().id)
+        assertEquals(ShortcutRoute.NewTask("environment", "project-1"), publisher.latest.first().route)
+        assertTrue(publisher.latest.size <= 4)
+        assertEquals(listOf("thread-2", "thread-1"), publisher.latest.drop(1).map { (it.route as ShortcutRoute.Thread).threadId })
+        inbox.receive(ShortcutParseResult.Valid(ShortcutRoute.Thread("environment", "project-1", "thread-1")))
+        advanceUntilIdle()
+        assertEquals("thread-1", actions.selectedThreads.last())
+        inbox.receive(ShortcutParseResult.Valid(ShortcutRoute.NewTask("missing-environment", "project-1")))
+        advanceUntilIdle()
+        assertEquals("This shortcut's environment is no longer registered.", viewModel.state.value.shortcutError)
+        inbox.receive(ShortcutParseResult.Valid(ShortcutRoute.NewTask("environment", "missing-project")))
+        advanceUntilIdle()
+        assertEquals("Choose an available project for this new task.", viewModel.state.value.shortcutError)
+
+        inbox.receive(ShortcutParseResult.Valid(ShortcutRoute.Thread("environment", "project-1", "missing")))
+        advanceUntilIdle()
+        assertEquals("This shortcut's thread or project is no longer available.", viewModel.state.value.shortcutError)
+        assertEquals("thread-1", actions.selectedThreads.last())
+        inbox.receive(ShortcutParseResult.Invalid("Shortcut route is malformed."))
+        advanceUntilIdle()
+        assertEquals("Shortcut route is malformed.", viewModel.state.value.shortcutError)
+    }
+
+    @Test
+    fun `shortcut coordinator publishes and routes without a chat view model`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val actions = RecordingThreadActions(repository)
+        val publisher = RecordingShortcutPublisher()
+        val inbox = FakeShortcutRouteInbox()
+
+        DefaultShortcutCoordinator(
+            FakeViewModelEnvironmentRepository(),
+            repository,
+            EnvironmentSelector {},
+            actions,
+            publisher,
+            inbox,
+            backgroundScope,
+        )
+        runCurrent()
+
+        assertEquals("new-task:environment", publisher.latest.first().id)
+        inbox.receive(ShortcutParseResult.Valid(ShortcutRoute.Thread("environment", "project-1", "thread-1")))
+        runCurrent()
+        assertEquals("thread-1", actions.selectedThreads.last())
+    }
+
+    @Test
+    fun `shared text requires selection creates only a new task draft and survives retry`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val imports = FakeSharedTextImportRepository(PendingSharedText("fingerprint", "Review https://example.test"))
+        val drafts = FakeComposerDraftRepository()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository), chat = NoOpChatActions(), mappingDispatcher = dispatcher,
+            composerDrafts = drafts,
+            sharedTextWorkflow = DefaultSharedTextWorkflow(
+                imports, FakeViewModelEnvironmentRepository(), EnvironmentSelector {}, repository,
+                RecordingThreadActions(repository), drafts,
+            ),
+        )
+        advanceUntilIdle()
+        assertEquals("Review https://example.test", viewModel.state.value.sharedTextImport?.text)
+        viewModel.onEvent(ChatUiEvent.SharedImportConfirmed)
+        advanceUntilIdle()
+        assertTrue(drafts.writes.isEmpty())
+
+        viewModel.onEvent(ChatUiEvent.SharedImportEnvironmentSelected("environment"))
+        advanceUntilIdle()
+        viewModel.onEvent(ChatUiEvent.SharedImportProjectSelected("project-1"))
+        imports.importFailure = IllegalStateException("Receipt update failed")
+        viewModel.onEvent(ChatUiEvent.SharedImportConfirmed)
+        advanceUntilIdle()
+        assertEquals("Receipt update failed", viewModel.state.value.sharedTextImport?.errorMessage)
+        assertEquals("new-project:project-1", drafts.writes.single().second)
+        assertEquals(null, repository.focusedThreadId.value)
+
+        imports.importFailure = null
+        viewModel.onEvent(ChatUiEvent.SharedImportConfirmed)
+        advanceUntilIdle()
+        assertEquals(null, viewModel.state.value.sharedTextImport)
+        assertEquals(1, drafts.writes.size)
+        assertEquals("Review https://example.test", drafts.writes.last().third)
+        assertTrue(NoOpChatActions().startTurnCalls.isEmpty())
+    }
+
+    @Test
+    fun `shared text discard removes durable review without draft or dispatch`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val imports = FakeSharedTextImportRepository(PendingSharedText("fingerprint", "discard me"))
+        val drafts = FakeComposerDraftRepository()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository), chat = NoOpChatActions(), mappingDispatcher = dispatcher,
+            composerDrafts = drafts,
+            sharedTextWorkflow = DefaultSharedTextWorkflow(
+                imports, FakeViewModelEnvironmentRepository(), EnvironmentSelector {}, repository,
+                RecordingThreadActions(repository), drafts,
+            ),
+        )
+        advanceUntilIdle()
+        viewModel.onEvent(ChatUiEvent.SharedImportDiscarded)
+        advanceUntilIdle()
+        assertEquals(null, viewModel.state.value.sharedTextImport)
+        assertTrue(drafts.writes.isEmpty())
+        assertEquals(listOf("fingerprint"), imports.discarded)
+    }
+
+    @Test
+    fun `unknown deletion capability and wrong environment never expose confirmation`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val actions = RecordingThreadActions(repository)
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = actions, chat = NoOpChatActions(), mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+        viewModel.onEvent(ChatUiEvent.DeleteThreadRequested)
+        advanceUntilIdle()
+        assertEquals(null, viewModel.state.value.threadDeletion)
+
+        val config = requireNotNull(repository.clientConfig.value.value)
+        repository.clientConfig.value = repository.clientConfig.value.copy(
+            value = config.copy(
+                environment = config.environment.copy(
+                    environmentId = "wrong-environment",
+                    capabilities = config.environment.capabilities.copy(threadDeletion = true),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+        viewModel.onEvent(ChatUiEvent.DeleteThreadRequested)
+        advanceUntilIdle()
+        assertEquals(null, viewModel.state.value.threadDeletion)
+        assertTrue(actions.deletedThreads.isEmpty())
+    }
+
+    @Test
+    fun `permanent deletion guards pending work confirms retries and waits for disappearance`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val config = requireNotNull(repository.clientConfig.value.value)
+        repository.clientConfig.value = repository.clientConfig.value.copy(
+            value = config.copy(environment = config.environment.copy(capabilities = config.environment.capabilities.copy(threadDeletion = true))),
+        )
+        val actions = RecordingThreadActions(repository)
+        val outbox = FakeCommandOutbox()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = actions, chat = NoOpChatActions(), mappingDispatcher = dispatcher, commandOutbox = outbox,
+        )
+        advanceUntilIdle()
+
+        viewModel.onEvent(ChatUiEvent.DraftChanged("unsent work"))
+        viewModel.onEvent(ChatUiEvent.DeleteThreadRequested)
+        advanceUntilIdle()
+        assertEquals(listOf("Unsent draft"), viewModel.state.value.threadDeletion?.blockers)
+        viewModel.onEvent(ChatUiEvent.DeleteThreadDismissed)
+        assertTrue(actions.deletedThreads.isEmpty())
+
+        viewModel.onEvent(ChatUiEvent.DraftChanged(""))
+        val current = requireNotNull(repository.focusedThread.value.value)
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = current.copy(
+                thread = current.thread.copy(
+                    session = ThreadSession("thread-1", "running", activeTurnId = "turn-1", updatedAt = "2026-08-06T00:00:00Z"),
+                ),
+            ),
+        )
+        viewModel.onEvent(ChatUiEvent.DeleteThreadRequested)
+        advanceUntilIdle()
+        assertEquals(listOf("Active turn"), viewModel.state.value.threadDeletion?.blockers)
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = repository.focusedThread.value.value?.copy(
+                thread = requireNotNull(repository.focusedThread.value.value).thread.copy(session = null),
+            ),
+        )
+        outbox.entries += OutboxCommand("environment", ClientOrchestrationCommand.ArchiveThread("pending", "thread-1"), OutboxCommandStatus.PENDING, 0, null)
+        viewModel.onEvent(ChatUiEvent.DeleteThreadRequested)
+        advanceUntilIdle()
+        assertEquals(listOf("Pending command"), viewModel.state.value.threadDeletion?.blockers)
+        outbox.entries.clear()
+        viewModel.onEvent(ChatUiEvent.DeleteThreadRequested)
+        advanceUntilIdle()
+        assertTrue(requireNotNull(viewModel.state.value.threadDeletion).canConfirm)
+
+        actions.deleteFailure = IllegalStateException("Delete rejected")
+        viewModel.onEvent(ChatUiEvent.DeleteThreadConfirmed)
+        advanceUntilIdle()
+        assertEquals("Delete rejected", viewModel.state.value.threadDeletion?.errorMessage)
+        assertEquals("thread-1", viewModel.state.value.threadId)
+        actions.deleteFailure = null
+        viewModel.onEvent(ChatUiEvent.DeleteThreadConfirmed)
+        viewModel.onEvent(ChatUiEvent.DeleteThreadConfirmed)
+        advanceUntilIdle()
+        assertEquals(listOf("thread-1", "thread-1"), actions.deletedThreads)
+        assertTrue(requireNotNull(viewModel.state.value.threadDeletion).deleting)
+
+        repository.focusedThread.value = ProjectionState(sequence = 9, source = ProjectionSource.LIVE, synchronized = true)
+        repository.shell.value = repository.shell.value.copy(
+            value = repository.shell.value.value?.copy(threads = repository.shell.value.value!!.threads.filterNot { it.id == "thread-1" }),
+        )
+        advanceUntilIdle()
+        assertEquals(null, viewModel.state.value.threadDeletion)
+        assertEquals("thread-2", repository.focusedThreadId.value)
+    }
+
+    @Test
+    fun `supported thread snoozes retries wake and accepts automatic projected wake`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val config = requireNotNull(repository.clientConfig.value.value)
+        repository.clientConfig.value = repository.clientConfig.value.copy(
+            value = config.copy(
+                environment = config.environment.copy(
+                    capabilities = config.environment.capabilities.copy(threadSnooze = true),
+                ),
+            ),
+        )
+        val actions = RecordingThreadActions(repository)
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = actions,
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.threadSnooze.supported)
+        assertTrue(viewModel.state.value.threadSnooze.canSnooze)
+        viewModel.onEvent(ChatUiEvent.ThreadSnoozeRequested("2026-08-07T09:00:00Z"))
+        viewModel.onEvent(ChatUiEvent.ThreadSnoozeRequested("2026-08-07T09:00:00Z"))
+        advanceUntilIdle()
+        assertEquals(listOf("thread-1" to "2026-08-07T09:00:00Z"), actions.snoozedThreads)
+        assertTrue(viewModel.state.value.threadSnooze.actionInProgress)
+
+        val current = requireNotNull(repository.focusedThread.value.value)
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = current.copy(
+                thread = current.thread.copy(
+                    snoozedAt = "2026-08-06T09:00:00Z",
+                    snoozedUntil = "2026-08-07T09:00:00Z",
+                ),
+            ),
+        )
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.threadSnooze.isSnoozed)
+        assertEquals("2026-08-07T09:00:00Z", viewModel.state.value.threadSnooze.snoozedUntil)
+        assertTrue(viewModel.state.value.threadSnooze.canWake)
+
+        actions.wakeFailure = IllegalStateException("Wake rejected")
+        viewModel.onEvent(ChatUiEvent.ThreadWakeRequested)
+        advanceUntilIdle()
+        assertEquals("Wake rejected", viewModel.state.value.threadSnooze.errorMessage)
+        assertTrue(viewModel.state.value.threadSnooze.canWake)
+        actions.wakeFailure = null
+        viewModel.onEvent(ChatUiEvent.ThreadWakeRequested)
+        viewModel.onEvent(ChatUiEvent.ThreadWakeRequested)
+        advanceUntilIdle()
+        assertEquals(listOf("thread-1", "thread-1"), actions.wokenThreads)
+
+        val snoozed = requireNotNull(repository.focusedThread.value.value)
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = snoozed.copy(
+                thread = snoozed.thread.copy(
+                    snoozedAt = null,
+                    snoozedUntil = null,
+                    lastWakeReason = "activity",
+                ),
+            ),
+        )
+        advanceUntilIdle()
+        assertEquals(false, viewModel.state.value.threadSnooze.isSnoozed)
+        assertEquals("activity", viewModel.state.value.threadSnooze.wakeReason)
+        assertEquals(false, viewModel.state.value.threadSnooze.actionInProgress)
+    }
+
+    @Test
+    fun `unsupported or mismatched environment never exposes snooze commands`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val actions = RecordingThreadActions(repository)
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = actions,
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        assertEquals(false, viewModel.state.value.threadSnooze.supported)
+        viewModel.onEvent(ChatUiEvent.ThreadSnoozeRequested("2026-08-07T09:00:00Z"))
+        viewModel.onEvent(ChatUiEvent.ThreadWakeRequested)
+        advanceUntilIdle()
+        assertTrue(actions.snoozedThreads.isEmpty())
+        assertTrue(actions.wokenThreads.isEmpty())
+
+        val config = requireNotNull(repository.clientConfig.value.value)
+        repository.clientConfig.value = repository.clientConfig.value.copy(
+            value = config.copy(
+                environment = config.environment.copy(
+                    environmentId = "other-environment",
+                    capabilities = config.environment.capabilities.copy(threadSnooze = true),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+        assertEquals(false, viewModel.state.value.threadSnooze.supported)
+
+        repository.clientConfig.value = repository.clientConfig.value.copy(
+            value = config.copy(
+                environment = config.environment.copy(
+                    capabilities = config.environment.capabilities.copy(threadSnooze = true),
+                ),
+            ),
+        )
+        val current = requireNotNull(repository.focusedThread.value.value)
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = current.copy(thread = current.thread.copy(id = "stale-thread")),
+        )
+        advanceUntilIdle()
+        viewModel.onEvent(ChatUiEvent.ThreadSnoozeRequested("2026-08-07T09:00:00Z"))
+        advanceUntilIdle()
+        assertTrue(actions.snoozedThreads.isEmpty())
+    }
+
+    @Test
+    fun `session termination fails retryably then waits for projection independently of turn stop`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val detail = requireNotNull(repository.focusedThread.value.value).thread
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = repository.focusedThread.value.value?.copy(
+                thread = detail.copy(
+                    latestTurn = LatestTurn(
+                        turnId = "turn-1",
+                        state = "running",
+                        requestedAt = "2026-08-06T09:59:00Z",
+                        startedAt = "2026-08-06T10:00:00Z",
+                        completedAt = null,
+                    ),
+                    session = ThreadSession(
+                        threadId = "thread-1",
+                        status = "running",
+                        activeTurnId = "turn-1",
+                        updatedAt = "2026-08-06T10:00:00Z",
+                    ),
+                ),
+            ),
+        )
+        val chat = NoOpChatActions(terminateSessionFailure = IllegalStateException("Stop rejected"))
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = chat,
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.isTurnRunning)
+        assertTrue(viewModel.state.value.sessionTermination.canTerminate)
+        viewModel.onEvent(ChatUiEvent.SessionTerminationRequested)
+        viewModel.onEvent(ChatUiEvent.SessionTerminationRequested)
+        advanceUntilIdle()
+
+        assertEquals(listOf("thread-1"), chat.terminatedSessions)
+        assertEquals("Stop rejected", viewModel.state.value.sessionTermination.errorMessage)
+        assertTrue(viewModel.state.value.sessionTermination.canTerminate)
+
+        chat.terminateSessionFailure = null
+        viewModel.onEvent(ChatUiEvent.SessionTerminationRequested)
+        viewModel.onEvent(ChatUiEvent.SessionTerminationRequested)
+        viewModel.onEvent(ChatUiEvent.TurnInterruptRequested)
+        advanceUntilIdle()
+
+        assertEquals(listOf("thread-1", "thread-1"), chat.terminatedSessions)
+        assertEquals(listOf("thread-1" to "turn-1"), chat.interruptedTurns)
+        assertTrue(viewModel.state.value.sessionTermination.terminating)
+        assertEquals(false, viewModel.state.value.sessionTermination.terminal)
+
+        val running = requireNotNull(repository.focusedThread.value.value).thread
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = repository.focusedThread.value.value?.copy(
+                thread = running.copy(
+                    session = running.session?.copy(
+                        status = "stopped",
+                        activeTurnId = null,
+                        updatedAt = "2026-08-06T10:01:00Z",
+                    ),
+                ),
+            ),
+        )
+        advanceUntilIdle()
+
+        assertEquals(false, viewModel.state.value.sessionTermination.terminating)
+        assertTrue(viewModel.state.value.sessionTermination.terminal)
+        assertEquals(false, viewModel.state.value.isTurnRunning)
+        viewModel.onEvent(ChatUiEvent.SessionTerminationRequested)
+        advanceUntilIdle()
+        assertEquals(2, chat.terminatedSessions.size)
+    }
+
+    @Test
+    fun `latest proposed plan continues once and exposes failure retry truthfully`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val detail = requireNotNull(repository.focusedThread.value.value).thread
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = repository.focusedThread.value.value?.copy(
+                thread = detail.copy(
+                    proposedPlans = listOf(
+                        proposedPlan("older-plan", "Older"),
+                        proposedPlan("latest-plan", "Latest provider-neutral plan", updatedAt = "2026-08-06T02:00:00Z"),
+                    ),
+                ),
+            ),
+        )
+        val chat = NoOpChatActions(continuePlanFailure = IllegalStateException("Continuation rejected"))
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = chat,
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        viewModel.onEvent(ChatUiEvent.ProposedPlanContinueRequested("older-plan"))
+        viewModel.onEvent(ChatUiEvent.ProposedPlanContinueRequested("latest-plan"))
+        viewModel.onEvent(ChatUiEvent.ProposedPlanContinueRequested("latest-plan"))
+        advanceUntilIdle()
+
+        assertEquals(listOf("thread-1" to "latest-plan"), chat.planContinuations)
+        val card = viewModel.state.value.timeline
+            .filterIsInstance<ChatTimelineItemUi.Activity>()
+            .map { it.value }
+            .filterIsInstance<ChatActivityUi.ProposedPlan>()
+            .single { it.id == "latest-plan" }
+        assertEquals("Latest provider-neutral plan", card.planMarkdown)
+        assertEquals("Continuation rejected", card.errorMessage)
+        assertEquals(true, card.canContinue)
+        val older = viewModel.state.value.timeline
+            .filterIsInstance<ChatTimelineItemUi.Activity>()
+            .map { it.value }
+            .filterIsInstance<ChatActivityUi.ProposedPlan>()
+            .single { it.id == "older-plan" }
+        assertEquals(false, older.canContinue)
+
+        chat.continuePlanFailure = null
+        viewModel.onEvent(ChatUiEvent.ProposedPlanContinueRequested("latest-plan"))
+        viewModel.onEvent(ChatUiEvent.ProposedPlanContinueRequested("latest-plan"))
+        advanceUntilIdle()
+        assertEquals(2, chat.planContinuations.size)
+        val pending = viewModel.state.value.timeline
+            .filterIsInstance<ChatTimelineItemUi.Activity>()
+            .map { it.value }
+            .filterIsInstance<ChatActivityUi.ProposedPlan>()
+            .single { it.id == "latest-plan" }
+        assertEquals(true, pending.continuing)
+        assertEquals(false, pending.canContinue)
+    }
+
     private val dispatcher = StandardTestDispatcher()
 
     @BeforeEach
@@ -73,6 +769,43 @@ class ChatViewModelIntentTest {
     fun tearDown() {
         Dispatchers.resetMain()
     }
+
+    @Test
+    fun `project removal cancellation never dispatches and confirmation selects server-confirmed fallback`() =
+        runTest(dispatcher) {
+            val repository = FakeOrchestrationRepository()
+            repository.shell.value = ProjectionState(
+                value = pickerShell(),
+                sequence = 1,
+                source = ProjectionSource.LIVE,
+                synchronized = true,
+            )
+            val actions = RecordingProjectActions()
+            val threads = RecordingThreadActions(repository)
+            val viewModel = ChatViewModel(
+                environments = FakeViewModelEnvironmentRepository(),
+                repository = repository,
+                connection = FakeConnectionController(),
+                environmentService = EnvironmentSelector {},
+                threads = threads,
+                chat = NoOpChatActions(),
+                mappingDispatcher = dispatcher,
+                projectWorkflow = DefaultProjectWorkflow(repository, actions, threads),
+            )
+            advanceUntilIdle()
+
+            viewModel.onEvent(ChatUiEvent.ProjectRemovalRequested("project-1"))
+            viewModel.onEvent(ChatUiEvent.ProjectRemovalDismissed)
+            advanceUntilIdle()
+            assertEquals(emptyList<String>(), actions.removed)
+            assertEquals(null, viewModel.state.value.projectRemoval)
+
+            viewModel.onEvent(ChatUiEvent.ProjectRemovalRequested("project-1"))
+            viewModel.onEvent(ChatUiEvent.ProjectRemovalConfirmed)
+            advanceUntilIdle()
+            assertEquals(listOf("project-1"), actions.removed)
+            assertEquals("project-2", threads.selectedProjects.last())
+        }
 
     @Test
     fun `view model maps UI intents to local state and domain actions`() = runTest(dispatcher) {
@@ -659,7 +1392,94 @@ class ChatViewModelIntentTest {
     }
 
     @Test
-    fun `tool groups stay within their turn and precede the assistant message`() = runTest(dispatcher) {
+    fun `started tool call is visible until completion replaces it`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val current = requireNotNull(repository.focusedThread.value.value)
+        val started = toolActivity(
+            id = "tool-started",
+            kind = "tool.started",
+            status = "inProgress",
+            callId = "call-active",
+            command = "./gradlew build",
+        )
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = current.copy(thread = current.thread.copy(activities = listOf(started))),
+        )
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        val runningGroup = viewModel.state.value.timeline.single() as ChatTimelineItemUi.ToolGroup
+        assertEquals(ActivityStatusUi.RUNNING, runningGroup.activities.single().status)
+
+        val completed = toolActivity(
+            id = "tool-completed",
+            kind = "tool.completed",
+            status = "completed",
+            callId = "call-active",
+            command = "./gradlew build",
+        )
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = current.copy(thread = current.thread.copy(activities = listOf(started, completed))),
+            sequence = 8,
+        )
+        advanceUntilIdle()
+
+        val completedGroup = viewModel.state.value.timeline.single() as ChatTimelineItemUi.ToolGroup
+        assertEquals(1, completedGroup.activities.size)
+        assertEquals(ActivityStatusUi.COMPLETED, completedGroup.activities.single().status)
+    }
+
+    @Test
+    fun `started tool call is not running after its turn completes`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val current = requireNotNull(repository.focusedThread.value.value)
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = current.copy(
+                thread = current.thread.copy(
+                    latestTurn = LatestTurn(
+                        turnId = "turn-complete",
+                        state = "completed",
+                        requestedAt = "2026-07-29T10:00:00Z",
+                        completedAt = "2026-07-29T10:01:00Z",
+                    ),
+                    activities = listOf(
+                        toolActivity(
+                            id = "tool-started",
+                            kind = "tool.started",
+                            status = "inProgress",
+                            callId = "call-active",
+                            command = "./gradlew build",
+                            turnId = "turn-complete",
+                        ),
+                    ),
+                ),
+            ),
+        )
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        val group = viewModel.state.value.timeline.single() as ChatTimelineItemUi.ToolGroup
+        assertEquals(ActivityStatusUi.COMPLETED, group.activities.single().status)
+    }
+
+    @Test
+    fun `tool calls group between the assistant messages that surround them`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model"))
         val current = requireNotNull(repository.focusedThread.value.value)
         repository.focusedThread.value = repository.focusedThread.value.copy(
@@ -677,22 +1497,22 @@ class ChatViewModelIntentTest {
                             id = "assistant-1",
                             turnId = "turn-1",
                             role = "assistant",
-                            text = "First answer",
-                            createdAt = "2026-07-29T10:02:00Z",
-                        ),
-                        orchestrationMessage(
-                            id = "user-2",
-                            turnId = "turn-2",
-                            role = "user",
-                            text = "Second request",
-                            createdAt = "2026-07-29T10:03:00Z",
+                            text = "First explanation",
+                            createdAt = "2026-07-29T10:01:00Z",
                         ),
                         orchestrationMessage(
                             id = "assistant-2",
-                            turnId = "turn-2",
+                            turnId = "turn-1",
                             role = "assistant",
-                            text = "Second answer",
-                            createdAt = "2026-07-29T10:03:30Z",
+                            text = "Second explanation",
+                            createdAt = "2026-07-29T10:03:00Z",
+                        ),
+                        orchestrationMessage(
+                            id = "assistant-final",
+                            turnId = "turn-1",
+                            role = "assistant",
+                            text = "Final answer",
+                            createdAt = "2026-07-29T10:05:00Z",
                         ),
                     ),
                     activities = listOf(
@@ -703,7 +1523,7 @@ class ChatViewModelIntentTest {
                             callId = "call-1-a",
                             command = "first command",
                             turnId = "turn-1",
-                            createdAt = "2026-07-29T10:01:00Z",
+                            createdAt = "2026-07-29T10:02:00Z",
                         ),
                         toolActivity(
                             id = "turn-1-tool-b",
@@ -712,16 +1532,25 @@ class ChatViewModelIntentTest {
                             callId = "call-1-b",
                             command = "second command",
                             turnId = "turn-1",
+                            createdAt = "2026-07-29T10:02:30Z",
+                        ),
+                        toolActivity(
+                            id = "turn-1-tool-c",
+                            kind = "tool.completed",
+                            status = "completed",
+                            callId = "call-1-c",
+                            command = "third command",
+                            turnId = "turn-1",
                             createdAt = "2026-07-29T10:04:00Z",
                         ),
                         toolActivity(
-                            id = "turn-2-tool",
+                            id = "turn-1-tool-d",
                             kind = "tool.completed",
                             status = "completed",
-                            callId = "call-2",
-                            command = "third command",
-                            turnId = "turn-2",
-                            createdAt = "2026-07-29T10:05:00Z",
+                            callId = "call-1-d",
+                            command = "fourth command",
+                            turnId = "turn-1",
+                            createdAt = "2026-07-29T10:04:30Z",
                         ),
                     ),
                 ),
@@ -741,17 +1570,21 @@ class ChatViewModelIntentTest {
         assertEquals(
             listOf(
                 "user-1",
-                "tool-group:turn-1-tool-a",
                 "assistant-1",
-                "user-2",
-                "tool-group:turn-2-tool",
+                "tool-group:turn-1-tool-a",
                 "assistant-2",
+                "tool-group:turn-1-tool-c",
+                "assistant-final",
             ),
             viewModel.state.value.timeline.map { it.id },
         )
         assertEquals(
             2,
-            (viewModel.state.value.timeline[1] as ChatTimelineItemUi.ToolGroup).activities.size,
+            (viewModel.state.value.timeline[2] as ChatTimelineItemUi.ToolGroup).activities.size,
+        )
+        assertEquals(
+            2,
+            (viewModel.state.value.timeline[4] as ChatTimelineItemUi.ToolGroup).activities.size,
         )
     }
 
@@ -896,6 +1729,85 @@ class ChatViewModelIntentTest {
         advanceUntilIdle()
 
         assertEquals("survive app replacement", recreatedViewModel.draft.value)
+    }
+
+    @Test
+    fun `new thread drafts persist per environment and project without following provider changes`() =
+        runTest(dispatcher) {
+            val drafts = FakeComposerDraftRepository()
+            val chat = NoOpChatActions()
+            val repository = submissionRepository(ModelSelection("provider", "model")).apply {
+                focusedThreadId.value = null
+                focusedThread.value = ProjectionState()
+            }
+            val threads = RecordingThreadActions(repository)
+            val viewModel = ChatViewModel(
+                environments = FakeViewModelEnvironmentRepository(),
+                repository = repository,
+                connection = FakeConnectionController(),
+                environmentService = EnvironmentSelector {},
+                threads = threads,
+                chat = chat,
+                mappingDispatcher = dispatcher,
+                composerDrafts = drafts,
+            )
+            advanceUntilIdle()
+
+            viewModel.onEvent(ChatUiEvent.DraftChanged("provider-neutral new project draft"))
+            viewModel.onEvent(ChatUiEvent.ProviderModelSelected("provider/model"))
+            advanceUntilIdle()
+            assertEquals("provider-neutral new project draft", viewModel.draft.value)
+
+            viewModel.onEvent(ChatUiEvent.ProjectSelected("project-2"))
+            advanceUntilIdle()
+            assertEquals("", viewModel.draft.value)
+            viewModel.onEvent(ChatUiEvent.DraftChanged("second project draft"))
+            viewModel.onEvent(ChatUiEvent.ProjectSelected("project-1"))
+            advanceUntilIdle()
+            assertEquals("provider-neutral new project draft", viewModel.draft.value)
+
+            val recreatedRepository = submissionRepository(ModelSelection("provider", "model")).apply {
+                focusedThreadId.value = null
+                focusedThread.value = ProjectionState()
+            }
+            val recreatedChat = NoOpChatActions()
+            val recreated = ChatViewModel(
+                environments = FakeViewModelEnvironmentRepository(),
+                repository = recreatedRepository,
+                connection = FakeConnectionController(),
+                environmentService = EnvironmentSelector {},
+                threads = RecordingThreadActions(recreatedRepository),
+                chat = recreatedChat,
+                mappingDispatcher = dispatcher,
+                composerDrafts = drafts,
+            )
+            advanceUntilIdle()
+            assertEquals("provider-neutral new project draft", recreated.draft.value)
+            assertEquals(emptyList<StartTurnCall>(), chat.startTurnCalls)
+            assertEquals(emptyList<StartTurnCall>(), recreatedChat.startTurnCalls)
+        }
+
+    @Test
+    fun `explicit discard clears only the current conversation draft`() = runTest(dispatcher) {
+        val drafts = FakeComposerDraftRepository()
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+            composerDrafts = drafts,
+        )
+        advanceUntilIdle()
+        viewModel.onEvent(ChatUiEvent.DraftChanged("discard me"))
+        viewModel.onEvent(ChatUiEvent.DraftDiscardRequested)
+        advanceUntilIdle()
+
+        assertEquals("", viewModel.draft.value)
+        assertEquals("", drafts.observe("environment", "thread-1").first())
     }
 
     @Test
@@ -1050,12 +1962,98 @@ private class FakeComposerDraftRepository : ComposerDraftRepository {
     }
 }
 
+private class RecordingInterfacePreferencesRepository(initial: InterfacePreferences) : InterfacePreferencesRepository {
+    private val mutablePreferences = MutableStateFlow(initial)
+    override val preferences: Flow<InterfacePreferences> = mutablePreferences
+    val themes = mutableListOf<ThemePreference>()
+    val interfaceScales = mutableListOf<Float>()
+    val codeScales = mutableListOf<Float>()
+
+    override suspend fun setTheme(theme: ThemePreference) {
+        themes += theme
+        mutablePreferences.value = mutablePreferences.value.copy(theme = theme)
+    }
+
+    override suspend fun setInterfaceScale(scale: Float) {
+        interfaceScales += scale
+        mutablePreferences.value = mutablePreferences.value.copy(interfaceScale = scale)
+    }
+
+    override suspend fun setCodeScale(scale: Float) {
+        codeScales += scale
+        mutablePreferences.value = mutablePreferences.value.copy(codeScale = scale)
+    }
+}
+
+private class RecordingEnvironmentCacheActions : EnvironmentCacheActions {
+    val cleared = mutableListOf<String>()
+    var failure: Throwable? = null
+    override suspend fun usage(environmentId: String) = EnvironmentCacheUsage(
+        environmentId,
+        listOf(
+            CacheCategoryUsage("Projections: shell", 2, 120, false),
+            CacheCategoryUsage("Preferences", 1, 40, false),
+            CacheCategoryUsage("Unsent drafts", 0, 0, true),
+            CacheCategoryUsage("Pending command outbox", 1, 0, true),
+        ),
+    )
+    override suspend fun clear(environmentId: String) {
+        cleared += environmentId
+        failure?.let { throw it }
+    }
+}
+
+private class FakeSharedTextImportRepository(initial: PendingSharedText?) : SharedTextImportRepository {
+    private val mutablePending = MutableStateFlow(initial)
+    private val mutableError = MutableStateFlow<String?>(null)
+    override val pending: Flow<PendingSharedText?> = mutablePending
+    override val error: Flow<String?> = mutableError
+    val discarded = mutableListOf<String>()
+    var importFailure: Throwable? = null
+
+    override suspend fun receive(result: SharedTextParseResult) = Unit
+
+    override suspend fun markImported(fingerprint: String) {
+        importFailure?.let { throw it }
+        if (mutablePending.value?.fingerprint == fingerprint) mutablePending.value = null
+    }
+
+    override suspend fun discard(fingerprint: String) {
+        discarded += fingerprint
+        if (mutablePending.value?.fingerprint == fingerprint) mutablePending.value = null
+    }
+
+    override suspend fun clearError() {
+        mutableError.value = null
+    }
+}
+
+private class RecordingShortcutPublisher : DynamicShortcutPublisher {
+    var latest: List<DynamicShortcutSpec> = emptyList()
+    override fun publish(shortcuts: List<DynamicShortcutSpec>) {
+        latest = shortcuts
+    }
+}
+
+private class FakeShortcutRouteInbox : ShortcutRouteInbox {
+    private val mutableRoutes = kotlinx.coroutines.flow.MutableSharedFlow<ShortcutParseResult>(extraBufferCapacity = 1)
+    override val routes: Flow<ShortcutParseResult> = mutableRoutes
+    override fun receive(result: ShortcutParseResult) {
+        mutableRoutes.tryEmit(result)
+    }
+}
+
 private class FakeConnectionController : ConnectionController {
     override val state: StateFlow<ConnectionState> = MutableStateFlow(ConnectionState.Live)
     var woken = false
+    var pendingCommandsRetried = false
 
     override fun wake() {
         woken = true
+    }
+
+    override fun retryPendingCommands() {
+        pendingCommandsRetried = true
     }
 }
 
@@ -1066,6 +2064,11 @@ private class RecordingThreadActions(
     val selectedThreads = mutableListOf<String?>()
     val settledThreads = mutableListOf<String>()
     val unsettledThreads = mutableListOf<String>()
+    val snoozedThreads = mutableListOf<Pair<String, String>>()
+    val wokenThreads = mutableListOf<String>()
+    var wakeFailure: Throwable? = null
+    val deletedThreads = mutableListOf<String>()
+    var deleteFailure: Throwable? = null
 
     override suspend fun selectProject(projectId: String?) {
         selectedProjects += projectId
@@ -1075,6 +2078,10 @@ private class RecordingThreadActions(
 
     override suspend fun selectThread(threadId: String?) {
         selectedThreads += threadId
+        repository.shell.value.value
+            ?.threads
+            ?.firstOrNull { it.id == threadId }
+            ?.let { repository.selectedProjectId.value = it.projectId }
         repository.focusedThreadId.value = threadId
     }
 
@@ -1097,12 +2104,56 @@ private class RecordingThreadActions(
         unsettledThreads += threadId
         return DispatchResult(1)
     }
+
+    override suspend fun snooze(threadId: String, snoozedUntil: String): DispatchResult {
+        snoozedThreads += threadId to snoozedUntil
+        return DispatchResult(1)
+    }
+
+    override suspend fun wake(threadId: String): DispatchResult {
+        wokenThreads += threadId
+        wakeFailure?.let { throw it }
+        return DispatchResult(1)
+    }
+
+    override suspend fun delete(threadId: String): DispatchResult {
+        deletedThreads += threadId
+        deleteFailure?.let { throw it }
+        return DispatchResult(1)
+    }
+}
+
+private class FakeCommandOutbox : CommandOutbox {
+    val entries = mutableListOf<OutboxCommand>()
+    override fun observe(environmentId: String): Flow<List<OutboxCommand>> = MutableStateFlow(entries)
+    override suspend fun enqueue(environmentId: String, command: ClientOrchestrationCommand) = Unit
+    override suspend fun commands(environmentId: String): List<OutboxCommand> = entries.toList()
+    override suspend fun markPending(environmentId: String, commandId: String) = Unit
+    override suspend fun markFailed(environmentId: String, commandId: String, error: String) = Unit
+    override suspend fun remove(environmentId: String, commandId: String) = Unit
+}
+
+private class ReactiveCommandOutbox(vararg initial: OutboxCommand) : CommandOutbox {
+    private val state = MutableStateFlow(initial.toList())
+    override fun observe(environmentId: String): Flow<List<OutboxCommand>> = state
+    override suspend fun enqueue(environmentId: String, command: ClientOrchestrationCommand) = Unit
+    override suspend fun commands(environmentId: String): List<OutboxCommand> = state.value
+    override suspend fun markPending(environmentId: String, commandId: String) = Unit
+    override suspend fun markFailed(environmentId: String, commandId: String, error: String) = Unit
+    override suspend fun remove(environmentId: String, commandId: String) {
+        state.value = state.value.filterNot { it.command.commandId == commandId }
+    }
 }
 
 private class NoOpChatActions(
     private val startTurnFailure: Throwable? = null,
+    var continuePlanFailure: Throwable? = null,
+    var terminateSessionFailure: Throwable? = null,
 ) : ChatActions {
     val startTurnCalls = mutableListOf<StartTurnCall>()
+    val planContinuations = mutableListOf<Pair<String, String>>()
+    val interruptedTurns = mutableListOf<Pair<String, String>>()
+    val terminatedSessions = mutableListOf<String>()
 
     override suspend fun startTurn(
         threadId: String?,
@@ -1127,7 +2178,16 @@ private class NoOpChatActions(
     override suspend fun interrupt(
         threadId: String,
         turnId: String,
-    ) = DispatchResult(1)
+    ): DispatchResult {
+        interruptedTurns += threadId to turnId
+        return DispatchResult(1)
+    }
+
+    override suspend fun terminateSession(threadId: String): DispatchResult {
+        terminatedSessions += threadId
+        terminateSessionFailure?.let { throw it }
+        return DispatchResult(1)
+    }
 
     override suspend fun respondToApproval(
         threadId: String,
@@ -1150,6 +2210,17 @@ private class NoOpChatActions(
         threadId: String,
         runtimeMode: String,
     ) = DispatchResult(1)
+
+    override suspend fun continuePlan(
+        threadId: String,
+        planId: String,
+        modelSelection: ModelSelection,
+        runtimeMode: String,
+    ): DispatchResult {
+        planContinuations += threadId to planId
+        continuePlanFailure?.let { throw it }
+        return DispatchResult(1)
+    }
 }
 
 private data class StartTurnCall(
@@ -1239,10 +2310,24 @@ private class FakeOrchestrationRepository : OrchestrationRepository {
 
     override suspend fun applyThreadItem(
         environmentId: String,
+        threadId: String,
         item: OrchestrationThreadStreamItem,
     ): Reduction<ProjectionState<OrchestrationThreadDetailSnapshot>> = Reduction.Ignored(focusedThread.value)
 
     override suspend fun clearEnvironment(environmentId: String) = Unit
+}
+
+private class RecordingProjectActions : ProjectActions {
+    val removed = mutableListOf<String>()
+
+    override suspend fun create(source: String): String = "project-created"
+
+    override suspend fun rename(projectId: String, title: String) = Unit
+
+    override suspend fun remove(projectId: String): String {
+        removed += projectId
+        return "project-2"
+    }
 }
 
 private fun pickerShell() = OrchestrationShellSnapshot(
@@ -1400,6 +2485,18 @@ private fun submissionRepository(selection: ModelSelection) = FakeOrchestrationR
     )
 }
 
+private fun proposedPlan(
+    id: String,
+    markdown: String,
+    updatedAt: String = "2026-08-06T01:00:00Z",
+) = ProposedPlan(
+    id = id,
+    turnId = "turn-1",
+    planMarkdown = markdown,
+    createdAt = updatedAt,
+    updatedAt = updatedAt,
+)
+
 private fun toolActivity(
     id: String,
     kind: String,
@@ -1499,8 +2596,3 @@ private class FakeVoiceInputService(
         cancellations += 1
     }
 }
-        repository.shell.value.value
-            ?.threads
-            ?.firstOrNull { it.id == threadId }
-            ?.let { repository.selectedProjectId.value = it.projectId }
-        threadId: String,

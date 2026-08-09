@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -34,6 +35,9 @@ import de.chennemann.agentic.icons.Check
 import de.chennemann.agentic.icons.Icons
 import de.chennemann.agentic.icons.Star
 import de.chennemann.agentic.icons.StarOutline
+import java.time.Instant
+import java.time.temporal.ChronoUnit
+import de.chennemann.agentic.domain.preferences.ThemePreference
 
 @Composable
 fun ChatSelectionSheets(
@@ -66,6 +70,35 @@ fun ChatSelectionSheets(
                 item("manage-environments") {
                     TextButton(onClick = { onEvent(ChatUiEvent.PairEnvironmentRequested) }) {
                         Text("Manage environments")
+                    }
+                }
+                state.environmentPicker.selectedEnvironmentId?.let { environmentId ->
+                    item("inspect-cache") {
+                        TextButton(onClick = { onEvent(ChatUiEvent.CacheInspectionRequested(environmentId)) }) { Text("Storage and cache") }
+                    }
+                }
+                if (state.durableWork.isNotEmpty()) {
+                    item("durable-work") {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text("Pending sync", style = MaterialTheme.typography.labelLarge)
+                            state.durableWork.forEach { work ->
+                                Text(
+                                    buildString {
+                                        append(work.label)
+                                        work.threadId?.let { append(" · thread ").append(it) }
+                                        append(if (work.failed) " · failed" else " · pending")
+                                        if (work.attemptCount > 0) append(" · attempts ").append(work.attemptCount)
+                                    },
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                                work.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                            }
+                            if (state.durableWork.any(DurableWorkUi::awaitsReplay)) {
+                                TextButton(onClick = { onEvent(ChatUiEvent.DurableWorkRetryRequested) }) {
+                                    Text("Reconnect and retry")
+                                }
+                            }
+                        }
                     }
                 }
                 item("conversation-heading") {
@@ -107,6 +140,54 @@ fun ChatSelectionSheets(
                                 Text("Archive")
                             }
                         }
+                        if (state.threadSnooze.supported) {
+                            if (state.threadSnooze.isSnoozed) {
+                                TextButton(
+                                    enabled = state.threadSnooze.canWake,
+                                    onClick = { onEvent(ChatUiEvent.ThreadWakeRequested) },
+                                ) {
+                                    Text(if (state.threadSnooze.actionInProgress) "Waking…" else "Wake")
+                                }
+                            } else {
+                                TextButton(
+                                    enabled = state.threadSnooze.canSnooze,
+                                    onClick = {
+                                        onEvent(
+                                            ChatUiEvent.ThreadSnoozeRequested(
+                                                Instant.now().plus(1, ChronoUnit.HOURS).toString(),
+                                            ),
+                                        )
+                                    },
+                                ) {
+                                    Text(if (state.threadSnooze.actionInProgress) "Snoozing…" else "Snooze 1h")
+                                }
+                            }
+                        }
+                        if (state.canDeleteThread) {
+                            TextButton(onClick = { onEvent(ChatUiEvent.DeleteThreadRequested) }) {
+                                Text("Delete permanently", color = MaterialTheme.colorScheme.error)
+                            }
+                        }
+                    }
+                }
+                if (state.threadSnooze.isSnoozed) {
+                    item("snooze-status") {
+                        Text(
+                            text = "Snoozed until ${state.threadSnooze.snoozedUntil}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                } else if (state.threadSnooze.wakeReason != null) {
+                    item("wake-status") {
+                        Text(
+                            text = "Woke because of ${state.threadSnooze.wakeReason}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+                state.threadSnooze.errorMessage?.let { error ->
+                    item("snooze-error") {
+                        Text(error, color = MaterialTheme.colorScheme.error)
                     }
                 }
                 item("models-heading") {
@@ -115,6 +196,42 @@ fun ChatSelectionSheets(
                         style = MaterialTheme.typography.labelLarge,
                         modifier = Modifier.padding(top = 8.dp),
                     )
+                }
+                item("keyboard-shortcuts") {
+                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text("Hardware keyboard", style = MaterialTheme.typography.labelLarge)
+                        Text(
+                            "Ctrl/⌘+Enter send · Shift+Enter newline · Esc stop · Ctrl/⌘+N new task · Ctrl/⌘+K navigation",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                item("appearance") {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Appearance", style = MaterialTheme.typography.labelLarge)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(ThemePreference.entries) { theme ->
+                                FilterChip(
+                                    selected = state.interfaceSettings.theme == theme,
+                                    onClick = { onEvent(ChatUiEvent.ThemeSelected(theme)) },
+                                    label = { Text(theme.name.lowercase().replaceFirstChar(Char::uppercase)) },
+                                )
+                            }
+                        }
+                        Text("Interface size", style = MaterialTheme.typography.bodySmall)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(listOf(0.9f, 1f, 1.15f)) { scale ->
+                                FilterChip(state.interfaceSettings.interfaceScale == scale, { onEvent(ChatUiEvent.InterfaceScaleSelected(scale)) }, { Text("${(scale * 100).toInt()}%") })
+                            }
+                        }
+                        Text("Code and Markdown size", style = MaterialTheme.typography.bodySmall)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(listOf(0.9f, 1f, 1.15f)) { scale ->
+                                FilterChip(state.interfaceSettings.codeScale == scale, { onEvent(ChatUiEvent.CodeScaleSelected(scale)) }, { Text("${(scale * 100).toInt()}%") })
+                            }
+                        }
+                    }
                 }
                 item("models") {
                     PickerRow(
@@ -164,13 +281,21 @@ fun ChatSelectionSheets(
                     items = state.environmentPicker.environments,
                     key = { "environment:${it.id}" },
                 ) { environment ->
-                    PickerRow(
-                        label = environment.label,
-                        supportingText = environment.supportingText,
-                        selected = environment.id == state.environmentPicker.selectedEnvironmentId,
-                        trailingText = environment.connection.label(),
-                        onClick = { onEvent(ChatUiEvent.EnvironmentSelected(environment.id)) },
-                    )
+                    Column {
+                        PickerRow(
+                            label = environment.label,
+                            supportingText = environment.supportingText,
+                            selected = environment.id == state.environmentPicker.selectedEnvironmentId,
+                            trailingText = environment.connection.label(),
+                            onClick = { onEvent(ChatUiEvent.EnvironmentSelected(environment.id)) },
+                        )
+                        TextButton(
+                            onClick = { onEvent(ChatUiEvent.EnvironmentRemovalRequested(environment.id)) },
+                            modifier = Modifier.align(Alignment.End),
+                        ) {
+                            Text("Remove ${environment.label}")
+                        }
+                    }
                 }
             }
         }
@@ -182,7 +307,16 @@ fun ChatSelectionSheets(
                 expanded = true,
             ) {
                 item("project-heading") {
-                    Text("Project", style = MaterialTheme.typography.labelLarge)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("Project", style = MaterialTheme.typography.labelLarge)
+                        TextButton(onClick = { onEvent(ChatUiEvent.ProjectCreationRequested) }) {
+                            Text("Add project")
+                        }
+                    }
                 }
                 item("project-carousel") {
                     LazyRow(
@@ -193,17 +327,25 @@ fun ChatSelectionSheets(
                             items = state.threadPicker.projects,
                             key = { "project:${it.id}" },
                         ) { project ->
-                            FilterChip(
-                                selected = project.id == state.threadPicker.selectedProjectId,
-                                onClick = { onEvent(ChatUiEvent.ProjectSelected(project.id)) },
-                                label = {
-                                    Text(
-                                        text = project.label,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                },
-                            )
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                FilterChip(
+                                    selected = project.id == state.threadPicker.selectedProjectId,
+                                    onClick = { onEvent(ChatUiEvent.ProjectSelected(project.id)) },
+                                    label = {
+                                        Text(
+                                            text = project.label,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                        )
+                                    },
+                                )
+                                TextButton(onClick = { onEvent(ChatUiEvent.ProjectRenameRequested(project.id)) }) {
+                                    Text("Rename")
+                                }
+                                TextButton(onClick = { onEvent(ChatUiEvent.ProjectRemovalRequested(project.id)) }) {
+                                    Text("Remove")
+                                }
+                            }
                         }
                     }
                 }
@@ -411,6 +553,103 @@ fun ChatSelectionSheets(
         }
 
         null -> Unit
+    }
+    state.threadDeletion?.let { deletion ->
+        AlertDialog(
+            onDismissRequest = { onEvent(ChatUiEvent.DeleteThreadDismissed) },
+            title = { Text("Permanently delete ${deletion.title}?") },
+            text = {
+                Text(
+                    when {
+                        deletion.checking -> "Checking for pending work…"
+                        deletion.blockers.isNotEmpty() ->
+                            "Deletion is blocked: ${deletion.blockers.joinToString()}. Resolve it before retrying."
+                        deletion.errorMessage != null -> deletion.errorMessage
+                        else -> "This cannot be undone. The thread will remain open until the server confirms deletion."
+                    },
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = deletion.canConfirm,
+                    onClick = { onEvent(ChatUiEvent.DeleteThreadConfirmed) },
+                ) {
+                    Text(if (deletion.deleting) "Deleting…" else "Delete permanently")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !deletion.deleting,
+                    onClick = { onEvent(ChatUiEvent.DeleteThreadDismissed) },
+                ) { Text("Cancel") }
+            },
+        )
+    }
+    state.sharedTextImport?.let { shared ->
+        AlertDialog(
+            onDismissRequest = { Unit },
+            title = { Text("Review shared text") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(shared.text, maxLines = 6, overflow = TextOverflow.Ellipsis)
+                    Text("Choose environment", style = MaterialTheme.typography.labelLarge)
+                    shared.environments.forEach { item ->
+                        TextButton(
+                            onClick = { onEvent(ChatUiEvent.SharedImportEnvironmentSelected(item.id)) },
+                        ) { Text(if (shared.environmentId == item.id) "✓ ${item.label}" else item.label) }
+                    }
+                    Text("Choose project", style = MaterialTheme.typography.labelLarge)
+                    shared.projects.forEach { item ->
+                        TextButton(
+                            enabled = shared.environmentId != null,
+                            onClick = { onEvent(ChatUiEvent.SharedImportProjectSelected(item.id)) },
+                        ) { Text(if (shared.projectId == item.id) "✓ ${item.label}" else item.label) }
+                    }
+                    shared.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    enabled = shared.canImport,
+                    onClick = { onEvent(ChatUiEvent.SharedImportConfirmed) },
+                ) { Text(if (shared.importing) "Importing…" else "Create draft") }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !shared.importing,
+                    onClick = { onEvent(ChatUiEvent.SharedImportDiscarded) },
+                ) { Text("Discard") }
+            },
+        )
+    }
+    state.sharedTextImportError?.let { error ->
+        AlertDialog(
+            onDismissRequest = { onEvent(ChatUiEvent.SharedImportErrorDismissed) },
+            title = { Text("Could not import shared content") },
+            text = { Text(error) },
+            confirmButton = {
+                TextButton(onClick = { onEvent(ChatUiEvent.SharedImportErrorDismissed) }) { Text("OK") }
+            },
+        )
+    }
+    state.shortcutError?.let { error ->
+        AlertDialog(
+            onDismissRequest = { onEvent(ChatUiEvent.ShortcutErrorDismissed) },
+            title = { Text("Shortcut unavailable") },
+            text = { Text(error) },
+            confirmButton = {
+                TextButton(onClick = { onEvent(ChatUiEvent.ShortcutErrorDismissed) }) { Text("OK") }
+            },
+        )
+    }
+    state.cacheClearance?.let { cache ->
+        AlertDialog(
+            onDismissRequest = { onEvent(ChatUiEvent.CacheClearDismissed) },
+            title = { Text("Clear environment cache?") },
+            text = { Column { cache.categories.forEach { Text(it) }; Text("Clearable: ${cache.clearableBytes} bytes"); cache.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }; if (cache.success) Text("Cache cleared; resynchronizing.") } },
+            confirmButton = { TextButton(enabled = !cache.clearing && cache.clearableBytes > 0, onClick = { onEvent(ChatUiEvent.CacheClearConfirmed) }) { Text(if (cache.clearing) "Working…" else "Clear cache") } },
+            dismissButton = { TextButton(enabled = !cache.clearing, onClick = { onEvent(ChatUiEvent.CacheClearDismissed) }) { Text("Cancel") } },
+        )
     }
 }
 

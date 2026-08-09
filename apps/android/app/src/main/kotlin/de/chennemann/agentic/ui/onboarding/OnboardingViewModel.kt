@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import de.chennemann.agentic.data.auth.PairingException
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
+import de.chennemann.agentic.domain.environment.EnvironmentRemover
 import de.chennemann.agentic.domain.environment.EnvironmentService
 import de.chennemann.agentic.domain.environment.PairingPreview
 import de.chennemann.agentic.domain.environment.UnsupportedProtocolException
@@ -16,6 +17,7 @@ import kotlinx.coroutines.launch
 class OnboardingViewModel(
     private val environments: EnvironmentRepository,
     private val service: EnvironmentService,
+    private val remover: EnvironmentRemover,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
     private var pairingPreview: PairingPreview? = null
@@ -42,6 +44,9 @@ class OnboardingViewModel(
                 )
             },
             cleartextConfirmation = local.cleartextConfirmation,
+            removalConfirmation = saved.firstOrNull { it.id == local.removalEnvironmentId }?.let {
+                SavedEnvironmentUi(it.id, it.label, it.baseUrl, it.active)
+            },
             working = local.working,
             error = local.error,
         )
@@ -92,8 +97,18 @@ class OnboardingViewModel(
                 service.select(event.environmentId)
             }
 
-            is OnboardingUiEvent.SavedEnvironmentRemovalRequested -> launchWork {
-                service.remove(event.environmentId)
+            is OnboardingUiEvent.SavedEnvironmentRemovalRequested -> update {
+                copy(removalEnvironmentId = event.environmentId)
+            }
+            OnboardingUiEvent.SavedEnvironmentRemovalConfirmed -> {
+                val environmentId = local.value.removalEnvironmentId ?: return
+                launchWork {
+                    remover.remove(environmentId)
+                    update { copy(removalEnvironmentId = null) }
+                }
+            }
+            OnboardingUiEvent.SavedEnvironmentRemovalDismissed -> update {
+                copy(removalEnvironmentId = null)
             }
 
             OnboardingUiEvent.ErrorDismissed -> update { copy(error = null) }
@@ -148,6 +163,7 @@ class OnboardingViewModel(
         val error: OnboardingErrorUi? = null,
         val cleartextConfirmation: CleartextConfirmationUi? = null,
         val cleartextAccepted: Boolean = false,
+        val removalEnvironmentId: String? = null,
     )
 }
 

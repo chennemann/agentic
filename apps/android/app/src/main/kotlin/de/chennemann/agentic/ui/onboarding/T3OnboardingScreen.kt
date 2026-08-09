@@ -153,6 +153,29 @@ fun T3OnboardingScreen(
         Spacer(modifier = Modifier.height(8.dp))
     }
 
+    state.removalConfirmation?.let { environment ->
+        AlertDialog(
+            onDismissRequest = { onEvent(OnboardingUiEvent.SavedEnvironmentRemovalDismissed) },
+            title = { Text("Remove ${environment.label}?") },
+            text = {
+                Text(
+                    "This removes only this environment's saved credential, cached conversations, " +
+                        "pending commands, and preferences from this device. Other environments are not affected.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { onEvent(OnboardingUiEvent.SavedEnvironmentRemovalConfirmed) }) {
+                    Text("Remove environment")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { onEvent(OnboardingUiEvent.SavedEnvironmentRemovalDismissed) }) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
     state.cleartextConfirmation?.let {
         AlertDialog(
             onDismissRequest = { onEvent(OnboardingUiEvent.CleartextDeclined) },

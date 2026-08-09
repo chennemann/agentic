@@ -1,18 +1,27 @@
 package de.chennemann.agentic.domain.connection
 
+import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import de.chennemann.agentic.data.auth.CredentialStore
+import de.chennemann.agentic.data.cache.SqlCommandOutbox
 import de.chennemann.agentic.data.t3.EnvironmentConfigClient
 import de.chennemann.agentic.data.t3.EnvironmentMetadataClient
 import de.chennemann.agentic.data.t3.OrchestrationSnapshotClient
 import de.chennemann.agentic.data.t3.OrchestrationStreamClient
+import de.chennemann.agentic.data.t3.OrchestrationCommandClient
 import de.chennemann.agentic.data.t3.T3TransportException
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
 import de.chennemann.agentic.domain.environment.SavedEnvironment
 import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
+import de.chennemann.agentic.domain.orchestration.DurableCommandDispatcher
+import de.chennemann.agentic.domain.orchestration.OutboxCommandStatus
+import de.chennemann.agentic.domain.orchestration.PendingCommandReplayer
 import de.chennemann.agentic.domain.orchestration.ProjectionSource
 import de.chennemann.agentic.domain.orchestration.ProjectionState
 import de.chennemann.agentic.domain.orchestration.Reduction
 import de.chennemann.agentic.t3.contract.EnvironmentClientConfig
+import de.chennemann.agentic.db.AgenticDb
+import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
+import de.chennemann.agentic.t3.contract.DispatchResult
 import de.chennemann.agentic.t3.contract.EnvironmentPlatform
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentCapabilities
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
@@ -20,26 +29,153 @@ import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetail
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
+import de.chennemann.agentic.t3.contract.OrchestrationThreadShell
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.ServerAuthDescriptor
+import de.chennemann.agentic.t3.contract.ThreadSession
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
-import de.chennemann.agentic.t3.contract.OrchestrationThreadShell
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
-import de.chennemann.agentic.t3.contract.ThreadSession
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ConnectionSupervisorTest {
+    @Test
+    fun `overlapping live retries collapse into one replay`() = runTest {
+        val environment = savedEnvironment("one")
+        val transport = SupervisorTransport()
+        val releaseRetry = CompletableDeferred<Unit>()
+        var replayCount = 0
+        val supervisor = ConnectionSupervisor(
+            environments = SupervisorEnvironmentRepository(environment),
+            orchestration = SupervisorOrchestrationRepository(),
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            config = transport,
+            snapshots = transport,
+            streams = transport,
+            network = OnlineMonitor,
+            pendingCommands = PendingCommandReplayer {
+                replayCount += 1
+                if (replayCount > 1) releaseRetry.await()
+            },
+            scope = backgroundScope,
+        )
+        runCurrent()
+
+        supervisor.retryPendingCommands()
+        supervisor.retryPendingCommands()
+        runCurrent()
+
+        assertEquals(2, replayCount)
+        releaseRetry.complete(Unit)
+    }
+
+    @Test
+    fun `live retry redispatches persisted failure and removes it only after acknowledgement`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AgenticDb.Schema.create(driver)
+        val environment = savedEnvironment("one")
+        val environments = SupervisorEnvironmentRepository(environment)
+        val outbox = SqlCommandOutbox(AgenticDb(driver), StandardTestDispatcher(testScheduler))
+        val command = ClientOrchestrationCommand.ArchiveThread("persisted-command", "thread-one")
+        outbox.enqueue(environment.id, command)
+        val commandClient = RetryCommandClient(failing = true)
+        val dispatcher = DurableCommandDispatcher(
+            environments = environments,
+            credentials = SupervisorCredentialStore("token"),
+            client = commandClient,
+            outbox = outbox,
+        )
+        val transport = SupervisorTransport()
+        val supervisor = ConnectionSupervisor(
+            environments = environments,
+            orchestration = SupervisorOrchestrationRepository(),
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            config = transport,
+            snapshots = transport,
+            streams = transport,
+            network = OnlineMonitor,
+            pendingCommands = dispatcher,
+            scope = backgroundScope,
+        )
+        runCurrent()
+
+        assertEquals(ConnectionState.Live, supervisor.state.value)
+        assertEquals(OutboxCommandStatus.FAILED, outbox.commands(environment.id).single().status)
+        assertEquals(listOf("persisted-command"), commandClient.commandIds)
+
+        commandClient.failing = false
+        supervisor.retryPendingCommands()
+        runCurrent()
+
+        assertEquals(listOf("persisted-command", "persisted-command"), commandClient.commandIds)
+        assertTrue(outbox.commands(environment.id).isEmpty())
+        driver.close()
+    }
+
+    @Test
+    fun `retry pending commands replays while connection is already live`() = runTest {
+        val environment = savedEnvironment("one")
+        val transport = SupervisorTransport()
+        val replayed = mutableListOf<String>()
+        val supervisor = ConnectionSupervisor(
+            environments = SupervisorEnvironmentRepository(environment),
+            orchestration = SupervisorOrchestrationRepository(),
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            config = transport,
+            snapshots = transport,
+            streams = transport,
+            network = OnlineMonitor,
+            pendingCommands = PendingCommandReplayer { replayed += it.id },
+            scope = backgroundScope,
+        )
+        runCurrent()
+        assertEquals(ConnectionState.Live, supervisor.state.value)
+        assertEquals(listOf("one"), replayed)
+
+        supervisor.retryPendingCommands()
+        runCurrent()
+
+        assertEquals(listOf("one", "one"), replayed)
+    }
+
+    @Test
+    fun `pending commands replay after the live shell snapshot is refreshed`() = runTest {
+        val environment = savedEnvironment("one")
+        val transport = SupervisorTransport()
+        val replayedEnvironmentIds = mutableListOf<String>()
+
+        ConnectionSupervisor(
+            environments = SupervisorEnvironmentRepository(environment),
+            orchestration = SupervisorOrchestrationRepository(),
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            config = transport,
+            snapshots = transport,
+            streams = transport,
+            network = OnlineMonitor,
+            pendingCommands = PendingCommandReplayer { replayedEnvironmentIds += it.id },
+            scope = backgroundScope,
+        )
+        runCurrent()
+
+        assertEquals(listOf(environment.id), replayedEnvironmentIds)
+    }
+
     @Test
     fun `foreground wake cancels a stuck connection and starts fresh`() = runTest {
         val environment = savedEnvironment("one")
@@ -53,6 +189,7 @@ class ConnectionSupervisorTest {
             snapshots = transport,
             streams = transport,
             network = OnlineMonitor,
+            pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
         )
         runCurrent()
@@ -82,6 +219,7 @@ class ConnectionSupervisorTest {
             snapshots = transport,
             streams = transport,
             network = network,
+            pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
         )
         runCurrent()
@@ -108,6 +246,7 @@ class ConnectionSupervisorTest {
             snapshots = transport,
             streams = transport,
             network = OnlineMonitor,
+            pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
         )
         runCurrent()
@@ -132,6 +271,7 @@ class ConnectionSupervisorTest {
             snapshots = transport,
             streams = transport,
             network = OnlineMonitor,
+            pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
         )
         runCurrent()
@@ -155,6 +295,7 @@ class ConnectionSupervisorTest {
             snapshots = transport,
             streams = transport,
             network = OnlineMonitor,
+            pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
         )
         runCurrent()
@@ -179,6 +320,7 @@ class ConnectionSupervisorTest {
             snapshots = transport,
             streams = transport,
             network = OnlineMonitor,
+            pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
         )
         runCurrent()
@@ -206,6 +348,7 @@ class ConnectionSupervisorTest {
             snapshots = transport,
             streams = transport,
             network = OnlineMonitor,
+            pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
         )
         runCurrent()
@@ -235,6 +378,7 @@ class ConnectionSupervisorTest {
             snapshots = transport,
             streams = transport,
             network = OnlineMonitor,
+            pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
         )
 
@@ -259,6 +403,7 @@ class ConnectionSupervisorTest {
             snapshots = transport,
             streams = transport,
             network = OnlineMonitor,
+            pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
         )
         runCurrent()
@@ -274,6 +419,48 @@ class ConnectionSupervisorTest {
         assertEquals("https://two.example.test/", transport.shellBaseUrls.last())
         assertTrue(transport.cancelledStreams >= 2)
         assertEquals(ConnectionState.Live, supervisor.state.value)
+    }
+
+    @Test
+    fun `active thread progress synchronizes before the thread is focused`() = runTest {
+        val activeThread = threadShell("thread-active", "running")
+        val idleThread = threadShell("thread-idle", null)
+        val transport = SupervisorTransport(shellThreads = listOf(activeThread, idleThread))
+        ConnectionSupervisor(
+            environments = SupervisorEnvironmentRepository(savedEnvironment("one")),
+            orchestration = SupervisorOrchestrationRepository(),
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            config = transport,
+            snapshots = transport,
+            streams = transport,
+            network = OnlineMonitor,
+            pendingCommands = NoOpPendingCommandReplayer,
+            scope = backgroundScope,
+        )
+
+        runCurrent()
+
+        assertTrue("thread-active" in transport.threadRequests)
+        assertTrue("thread-idle" !in transport.threadRequests)
+    }
+}
+
+private val NoOpPendingCommandReplayer = PendingCommandReplayer { }
+
+private class RetryCommandClient(
+    var failing: Boolean,
+) : OrchestrationCommandClient {
+    val commandIds = mutableListOf<String>()
+
+    override suspend fun dispatch(
+        baseUrl: String,
+        bearerToken: String,
+        command: ClientOrchestrationCommand,
+    ): DispatchResult {
+        commandIds += command.commandId
+        if (failing) error("offline")
+        return DispatchResult(1)
     }
 }
 
@@ -331,6 +518,7 @@ private class SupervisorTransport(
     private val failFirstShellStream: Boolean = false,
     private val completeFirstThreadStream: Boolean = false,
     private val failFirstThreadStream: Boolean = false,
+    private val shellThreads: List<OrchestrationThreadShell> = emptyList(),
 ) : EnvironmentMetadataClient,
     EnvironmentConfigClient,
     OrchestrationSnapshotClient,
@@ -421,48 +609,6 @@ private class SupervisorTransport(
             completeFirstThreadStream && threadStreamRequests == 1 ->
                 flowOf(OrchestrationThreadStreamItem.Synchronized)
 
-    @Test
-    fun `active thread progress synchronizes before the thread is focused`() = runTest {
-        val activeThread = threadShell("thread-active", "running")
-        val idleThread = threadShell("thread-idle", null)
-        val transport = SupervisorTransport(shellThreads = listOf(activeThread, idleThread))
-        ConnectionSupervisor(
-            environments = SupervisorEnvironmentRepository(savedEnvironment("one")),
-            orchestration = SupervisorOrchestrationRepository(),
-            credentials = SupervisorCredentialStore("token"),
-            metadata = transport,
-            config = transport,
-            snapshots = transport,
-            streams = transport,
-            network = OnlineMonitor,
-            pendingCommands = NoOpPendingCommandReplayer,
-            scope = backgroundScope,
-        )
-
-        runCurrent()
-
-        assertTrue("thread-active" in transport.threadRequests)
-        assertTrue("thread-idle" !in transport.threadRequests)
-    }
-}
-
-private val NoOpPendingCommandReplayer = PendingCommandReplayer { }
-
-private class RetryCommandClient(
-    var failing: Boolean,
-) : OrchestrationCommandClient {
-    val commandIds = mutableListOf<String>()
-
-    override suspend fun dispatch(
-        baseUrl: String,
-        bearerToken: String,
-        command: ClientOrchestrationCommand,
-    ): DispatchResult {
-        commandIds += command.commandId
-        if (failing) error("offline")
-        return DispatchResult(1)
-    }
-
             failFirstThreadStream && threadStreamRequests == 1 -> flow {
                 emit(OrchestrationThreadStreamItem.Synchronized)
                 throw T3TransportException.Network()
@@ -518,7 +664,6 @@ private class SupervisorOrchestrationRepository : OrchestrationRepository {
     override suspend fun focusThread(
         environmentId: String,
         threadId: String?,
-    private val shellThreads: List<OrchestrationThreadShell> = emptyList(),
     ) {
         focusedThreadId.value = threadId
     }
@@ -540,6 +685,7 @@ private class SupervisorOrchestrationRepository : OrchestrationRepository {
 
     override suspend fun applyThreadItem(
         environmentId: String,
+        threadId: String,
         item: OrchestrationThreadStreamItem,
     ): Reduction<ProjectionState<OrchestrationThreadDetailSnapshot>> {
         focusedThread.value = focusedThread.value.copy(synchronized = true)
@@ -579,7 +725,6 @@ private fun threadSnapshot(threadId: String): OrchestrationThreadDetailSnapshot 
             updatedAt = "2026-01-01T00:00:00Z",
         ),
     )
-        threadId: String,
 
 private fun threadShell(
     threadId: String,

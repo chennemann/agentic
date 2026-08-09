@@ -41,6 +41,7 @@ import de.chennemann.agentic.icons.ChevronDown
 import de.chennemann.agentic.icons.ChevronUp
 import de.chennemann.agentic.icons.Icons
 import de.chennemann.agentic.icons.Terminal
+import de.chennemann.agentic.streamingmarkdown.StreamingMarkdownText
 import de.chennemann.agentic.ui.chat.ActivityStatusUi
 import de.chennemann.agentic.ui.chat.ApprovalDecisionUi
 import de.chennemann.agentic.ui.chat.ChatActivityUi
@@ -107,6 +108,8 @@ fun ChatActivityCard(
             modifier = modifier,
         )
 
+        is ChatActivityUi.ProposedPlan -> ProposedPlanCard(activity, onEvent, modifier)
+
         else -> ExpandableActivityCard(
             activity = activity,
             expanded = expanded,
@@ -118,6 +121,42 @@ fun ChatActivityCard(
             },
             modifier = modifier,
         )
+    }
+}
+
+@Composable
+private fun ProposedPlanCard(
+    plan: ChatActivityUi.ProposedPlan,
+    onEvent: (ChatUiEvent) -> Unit,
+    modifier: Modifier,
+) {
+    Card(modifier = modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(plan.summary, style = MaterialTheme.typography.titleSmall)
+            SelectionContainer {
+                StreamingMarkdownText(
+                    content = plan.planMarkdown,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodyMedium,
+                )
+            }
+            plan.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            if (plan.canContinue || plan.continuing || plan.errorMessage != null) {
+                Button(
+                    onClick = { onEvent(ChatUiEvent.ProposedPlanContinueRequested(plan.id)) },
+                    enabled = plan.canContinue && !plan.continuing,
+                ) {
+                    if (plan.continuing) {
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                    } else {
+                        Text(if (plan.errorMessage == null) "Continue with plan" else "Retry plan")
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -573,6 +612,7 @@ private fun ChatActivityUi.detail(): String? = when (this) {
     is ChatActivityUi.Tool -> detail
     is ChatActivityUi.Error -> detail
     is ChatActivityUi.Unknown -> formattedDetail
+    is ChatActivityUi.ProposedPlan -> planMarkdown
     is ChatActivityUi.Approval, is ChatActivityUi.UserInput -> null
 }
 

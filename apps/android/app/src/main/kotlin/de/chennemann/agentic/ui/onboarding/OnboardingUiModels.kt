@@ -6,6 +6,7 @@ data class OnboardingUiState(
     val savedEnvironments: List<SavedEnvironmentUi> = emptyList(),
     val environmentPreview: EnvironmentPreviewUi? = null,
     val cleartextConfirmation: CleartextConfirmationUi? = null,
+    val removalConfirmation: SavedEnvironmentUi? = null,
     val working: Boolean = false,
     val error: OnboardingErrorUi? = null,
 )
@@ -93,6 +94,10 @@ sealed interface OnboardingUiEvent {
     data class SavedEnvironmentRemovalRequested(
         val environmentId: String,
     ) : OnboardingUiEvent
+
+    data object SavedEnvironmentRemovalConfirmed : OnboardingUiEvent
+
+    data object SavedEnvironmentRemovalDismissed : OnboardingUiEvent
 
     data object ErrorDismissed : OnboardingUiEvent
 }

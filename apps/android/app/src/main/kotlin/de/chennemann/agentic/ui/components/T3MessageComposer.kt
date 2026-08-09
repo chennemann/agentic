@@ -85,6 +85,12 @@ import de.chennemann.agentic.icons.Tune
 import de.chennemann.agentic.icons.Unlock
 import de.chennemann.agentic.ui.chat.ChatPickerUi
 import de.chennemann.agentic.ui.chat.ChatUiEvent
+import de.chennemann.agentic.ui.chat.HardwareKeyboardBindings
+import de.chennemann.agentic.ui.chat.KeyboardAction
+import de.chennemann.agentic.ui.chat.KeyboardFocus
+import de.chennemann.agentic.ui.chat.toChatUiEvent
+import de.chennemann.agentic.ui.chat.toHardwareKeyStroke
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import de.chennemann.agentic.ui.chat.ComposerUiState
 import de.chennemann.agentic.ui.chat.InteractionModeUi
 import de.chennemann.agentic.ui.chat.ProjectQuickSwitchUi
@@ -92,6 +98,7 @@ import de.chennemann.agentic.ui.chat.ProviderModelOptionUi
 import de.chennemann.agentic.ui.chat.ProviderOptionUi
 import de.chennemann.agentic.ui.chat.ProviderOptionValueUi
 import de.chennemann.agentic.ui.chat.RuntimeModeOptionUi
+import de.chennemann.agentic.ui.chat.SessionTerminationUi
 import de.chennemann.agentic.ui.chat.VoiceInputStatusUi
 import kotlin.math.roundToInt
 
@@ -109,6 +116,7 @@ fun T3MessageComposer(
     turnRunning: Boolean,
     onEvent: (ChatUiEvent) -> Unit,
     modifier: Modifier = Modifier,
+    sessionTermination: SessionTerminationUi = SessionTerminationUi(),
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     var commandMenuDismissed by remember { mutableStateOf(false) }
@@ -190,6 +198,18 @@ fun T3MessageComposer(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(end = 88.dp)
+                        .onPreviewKeyEvent { keyEvent ->
+                            val stroke = keyEvent.toHardwareKeyStroke(KeyboardFocus.COMPOSER)
+                                ?: return@onPreviewKeyEvent false
+                            val action = HardwareKeyboardBindings.map(
+                                stroke,
+                                canSend = state.enabled && !state.sending && state.draft.isNotBlank(),
+                                turnRunning = turnRunning,
+                            ) ?: return@onPreviewKeyEvent false
+                            if (action == KeyboardAction.NEWLINE) return@onPreviewKeyEvent false
+                            action.toChatUiEvent()?.let(onEvent)
+                            true
+                        }
                         .pointerInput(
                             state.selectedInteractionMode,
                             state.enabled,
@@ -292,6 +312,29 @@ fun T3MessageComposer(
                         .padding(top = 6.dp, end = 12.dp),
                     horizontalArrangement = Arrangement.End,
                 ) {
+                    if (state.draft.isNotBlank() && !state.sending) {
+                        TextButton(onClick = { onEvent(ChatUiEvent.DraftDiscardRequested) }) {
+                            Text("Discard")
+                        }
+                    }
+                    if (
+                        sessionTermination.canTerminate ||
+                        sessionTermination.terminating ||
+                        sessionTermination.errorMessage != null
+                    ) {
+                        OutlinedButton(
+                            onClick = { onEvent(ChatUiEvent.SessionTerminationRequested) },
+                            enabled = sessionTermination.canTerminate && !sessionTermination.terminating,
+                        ) {
+                            Text(
+                                when {
+                                    sessionTermination.terminating -> "Terminating…"
+                                    sessionTermination.errorMessage != null -> "Retry session stop"
+                                    else -> "Terminate session"
+                                },
+                            )
+                        }
+                    }
                     if (turnRunning) {
                         OutlinedButton(
                             onClick = { onEvent(ChatUiEvent.TurnInterruptRequested) },
@@ -372,6 +415,12 @@ fun T3MessageComposer(
                             }
                         }
                     }
+                }
+                sessionTermination.errorMessage?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                }
+                if (sessionTermination.terminal) {
+                    Text("Session stopped", color = ComposerMuted, style = MaterialTheme.typography.bodySmall)
                 }
             }
 

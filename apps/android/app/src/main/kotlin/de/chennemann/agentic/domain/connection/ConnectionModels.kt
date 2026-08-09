@@ -39,4 +39,6 @@ interface ConnectionController {
     val state: StateFlow<ConnectionState>
 
     fun wake()
+
+    fun retryPendingCommands()
 }

@@ -53,8 +53,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -69,6 +71,9 @@ import de.chennemann.agentic.ui.components.ConnectionStatusBanner
 import de.chennemann.agentic.ui.components.T3MessageComposer
 import de.chennemann.agentic.ui.components.ToolActivityGroup
 import de.chennemann.agentic.ui.theme.MobileTheme
+import de.chennemann.agentic.ui.theme.LocalCodeScale
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.unit.Density
 import de.chennemann.agentic.icons.Add
 import de.chennemann.agentic.icons.Archive
 import de.chennemann.agentic.icons.ArchiveRestore
@@ -133,7 +138,21 @@ fun T3ChatScreen(
         }
     }
 
-    Box(modifier = modifier.fillMaxSize()) {
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .onKeyEvent { keyEvent ->
+                val stroke = keyEvent.toHardwareKeyStroke(KeyboardFocus.GLOBAL)
+                    ?: return@onKeyEvent false
+                val action = HardwareKeyboardBindings.map(
+                    stroke,
+                    canSend = false,
+                    turnRunning = state.isTurnRunning,
+                ) ?: return@onKeyEvent false
+                action.toChatUiEvent()?.let(onEvent)
+                true
+            },
+    ) {
         Column(
             modifier = Modifier.fillMaxSize(),
         ) {
@@ -150,7 +169,9 @@ fun T3ChatScreen(
             ) {
                 LazyColumn(
                     state = listState,
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .testTag(ChatTimelineTestTag),
                     contentPadding = PaddingValues(
                         start = 16.dp,
                         top = 12.dp,
@@ -223,7 +244,8 @@ fun T3ChatScreen(
                                 top = 16.dp,
                                 end = 16.dp,
                                 bottom = 16.dp + composerHeight,
-                            ),
+                            )
+                            .testTag(FollowLatestTestTag),
                     ) {
                         Text("↓")
                     }
@@ -304,6 +326,7 @@ fun T3ChatScreen(
                 state = state.composer,
                 draft = composerDraft,
                 turnRunning = state.isTurnRunning,
+                sessionTermination = state.sessionTermination,
                 onEvent = onEvent,
                 modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
             )
@@ -346,6 +369,151 @@ fun T3ChatScreen(
         )
     }
 
+    state.environmentRemoval?.let { removal ->
+        AlertDialog(
+            onDismissRequest = { onEvent(ChatUiEvent.EnvironmentRemovalDismissed) },
+            title = { Text("Remove ${removal.label}?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "This removes only this environment's saved credential, cached " +
+                            "conversations, pending commands, and preferences from this device. " +
+                            "Other environments are not affected.",
+                    )
+                    removal.errorMessage?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { onEvent(ChatUiEvent.EnvironmentRemovalConfirmed) },
+                    enabled = !removal.removing,
+                ) {
+                    Text(if (removal.removing) "Removing…" else "Remove environment")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { onEvent(ChatUiEvent.EnvironmentRemovalDismissed) },
+                    enabled = !removal.removing,
+                ) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    state.projectCreation?.let { creation ->
+        AlertDialog(
+            onDismissRequest = { onEvent(ChatUiEvent.ProjectCreationDismissed) },
+            title = { Text("Add project") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Enter an absolute path on the server or a repository URL.")
+                    OutlinedTextField(
+                        value = creation.source,
+                        onValueChange = { onEvent(ChatUiEvent.ProjectCreationSourceChanged(it)) },
+                        enabled = !creation.creating,
+                        label = { Text("Server path or repository URL") },
+                        singleLine = true,
+                    )
+                    creation.errorMessage?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { onEvent(ChatUiEvent.ProjectCreationConfirmed) },
+                    enabled = creation.source.isNotBlank() && !creation.creating,
+                ) {
+                    Text(if (creation.creating) "Creating…" else "Create project")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { onEvent(ChatUiEvent.ProjectCreationDismissed) },
+                    enabled = !creation.creating,
+                ) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    state.projectRename?.let { rename ->
+        AlertDialog(
+            onDismissRequest = { onEvent(ChatUiEvent.ProjectRenameDismissed) },
+            title = { Text("Rename project") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Current name: ${rename.previousTitle}")
+                    OutlinedTextField(
+                        value = rename.title,
+                        onValueChange = { onEvent(ChatUiEvent.ProjectRenameTitleChanged(it)) },
+                        enabled = !rename.saving,
+                        label = { Text("Project name") },
+                        singleLine = true,
+                    )
+                    rename.errorMessage?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { onEvent(ChatUiEvent.ProjectRenameConfirmed) },
+                    enabled = rename.title.isNotBlank() && !rename.saving,
+                ) {
+                    Text(if (rename.saving) "Saving…" else "Rename")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { onEvent(ChatUiEvent.ProjectRenameDismissed) },
+                    enabled = !rename.saving,
+                ) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
+    state.projectRemoval?.let { removal ->
+        AlertDialog(
+            onDismissRequest = { onEvent(ChatUiEvent.ProjectRemovalDismissed) },
+            title = { Text("Remove ${removal.title}?") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        "This removes the project and its conversations from this T3 environment. " +
+                            "It does not delete the server workspace or repository files.",
+                    )
+                    removal.errorMessage?.let {
+                        Text(it, color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = { onEvent(ChatUiEvent.ProjectRemovalConfirmed) },
+                    enabled = !removal.removing,
+                ) {
+                    Text(if (removal.removing) "Removing…" else "Remove project")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { onEvent(ChatUiEvent.ProjectRemovalDismissed) },
+                    enabled = !removal.removing,
+                ) {
+                    Text("Cancel")
+                }
+            },
+        )
+    }
+
     if (state.groqSettings.dialogVisible) {
         GroqSettingsDialog(
             state = state.groqSettings,
@@ -361,6 +529,7 @@ private fun IsolatedDraftComposer(
     state: ComposerUiState,
     draft: StateFlow<String>?,
     turnRunning: Boolean,
+    sessionTermination: SessionTerminationUi,
     onEvent: (ChatUiEvent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -370,6 +539,7 @@ private fun IsolatedDraftComposer(
             turnRunning = turnRunning,
             onEvent = onEvent,
             modifier = modifier,
+            sessionTermination = sessionTermination,
         )
     } else {
         val value by draft.collectAsStateWithLifecycle()
@@ -378,6 +548,7 @@ private fun IsolatedDraftComposer(
             turnRunning = turnRunning,
             onEvent = onEvent,
             modifier = modifier,
+            sessionTermination = sessionTermination,
         )
     }
 }
@@ -500,12 +671,16 @@ private fun MessageItem(message: ChatMessageUi) {
         ChatMessageAuthorUi.ASSISTANT -> {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 SelectionContainer {
-                    StreamingMarkdownText(
+                    val codeScale = LocalCodeScale.current
+                    val localDensity = LocalDensity.current
+                    CompositionLocalProvider(
+                        LocalDensity provides Density(localDensity.density, localDensity.fontScale * codeScale),
+                    ) { StreamingMarkdownText(
                         content = message.content,
                         modifier = Modifier.fillMaxWidth(),
                         style = MaterialTheme.typography.bodyLarge,
                         inlineCode = SpanStyle(color = MaterialTheme.colorScheme.primary),
-                    )
+                    ) }
                 }
                 if (message.isStreaming) {
                     Text(
@@ -704,6 +879,9 @@ private fun previewChatState(): ChatUiState = ChatUiState(
 private const val EndTolerancePx = 8
 private const val MaxEndVisibilityPasses = 8
 private const val LayoutSettleDelayMillis = 16L
+
+internal const val ChatTimelineTestTag = "chat-timeline"
+internal const val FollowLatestTestTag = "follow-latest"
 
 private tailrec fun Context.findActivity(): Activity? = when (this) {
     is Activity -> this

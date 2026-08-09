@@ -82,4 +82,6 @@ interface OrchestrationRepository {
     ): Reduction<ProjectionState<OrchestrationThreadDetailSnapshot>>
 
     suspend fun clearEnvironment(environmentId: String)
+
+    suspend fun clearProjectionCache(environmentId: String): Unit = error("Projection cache clearing is not supported.")
 }

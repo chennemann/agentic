@@ -299,6 +299,20 @@ class SqlOrchestrationRepository(
                 mutableFocusedThread.value = ProjectionState()
                 mutableFocusedThreadId.value = null
                 mutableSelectedProjectId.value = null
+                threadProjections.clear()
+            }
+        }
+    }
+
+    override suspend fun clearProjectionCache(environmentId: String) = withContext(dispatcher) {
+        lock.withLock {
+            cancelScheduledCaches(environmentId)
+            database.transaction { database.agenticT3Queries.deleteEnvironmentProjections(environmentId) }
+            if (currentEnvironmentId == environmentId) {
+                mutableClientConfig.value = ProjectionState()
+                mutableShell.value = ProjectionState()
+                mutableFocusedThread.value = ProjectionState()
+                threadProjections.clear()
             }
         }
     }

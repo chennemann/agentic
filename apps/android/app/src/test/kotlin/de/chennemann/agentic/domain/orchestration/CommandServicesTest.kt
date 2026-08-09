@@ -1,13 +1,16 @@
 package de.chennemann.agentic.domain.orchestration
 
-import de.chennemann.agentic.data.auth.CredentialStore
-import de.chennemann.agentic.data.t3.OrchestrationCommandClient
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
 import de.chennemann.agentic.domain.environment.SavedEnvironment
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.DispatchResult
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
 import de.chennemann.agentic.t3.contract.ModelSelection
+import de.chennemann.agentic.t3.contract.EnvironmentClientConfig
+import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
+import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
+import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
+import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.PortableCommandJson
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -33,9 +36,8 @@ class CommandServicesTest {
         lastConnectedAt = null,
     )
     private val environments = FakeEnvironmentRepository(environment)
-    private val credentials = FakeCredentialStore()
-    private val commands = RecordingCommandClient()
-    private val service = ChatService(environments, credentials, commands)
+    private val commands = RecordingCommandDispatcher()
+    private val service = ChatService(commands)
 
     @Test
     fun `new turn creates the thread before starting it with unique client ids`() = runTest {
@@ -106,30 +108,72 @@ class CommandServicesTest {
         assertEquals("acceptForSession", approval.decision)
         assertEquals("debug", input.answers.getValue("target").toString().trim('"'))
     }
-}
 
-private class RecordingCommandClient : OrchestrationCommandClient {
-    val recorded = mutableListOf<ClientOrchestrationCommand>()
+    @Test
+    fun `accepted plan continuation maps exact thread and plan through start turn`() = runTest {
+        service.continuePlan(
+            threadId = "thread-plan",
+            planId = "plan-provider-neutral",
+            modelSelection = ModelSelection("instance", "model"),
+            runtimeMode = "approval-required",
+        )
 
-    override suspend fun dispatch(
-        baseUrl: String,
-        bearerToken: String,
-        command: ClientOrchestrationCommand,
-    ): DispatchResult {
-        recorded += command
-        return DispatchResult(recorded.size.toLong())
+        val command = commands.recorded.single() as ClientOrchestrationCommand.StartTurn
+        assertEquals("thread-plan", command.threadId)
+        assertEquals("thread-plan", command.sourceProposedPlan?.threadId)
+        assertEquals("plan-provider-neutral", command.sourceProposedPlan?.planId)
+        assertEquals("default", command.interactionMode)
+        assertEquals("Implement the accepted plan.", command.message.text)
+    }
+
+    @Test
+    fun `session stop and turn interrupt remain distinct portable commands`() = runTest {
+        service.interrupt("thread-1", "turn-1")
+        service.terminateSession("thread-1")
+
+        val interrupt = commands.recorded[0] as ClientOrchestrationCommand.InterruptTurn
+        val terminate = commands.recorded[1] as ClientOrchestrationCommand.StopSession
+        assertEquals("thread-1", interrupt.threadId)
+        assertEquals("turn-1", interrupt.turnId)
+        assertEquals("thread-1", terminate.threadId)
+        assertNotEquals(interrupt.commandId, terminate.commandId)
+    }
+
+    @Test
+    fun `thread service maps snooze and explicit wake without archive semantics`() = runTest {
+        val threadService = ThreadService(environments, EmptyOrchestrationRepository(), commands)
+
+        threadService.snooze("thread-1", "2026-08-07T09:00:00Z")
+        threadService.wake("thread-1")
+
+        val snooze = commands.recorded[0] as ClientOrchestrationCommand.SnoozeThread
+        val wake = commands.recorded[1] as ClientOrchestrationCommand.UnsnoozeThread
+        assertEquals("thread-1", snooze.threadId)
+        assertEquals("2026-08-07T09:00:00Z", snooze.snoozedUntil)
+        assertEquals("thread-1", wake.threadId)
+        assertEquals("user", wake.reason)
+        assertTrue(commands.recorded.none { it is ClientOrchestrationCommand.ArchiveThread })
+    }
+
+    @Test
+    fun `thread service maps permanent deletion to its own durable command`() = runTest {
+        val threadService = ThreadService(environments, EmptyOrchestrationRepository(), commands)
+
+        threadService.delete("thread-1")
+
+        val deletion = commands.recorded.single() as ClientOrchestrationCommand.DeleteThread
+        assertEquals("thread-1", deletion.threadId)
+        assertTrue(commands.recorded.none { it is ClientOrchestrationCommand.ArchiveThread })
     }
 }
 
-private class FakeCredentialStore : CredentialStore {
-    override suspend fun read(environmentId: String): String = "token"
+private class RecordingCommandDispatcher : CommandDispatcher {
+    val recorded = mutableListOf<ClientOrchestrationCommand>()
 
-    override suspend fun write(
-        environmentId: String,
-        bearerToken: String,
-    ) = Unit
-
-    override suspend fun remove(environmentId: String) = Unit
+    override suspend fun dispatch(command: ClientOrchestrationCommand): DispatchResult {
+        recorded += command
+        return DispatchResult(recorded.size.toLong())
+    }
 }
 
 private class FakeEnvironmentRepository(
@@ -152,4 +196,26 @@ private class FakeEnvironmentRepository(
         environmentId: String,
         connectedAt: Long,
     ) = Unit
+}
+
+private class EmptyOrchestrationRepository : OrchestrationRepository {
+    override val clientConfig = MutableStateFlow(ProjectionState<EnvironmentClientConfig>())
+    override val shell = MutableStateFlow(ProjectionState<OrchestrationShellSnapshot>())
+    override val focusedThread = MutableStateFlow(ProjectionState<OrchestrationThreadDetailSnapshot>())
+    override val focusedThreadId = MutableStateFlow<String?>(null)
+    override val selectedProjectId = MutableStateFlow<String?>(null)
+    override suspend fun loadCached(environmentId: String) = Unit
+    override suspend fun setClientConfig(environmentId: String, config: EnvironmentClientConfig, source: ProjectionSource) = Unit
+    override suspend fun setShellSnapshot(environmentId: String, snapshot: OrchestrationShellSnapshot, source: ProjectionSource) = Unit
+    override suspend fun applyShellItem(environmentId: String, item: OrchestrationShellStreamItem) = Reduction.Ignored(shell.value)
+    override suspend fun focusThread(environmentId: String, threadId: String?) = Unit
+    override suspend fun selectProject(environmentId: String, projectId: String?) = Unit
+    override suspend fun setThreadSnapshot(
+        environmentId: String,
+        snapshot: OrchestrationThreadDetailSnapshot,
+        source: ProjectionSource,
+    ) = Unit
+    override suspend fun applyThreadItem(environmentId: String, threadId: String, item: OrchestrationThreadStreamItem) =
+        Reduction.Ignored(focusedThread.value)
+    override suspend fun clearEnvironment(environmentId: String) = Unit
 }

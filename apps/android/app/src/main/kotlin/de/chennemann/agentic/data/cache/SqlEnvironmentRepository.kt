@@ -56,7 +56,12 @@ class SqlEnvironmentRepository(
     }
 
     override suspend fun remove(environmentId: String) = withContext(dispatcher) {
-        database.agenticT3Queries.deleteEnvironment(environmentId)
+        database.transaction {
+            database.agenticT3Queries.deleteEnvironmentProjections(environmentId)
+            database.agenticT3Queries.deleteEnvironmentPreferences(environmentId)
+            database.agenticT3Queries.deleteEnvironmentCommands(environmentId)
+            database.agenticT3Queries.deleteEnvironment(environmentId)
+        }
         refresh()
     }
 

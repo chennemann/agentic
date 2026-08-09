@@ -9,7 +9,6 @@ import de.chennemann.agentic.data.t3.EnvironmentAuthClient
 import de.chennemann.agentic.data.t3.EnvironmentConfigClient
 import de.chennemann.agentic.data.t3.EnvironmentMetadataClient
 import de.chennemann.agentic.data.t3.REQUIRED_T3_SCOPES
-import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
 import de.chennemann.agentic.t3.contract.T3_PORTABLE_PROTOCOL_VERSION
 
@@ -22,9 +21,16 @@ fun interface EnvironmentSelector {
     suspend fun select(environmentId: String)
 }
 
+fun interface EnvironmentRemover {
+    suspend fun remove(environmentId: String)
+}
+
+fun interface EnvironmentCacheRemover {
+    suspend fun clear(environmentId: String)
+}
+
 class EnvironmentService(
     private val environments: EnvironmentRepository,
-    private val orchestration: OrchestrationRepository,
     private val credentials: CredentialStore,
     private val metadataClient: EnvironmentMetadataClient,
     private val authClient: EnvironmentAuthClient,
@@ -72,17 +78,31 @@ class EnvironmentService(
         environments.select(environmentId)
     }
 
-    suspend fun remove(environmentId: String) {
-        credentials.remove(environmentId)
-        orchestration.clearEnvironment(environmentId)
-        environments.remove(environmentId)
-    }
-
     private fun validateProtocol(descriptor: ExecutionEnvironmentDescriptor) {
         if (descriptor.capabilities.portableClientProtocol != T3_PORTABLE_PROTOCOL_VERSION) {
             throw UnsupportedProtocolException()
         }
     }
+}
+
+class RegisteredEnvironmentRemover(
+    private val environments: EnvironmentRepository,
+    private val credentials: CredentialStore,
+    private val caches: EnvironmentCacheRemover,
+) : EnvironmentRemover {
+    override suspend fun remove(environmentId: String) {
+        require(environments.environments.value.any { it.id == environmentId }) {
+            "Environment is no longer registered."
+        }
+        val wasActive = environments.activeEnvironment.value?.id == environmentId
+        credentials.remove(environmentId)
+        environments.remove(environmentId)
+        caches.clear(environmentId)
+        if (wasActive) {
+            environments.environments.value.firstOrNull()?.let { environments.select(it.id) }
+        }
+    }
+
 }
 
 class UnsupportedProtocolException : IllegalStateException(

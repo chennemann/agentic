@@ -83,6 +83,38 @@ class PortableFixtureTest {
     }
 
     @Test
+    fun `snooze commands encode provider neutral lifecycle fields`() {
+        val snooze = PortableCommandJson.encodeToJsonElement(
+            ClientOrchestrationCommand.serializer(),
+            ClientOrchestrationCommand.SnoozeThread(
+                "snooze-command",
+                "thread-golden",
+                "2026-08-07T09:00:00Z"
+            )
+        ).jsonObject
+        val wake = PortableCommandJson.encodeToJsonElement(
+            ClientOrchestrationCommand.serializer(),
+            ClientOrchestrationCommand.UnsnoozeThread("wake-command", "thread-golden")
+        ).jsonObject
+
+        assertEquals("thread.snooze", snooze.getValue("type").jsonPrimitive.content)
+        assertEquals("2026-08-07T09:00:00Z", snooze.getValue("snoozedUntil").jsonPrimitive.content)
+        assertEquals("thread.unsnooze", wake.getValue("type").jsonPrimitive.content)
+        assertEquals("user", wake.getValue("reason").jsonPrimitive.content)
+    }
+
+    @Test
+    fun `permanent deletion encodes the exact portable command`() {
+        val deletion = PortableCommandJson.encodeToJsonElement(
+            ClientOrchestrationCommand.serializer(),
+            ClientOrchestrationCommand.DeleteThread("delete-command", "thread-golden")
+        ).jsonObject
+
+        assertEquals("thread.delete", deletion.getValue("type").jsonPrimitive.content)
+        assertEquals("thread-golden", deletion.getValue("threadId").jsonPrimitive.content)
+    }
+
+    @Test
     fun `every canonical shell stream variant decodes`() {
         val items = PortableJson.decodeFromString(
             ListSerializer(OrchestrationShellStreamItem.serializer()),

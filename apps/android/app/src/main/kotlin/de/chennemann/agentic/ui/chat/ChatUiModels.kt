@@ -1,4 +1,5 @@
 package de.chennemann.agentic.ui.chat
+import de.chennemann.agentic.domain.preferences.ThemePreference
 
 data class ChatUiState(
     val title: String,
@@ -15,14 +16,102 @@ data class ChatUiState(
     val canRenameThread: Boolean = false,
     val canArchiveThread: Boolean = false,
     val isThreadArchived: Boolean = false,
+    val canDeleteThread: Boolean = false,
     val renameDialog: RenameThreadUi? = null,
+    val environmentRemoval: EnvironmentRemovalUi? = null,
+    val projectCreation: ProjectCreationUi? = null,
+    val projectRename: ProjectRenameUi? = null,
+    val projectRemoval: ProjectRemovalUi? = null,
+    val sessionTermination: SessionTerminationUi = SessionTerminationUi(),
+    val threadSnooze: ThreadSnoozeUi = ThreadSnoozeUi(),
+    val threadDeletion: ThreadDeletionUi? = null,
+    val sharedTextImport: SharedTextImportUi? = null,
+    val sharedTextImportError: String? = null,
+    val shortcutError: String? = null,
+    val interfaceSettings: InterfaceSettingsUi = InterfaceSettingsUi(),
+    val cacheClearance: CacheClearanceUi? = null,
+    val durableWork: List<DurableWorkUi> = emptyList(),
     val groqSettings: GroqSettingsUiState = GroqSettingsUiState(),
     val latestTurnChanges: LatestTurnChangesUiState = LatestTurnChangesUiState(),
 )
 
+data class ThreadSnoozeUi(
+    val supported: Boolean = false,
+    val isSnoozed: Boolean = false,
+    val snoozedAt: String? = null,
+    val snoozedUntil: String? = null,
+    val wakeReason: String? = null,
+    val canSnooze: Boolean = false,
+    val canWake: Boolean = false,
+    val actionInProgress: Boolean = false,
+    val errorMessage: String? = null,
+)
+
+data class ThreadDeletionUi(
+    val threadId: String,
+    val title: String,
+    val blockers: List<String> = emptyList(),
+    val checking: Boolean = false,
+    val deleting: Boolean = false,
+    val errorMessage: String? = null,
+) {
+    val canConfirm: Boolean get() = blockers.isEmpty() && !checking && !deleting
+}
+
+data class SharedTextImportUi(
+    val fingerprint: String,
+    val text: String,
+    val environments: List<ProjectPickerItemUi>,
+    val projects: List<ProjectPickerItemUi>,
+    val environmentId: String? = null,
+    val projectId: String? = null,
+    val importing: Boolean = false,
+    val errorMessage: String? = null,
+) {
+    val canImport: Boolean get() = environmentId != null && projectId != null && !importing
+}
+data class InterfaceSettingsUi(val theme: ThemePreference = ThemePreference.SYSTEM, val interfaceScale: Float = 1f, val codeScale: Float = 1f)
+data class CacheClearanceUi(val environmentId: String, val categories: List<String> = emptyList(), val clearableBytes: Long = 0, val clearing: Boolean = false, val success: Boolean = false, val errorMessage: String? = null)
+data class DurableWorkUi(val commandId: String, val label: String, val threadId: String?, val failed: Boolean, val attemptCount: Long, val errorMessage: String?, val awaitsReplay: Boolean)
+
 data class RenameThreadUi(
     val draft: String,
     val saving: Boolean = false,
+)
+
+data class EnvironmentRemovalUi(
+    val environmentId: String,
+    val label: String,
+    val removing: Boolean = false,
+    val errorMessage: String? = null,
+)
+
+data class ProjectCreationUi(
+    val source: String = "",
+    val creating: Boolean = false,
+    val errorMessage: String? = null,
+)
+
+data class ProjectRenameUi(
+    val projectId: String,
+    val previousTitle: String,
+    val title: String,
+    val saving: Boolean = false,
+    val errorMessage: String? = null,
+)
+
+data class ProjectRemovalUi(
+    val projectId: String,
+    val title: String,
+    val removing: Boolean = false,
+    val errorMessage: String? = null,
+)
+
+data class SessionTerminationUi(
+    val canTerminate: Boolean = false,
+    val terminating: Boolean = false,
+    val terminal: Boolean = false,
+    val errorMessage: String? = null,
 )
 
 data class LatestTurnChangesUiState(
@@ -119,6 +208,15 @@ sealed interface ChatActivityUi {
         val formattedDetail: String,
         val typeLabel: String? = null,
     ) : ChatActivityUi
+
+    data class ProposedPlan(
+        override val id: String,
+        override val summary: String,
+        val planMarkdown: String,
+        val canContinue: Boolean,
+        val continuing: Boolean = false,
+        val errorMessage: String? = null,
+    ) : ChatActivityUi
 }
 
 enum class ActivityStatusUi {
@@ -194,6 +292,7 @@ data class ThreadPickerItemUi(
     val supportingText: String? = null,
     val archived: Boolean = false,
     val active: Boolean = false,
+    val snoozedUntil: String? = null,
 )
 
 data class EnvironmentPickerUiState(
@@ -369,6 +468,10 @@ sealed interface ChatUiEvent {
         val value: String,
     ) : ChatUiEvent
 
+    data object DraftDiscardRequested : ChatUiEvent
+
+    data class ProposedPlanContinueRequested(val planId: String) : ChatUiEvent
+
     data object MessageSubmitted : ChatUiEvent
 
     data object VoiceInputPressed : ChatUiEvent
@@ -388,6 +491,8 @@ sealed interface ChatUiEvent {
     data object GroqApiKeyRemoved : ChatUiEvent
 
     data object TurnInterruptRequested : ChatUiEvent
+
+    data object SessionTerminationRequested : ChatUiEvent
 
     data class InteractionModeSelected(
         val mode: InteractionModeUi,
@@ -432,9 +537,37 @@ sealed interface ChatUiEvent {
 
     data object PairEnvironmentRequested : ChatUiEvent
 
+    data class EnvironmentRemovalRequested(val environmentId: String) : ChatUiEvent
+
+    data object EnvironmentRemovalDismissed : ChatUiEvent
+
+    data object EnvironmentRemovalConfirmed : ChatUiEvent
+
     data class ProjectSelected(
         val projectId: String,
     ) : ChatUiEvent
+
+    data object ProjectCreationRequested : ChatUiEvent
+
+    data class ProjectCreationSourceChanged(val value: String) : ChatUiEvent
+
+    data object ProjectCreationConfirmed : ChatUiEvent
+
+    data object ProjectCreationDismissed : ChatUiEvent
+
+    data class ProjectRenameRequested(val projectId: String) : ChatUiEvent
+
+    data class ProjectRenameTitleChanged(val value: String) : ChatUiEvent
+
+    data object ProjectRenameConfirmed : ChatUiEvent
+
+    data object ProjectRenameDismissed : ChatUiEvent
+
+    data class ProjectRemovalRequested(val projectId: String) : ChatUiEvent
+
+    data object ProjectRemovalConfirmed : ChatUiEvent
+
+    data object ProjectRemovalDismissed : ChatUiEvent
 
     data class ProjectQuickSwitchRequested(
         val projectId: String,
@@ -483,6 +616,35 @@ sealed interface ChatUiEvent {
     data object ArchiveThreadRequested : ChatUiEvent
 
     data object UnarchiveThreadRequested : ChatUiEvent
+
+    data class ThreadSnoozeRequested(val snoozedUntil: String) : ChatUiEvent
+
+    data object ThreadWakeRequested : ChatUiEvent
+
+    data object DeleteThreadRequested : ChatUiEvent
+
+    data object DeleteThreadConfirmed : ChatUiEvent
+
+    data object DeleteThreadDismissed : ChatUiEvent
+
+    data class SharedImportEnvironmentSelected(val environmentId: String) : ChatUiEvent
+
+    data class SharedImportProjectSelected(val projectId: String) : ChatUiEvent
+
+    data object SharedImportConfirmed : ChatUiEvent
+
+    data object SharedImportDiscarded : ChatUiEvent
+
+    data object SharedImportErrorDismissed : ChatUiEvent
+
+    data object ShortcutErrorDismissed : ChatUiEvent
+    data class ThemeSelected(val value: ThemePreference) : ChatUiEvent
+    data class InterfaceScaleSelected(val value: Float) : ChatUiEvent
+    data class CodeScaleSelected(val value: Float) : ChatUiEvent
+    data class CacheInspectionRequested(val environmentId: String) : ChatUiEvent
+    data object CacheClearConfirmed : ChatUiEvent
+    data object CacheClearDismissed : ChatUiEvent
+    data object DurableWorkRetryRequested : ChatUiEvent
 
     data class ActivityExpansionChanged(
         val activityId: String,

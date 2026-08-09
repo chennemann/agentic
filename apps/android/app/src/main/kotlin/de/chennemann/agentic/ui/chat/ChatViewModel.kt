@@ -5,9 +5,11 @@ import androidx.lifecycle.viewModelScope
 import de.chennemann.agentic.domain.connection.ConnectionState
 import de.chennemann.agentic.domain.connection.ConnectionController
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
+import de.chennemann.agentic.domain.environment.EnvironmentRemover
 import de.chennemann.agentic.domain.environment.EnvironmentSelector
 import de.chennemann.agentic.domain.orchestration.ChatActions
 import de.chennemann.agentic.domain.orchestration.ChatService
+import de.chennemann.agentic.domain.orchestration.CommandOutbox
 import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.domain.orchestration.ProjectionState
 import de.chennemann.agentic.domain.orchestration.ThreadService
@@ -15,6 +17,20 @@ import de.chennemann.agentic.domain.orchestration.ThreadActions
 import de.chennemann.agentic.domain.preferences.ComposerDraftRepository
 import de.chennemann.agentic.domain.preferences.FavoriteModelId
 import de.chennemann.agentic.domain.preferences.ModelFavoriteRepository
+import de.chennemann.agentic.domain.preferences.InterfacePreferences
+import de.chennemann.agentic.domain.preferences.InterfacePreferencesRepository
+import de.chennemann.agentic.domain.preferences.SupportedDisplayScales
+import de.chennemann.agentic.domain.sharing.PendingSharedText
+import de.chennemann.agentic.ui.chat.workflow.CacheAdministration
+import de.chennemann.agentic.ui.chat.workflow.CacheAdministrationIntent
+import de.chennemann.agentic.ui.chat.workflow.CacheAdministrationState
+import de.chennemann.agentic.ui.chat.workflow.ProjectWorkflow
+import de.chennemann.agentic.ui.chat.workflow.ProjectWorkflowIntent
+import de.chennemann.agentic.ui.chat.workflow.ProjectWorkflowState
+import de.chennemann.agentic.ui.chat.workflow.SharedTextWorkflow
+import de.chennemann.agentic.ui.chat.workflow.SharedTextWorkflowIntent
+import de.chennemann.agentic.ui.chat.workflow.SharedTextWorkflowState
+import de.chennemann.agentic.ui.chat.workflow.ShortcutWorkflow
 import de.chennemann.agentic.domain.voice.GroqApiKeyStore
 import de.chennemann.agentic.domain.voice.VoiceInputService
 import de.chennemann.agentic.t3.contract.EnvironmentClientConfig
@@ -25,6 +41,7 @@ import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import de.chennemann.agentic.t3.contract.PortableJson
 import java.time.Instant
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
@@ -68,6 +85,13 @@ class ChatViewModel(
     private val modelFavorites: ModelFavoriteRepository? = null,
     private val groqApiKeys: GroqApiKeyStore? = null,
     private val voiceInput: VoiceInputService? = null,
+    private val environmentRemover: EnvironmentRemover? = null,
+    private val projectWorkflow: ProjectWorkflow? = null,
+    private val commandOutbox: CommandOutbox? = null,
+    private val sharedTextWorkflow: SharedTextWorkflow? = null,
+    private val shortcutWorkflow: ShortcutWorkflow? = null,
+    private val interfacePreferences: InterfacePreferencesRepository? = null,
+    private val cacheAdministration: CacheAdministration? = null,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
     private val mutableDraft = MutableStateFlow("")
@@ -78,8 +102,14 @@ class ChatViewModel(
     private val currentDraftKey = combine(
         environments.activeEnvironment,
         repository.focusedThreadId,
-    ) { environment, threadId ->
-        if (environment == null || threadId == null) null else DraftKey(environment.id, threadId)
+        repository.selectedProjectId,
+    ) { environment, threadId, projectId ->
+        when {
+            environment == null -> null
+            threadId != null -> DraftKey(environment.id, threadId)
+            projectId != null -> DraftKey(environment.id, "$NewThreadDraftPrefix$projectId")
+            else -> null
+        }
     }.distinctUntilChanged()
     private var displayedDraftKey: DraftKey? = null
     private var draftSelectionInitialized = false
@@ -109,8 +139,34 @@ class ChatViewModel(
             modelFavorites.observe(active.id)
         }
     }
+    private val workflowPresentation = combine(
+        projectWorkflow?.state ?: flowOf(ProjectWorkflowState()),
+        sharedTextWorkflow?.state ?: flowOf(SharedTextWorkflowState()),
+        cacheAdministration?.state ?: flowOf(CacheAdministrationState()),
+        shortcutWorkflow?.error ?: flowOf(null),
+    ) { project, shared, cache, shortcutError -> WorkflowPresentation(project, shared, cache, shortcutError) }
+    private val durableWork = environments.activeEnvironment.flatMapLatest { active ->
+        if (active == null || commandOutbox == null) flowOf(emptyList()) else commandOutbox.observeStatuses(active.id)
+    }
+    private val displayAndWork = combine(
+        interfacePreferences?.preferences ?: flowOf(InterfacePreferences()),
+        durableWork,
+    ) { display, work -> display to work }
 
     init {
+        projectWorkflow?.let { workflow ->
+            viewModelScope.launch {
+                workflow.state.map { it.selectedProjectId }.distinctUntilChanged().collect { selectedProjectId ->
+                    if (selectedProjectId != null) update { copy(pickerProjectId = selectedProjectId) }
+                }
+            }
+        }
+        sharedTextWorkflow?.let { workflow ->
+            workflow.start(viewModelScope)
+        }
+        shortcutWorkflow?.let { workflow ->
+            workflow.start(viewModelScope)
+        }
         composerDrafts?.let { drafts ->
             viewModelScope.launch {
                 for (write in draftWrites) {
@@ -126,6 +182,64 @@ class ChatViewModel(
         }
         viewModelScope.launch {
             currentDraftKey.collectLatest { key -> selectDraft(key, composerDrafts) }
+        }
+        viewModelScope.launch {
+            repository.focusedThread.collect { state ->
+                val pendingPlanId = local.value.planContinuationId ?: return@collect
+                val plan = state.value?.thread?.proposedPlans?.firstOrNull { it.id == pendingPlanId }
+                if (plan == null || plan.implementationThreadId != null || plan.implementedAt != null) {
+                    update { copy(planContinuationId = null) }
+                }
+            }
+        }
+        viewModelScope.launch {
+            combine(repository.focusedThread, repository.shell) { thread, shell -> thread to shell }.collect { (thread, shell) ->
+                val deletingId = local.value.deletionThreadId?.takeIf { local.value.deletionInProgress } ?: return@collect
+                val detailGone = thread.value?.thread?.id != deletingId
+                val shellGone = shell.value?.threads?.none { it.id == deletingId } == true
+                if (detailGone && shellGone) {
+                    val fallback = shell.value.threads.firstOrNull()?.id
+                    update { copy(deletionThreadId = null, deletionInProgress = false, deletionVisible = false) }
+                    threads.selectThread(fallback)
+                }
+            }
+        }
+        viewModelScope.launch {
+            repository.focusedThread.collect { state ->
+                val terminatingThreadId = local.value.sessionTerminatingThreadId ?: return@collect
+                val detail = state.value?.thread
+                if (detail?.id == terminatingThreadId && detail.session?.status !in ActiveSessionStatuses) {
+                    update {
+                        copy(
+                            sessionTerminatingThreadId = null,
+                            sessionTerminalThreadId = terminatingThreadId,
+                            sessionTerminationError = null,
+                        )
+                    }
+                }
+            }
+        }
+        viewModelScope.launch {
+            repository.focusedThread.collect { state ->
+                val pendingThreadId = local.value.snoozeActionThreadId ?: return@collect
+                val detail = state.value?.thread ?: return@collect
+                if (detail.id != pendingThreadId) return@collect
+                val confirmed = when (local.value.snoozeAction) {
+                    SnoozeAction.SNOOZE -> detail.snoozedUntil == local.value.snoozeTargetUntil
+                    SnoozeAction.WAKE -> detail.snoozedUntil == null
+                    null -> false
+                }
+                if (confirmed) {
+                    update {
+                        copy(
+                            snoozeActionThreadId = null,
+                            snoozeAction = null,
+                            snoozeTargetUntil = null,
+                            snoozeError = null,
+                        )
+                    }
+                }
+            }
         }
         viewModelScope.launch {
             var activeThreadIds: Set<String>? = null
@@ -176,7 +290,13 @@ class ChatViewModel(
         mappedState,
         local,
         groqApiKeys?.configured ?: flowOf(false),
-    ) { mapped, local, groqConfigured ->
+        workflowPresentation,
+        displayAndWork,
+    ) { mapped, local, groqConfigured, workflows, displayAndWork ->
+        val display = displayAndWork.first
+        val shared = workflows.shared
+        val project = workflows.project
+        val cache = workflows.cache
         mapped.copy(
             composer = mapped.composer.copy(
                 sending = local.sending,
@@ -190,6 +310,38 @@ class ChatViewModel(
                 saving = local.groqSettingsSaving,
                 errorMessage = local.groqSettingsError,
             ),
+            projectCreation = if (project.creationVisible) {
+                ProjectCreationUi(project.creationSource, project.creationSaving, project.creationError)
+            } else null,
+            projectRename = project.renameId?.let {
+                ProjectRenameUi(it, project.renamePreviousTitle, project.renameTitle, project.renameSaving, project.renameError)
+            },
+            projectRemoval = project.removalId?.let {
+                ProjectRemovalUi(it, project.removalTitle, project.removalSaving, project.removalError)
+            },
+            sharedTextImport = shared.pending?.let { pending ->
+                SharedTextImportUi(
+                    fingerprint = pending.fingerprint,
+                    text = pending.text,
+                    environments = mapped.environmentPicker.environments.map {
+                        ProjectPickerItemUi(it.id, it.label, it.supportingText)
+                    },
+                    projects = mapped.threadPicker.projects,
+                    environmentId = shared.environmentId,
+                    projectId = shared.projectId,
+                    importing = shared.saving,
+                    errorMessage = shared.error,
+                )
+            },
+            sharedTextImportError = shared.error.takeIf { shared.pending == null },
+            shortcutError = workflows.shortcutError,
+            interfaceSettings = InterfaceSettingsUi(display.theme, display.interfaceScale, display.codeScale),
+            cacheClearance = cache.environmentId?.let {
+                CacheClearanceUi(it, cache.categories, cache.clearableBytes, cache.busy, cache.cleared, cache.error)
+            },
+            durableWork = displayAndWork.second.map {
+                DurableWorkUi(it.commandId, it.label, it.threadId, it.status.name == "FAILED", it.attemptCount, it.errorMessage, it.awaitsReplay)
+            },
         )
     }.stateIn(
         viewModelScope,
@@ -208,6 +360,12 @@ class ChatViewModel(
     fun onEvent(event: ChatUiEvent) {
         when (event) {
             is ChatUiEvent.DraftChanged -> setDraft(event.value)
+            ChatUiEvent.DraftDiscardRequested -> setDraft(
+                displayedDraftKey,
+                "",
+                persistImmediately = true,
+            )
+            is ChatUiEvent.ProposedPlanContinueRequested -> continueProposedPlan(event.planId)
             ChatUiEvent.MessageSubmitted -> submitMessage()
             ChatUiEvent.VoiceInputPressed -> handleVoiceInput()
             ChatUiEvent.VoiceInputCancelled -> cancelVoiceInput()
@@ -233,6 +391,7 @@ class ChatViewModel(
                 val detail = repository.focusedThread.value.value?.thread ?: return@launchCommand
                 chat.interrupt(detail.id, detail.latestTurn?.turnId ?: return@launchCommand)
             }
+            ChatUiEvent.SessionTerminationRequested -> terminateSession()
 
             is ChatUiEvent.InteractionModeSelected -> {
                 update { copy(interactionMode = event.mode) }
@@ -303,6 +462,62 @@ class ChatViewModel(
             }
 
             ChatUiEvent.PairEnvironmentRequested -> Unit
+            is ChatUiEvent.EnvironmentRemovalRequested -> {
+                val environment = environments.environments.value.firstOrNull {
+                    it.id == event.environmentId
+                } ?: return
+                update {
+                    copy(
+                        environmentRemovalId = environment.id,
+                        environmentRemovalLabel = environment.label,
+                        environmentRemovalError = null,
+                    )
+                }
+            }
+            ChatUiEvent.EnvironmentRemovalDismissed -> update {
+                if (environmentRemovalSaving) this else copy(
+                    environmentRemovalId = null,
+                    environmentRemovalLabel = null,
+                    environmentRemovalError = null,
+                )
+            }
+            ChatUiEvent.EnvironmentRemovalConfirmed -> {
+                val environmentId = local.value.environmentRemovalId ?: return
+                val remover = environmentRemover ?: return
+                update { copy(environmentRemovalSaving = true, environmentRemovalError = null) }
+                viewModelScope.launch {
+                    runCatching { remover.remove(environmentId) }
+                        .onSuccess {
+                            update {
+                                copy(
+                                    activePicker = null,
+                                    environmentRemovalId = null,
+                                    environmentRemovalLabel = null,
+                                    environmentRemovalSaving = false,
+                                )
+                            }
+                        }
+                        .onFailure { cause ->
+                            update {
+                                copy(
+                                    environmentRemovalSaving = false,
+                                    environmentRemovalError = cause.message ?: "Environment removal failed.",
+                                )
+                            }
+                        }
+                }
+            }
+            ChatUiEvent.ProjectCreationRequested -> acceptProject(ProjectWorkflowIntent.RequestCreation)
+            is ChatUiEvent.ProjectCreationSourceChanged -> acceptProject(ProjectWorkflowIntent.ChangeCreationSource(event.value))
+            ChatUiEvent.ProjectCreationDismissed -> acceptProject(ProjectWorkflowIntent.DismissCreation)
+            ChatUiEvent.ProjectCreationConfirmed -> acceptProject(ProjectWorkflowIntent.ConfirmCreation)
+            is ChatUiEvent.ProjectRenameRequested -> acceptProject(ProjectWorkflowIntent.RequestRename(event.projectId))
+            is ChatUiEvent.ProjectRenameTitleChanged -> acceptProject(ProjectWorkflowIntent.ChangeRenameTitle(event.value))
+            ChatUiEvent.ProjectRenameDismissed -> acceptProject(ProjectWorkflowIntent.DismissRename)
+            ChatUiEvent.ProjectRenameConfirmed -> acceptProject(ProjectWorkflowIntent.ConfirmRename)
+            is ChatUiEvent.ProjectRemovalRequested -> acceptProject(ProjectWorkflowIntent.RequestRemoval(event.projectId))
+            ChatUiEvent.ProjectRemovalDismissed -> acceptProject(ProjectWorkflowIntent.DismissRemoval)
+            ChatUiEvent.ProjectRemovalConfirmed -> acceptProject(ProjectWorkflowIntent.ConfirmRemoval)
             is ChatUiEvent.ProjectSelected -> launchCommand {
                 threads.selectProject(event.projectId)
                 update {
@@ -368,6 +583,31 @@ class ChatViewModel(
                 update { copy(activePicker = null) }
                 launchCommand { threads.unarchive(id) }
             }
+
+            is ChatUiEvent.ThreadSnoozeRequested -> changeSnooze(SnoozeAction.SNOOZE, event.snoozedUntil)
+            ChatUiEvent.ThreadWakeRequested -> changeSnooze(SnoozeAction.WAKE)
+            ChatUiEvent.DeleteThreadRequested -> openThreadDeletion()
+            ChatUiEvent.DeleteThreadConfirmed -> confirmThreadDeletion()
+            ChatUiEvent.DeleteThreadDismissed -> if (!local.value.deletionInProgress) {
+                update { copy(deletionVisible = false, deletionThreadId = null, deletionError = null) }
+            }
+            is ChatUiEvent.SharedImportEnvironmentSelected -> acceptShared(SharedTextWorkflowIntent.SelectEnvironment(event.environmentId))
+            is ChatUiEvent.SharedImportProjectSelected -> acceptShared(SharedTextWorkflowIntent.SelectProject(event.projectId))
+            ChatUiEvent.SharedImportConfirmed -> acceptShared(SharedTextWorkflowIntent.Import)
+            ChatUiEvent.SharedImportDiscarded -> acceptShared(SharedTextWorkflowIntent.Discard)
+            ChatUiEvent.SharedImportErrorDismissed -> acceptShared(SharedTextWorkflowIntent.DismissError)
+            ChatUiEvent.ShortcutErrorDismissed -> shortcutWorkflow?.dismissError()
+            is ChatUiEvent.ThemeSelected -> viewModelScope.launch { interfacePreferences?.setTheme(event.value) }
+            is ChatUiEvent.InterfaceScaleSelected -> if (event.value in SupportedDisplayScales) {
+                viewModelScope.launch { interfacePreferences?.setInterfaceScale(event.value) }
+            }
+            is ChatUiEvent.CodeScaleSelected -> if (event.value in SupportedDisplayScales) {
+                viewModelScope.launch { interfacePreferences?.setCodeScale(event.value) }
+            }
+            is ChatUiEvent.CacheInspectionRequested -> acceptCache(CacheAdministrationIntent.Inspect(event.environmentId))
+            ChatUiEvent.CacheClearConfirmed -> acceptCache(CacheAdministrationIntent.Clear)
+            ChatUiEvent.CacheClearDismissed -> acceptCache(CacheAdministrationIntent.Dismiss)
+            ChatUiEvent.DurableWorkRetryRequested -> connection.retryPendingCommands()
 
             is ChatUiEvent.ApprovalDecisionSelected -> respondToApproval(event)
             is ChatUiEvent.UserInputTextChanged -> update {
@@ -564,6 +804,197 @@ class ChatViewModel(
         }
     }
 
+    private fun continueProposedPlan(planId: String) {
+        if (local.value.planContinuationId != null) return
+        val detail = repository.focusedThread.value.value?.thread ?: return
+        if (detail.session?.status in ActiveSessionStatuses) return
+        val actionable = detail.proposedPlans
+            .filter { it.implementationThreadId == null && it.implementedAt == null }
+            .maxWithOrNull(compareBy<de.chennemann.agentic.t3.contract.ProposedPlan> { it.updatedAt }.thenBy { it.id })
+            ?.takeIf { it.id == planId }
+            ?: return
+        val selection = selectedModel() ?: return
+        val runtimeMode = local.value.runtimeModeId ?: detail.runtimeMode ?: DefaultRuntimeMode
+        update {
+            copy(
+                planContinuationId = actionable.id,
+                planContinuationError = null,
+            )
+        }
+        viewModelScope.launch {
+            try {
+                chat.continuePlan(detail.id, actionable.id, selection, runtimeMode)
+            } catch (cause: CancellationException) {
+                throw cause
+            } catch (cause: Exception) {
+                update {
+                    copy(
+                        planContinuationId = null,
+                        planContinuationErrorId = actionable.id,
+                        planContinuationError = cause.message ?: "Plan continuation failed.",
+                    )
+                }
+            }
+        }
+    }
+
+    private fun terminateSession() {
+        if (local.value.sessionTerminatingThreadId != null) return
+        val detail = repository.focusedThread.value.value?.thread ?: return
+        val session = detail.session ?: return
+        if (session.threadId != detail.id || session.status !in ActiveSessionStatuses) return
+        update {
+            copy(
+                sessionTerminatingThreadId = detail.id,
+                sessionTerminalThreadId = null,
+                sessionTerminationError = null,
+            )
+        }
+        viewModelScope.launch {
+            try {
+                chat.terminateSession(detail.id)
+            } catch (cause: CancellationException) {
+                throw cause
+            } catch (cause: Exception) {
+                update {
+                    copy(
+                        sessionTerminatingThreadId = null,
+                        sessionTerminationErrorThreadId = detail.id,
+                        sessionTerminationError = cause.message ?: "Session termination failed.",
+                    )
+                }
+            }
+        }
+    }
+
+    private fun changeSnooze(action: SnoozeAction, snoozedUntil: String? = null) {
+        if (local.value.snoozeActionThreadId != null) return
+        val activeEnvironment = environments.activeEnvironment.value ?: return
+        val config = repository.clientConfig.value.value ?: return
+        if (config.environment.environmentId != activeEnvironment.id || !config.environment.capabilities.threadSnooze) return
+        val focusedThreadId = repository.focusedThreadId.value ?: return
+        val detail = repository.focusedThread.value.value?.thread ?: return
+        if (detail.id != focusedThreadId) return
+        val target = if (action == SnoozeAction.SNOOZE) {
+            snoozedUntil?.takeIf { runCatching { Instant.parse(it) }.isSuccess } ?: return
+        } else {
+            null
+        }
+        if (action == SnoozeAction.SNOOZE && detail.snoozedUntil != null) return
+        if (action == SnoozeAction.WAKE && detail.snoozedUntil == null) return
+        update {
+            copy(
+                snoozeActionThreadId = detail.id,
+                snoozeAction = action,
+                snoozeTargetUntil = target,
+                snoozeErrorThreadId = null,
+                snoozeError = null,
+            )
+        }
+        viewModelScope.launch {
+            try {
+                when (action) {
+                    SnoozeAction.SNOOZE -> threads.snooze(detail.id, requireNotNull(target))
+                    SnoozeAction.WAKE -> threads.wake(detail.id)
+                }
+            } catch (cause: CancellationException) {
+                throw cause
+            } catch (cause: Exception) {
+                update {
+                    copy(
+                        snoozeActionThreadId = null,
+                        snoozeAction = null,
+                        snoozeTargetUntil = null,
+                        snoozeErrorThreadId = detail.id,
+                        snoozeError = cause.message ?: "Thread snooze action failed.",
+                    )
+                }
+            }
+        }
+    }
+
+    private fun openThreadDeletion() {
+        val detail = eligibleDeletionDetail() ?: return
+        update {
+            copy(
+                deletionVisible = true,
+                deletionThreadId = detail.id,
+                deletionTitle = detail.title,
+                deletionChecking = true,
+                deletionError = null,
+            )
+        }
+        viewModelScope.launch {
+            val blockers = deletionBlockers(detail.id)
+            update { copy(deletionChecking = false, deletionBlockers = blockers) }
+        }
+    }
+
+    private fun acceptProject(intent: ProjectWorkflowIntent) {
+        val workflow = projectWorkflow ?: return
+        viewModelScope.launch { workflow.accept(intent) }
+    }
+
+    private fun acceptShared(intent: SharedTextWorkflowIntent) {
+        val workflow = sharedTextWorkflow ?: return
+        viewModelScope.launch { workflow.accept(intent) }
+    }
+
+    private fun acceptCache(intent: CacheAdministrationIntent) {
+        val workflow = cacheAdministration ?: return
+        viewModelScope.launch { workflow.accept(intent) }
+    }
+
+    private fun confirmThreadDeletion() {
+        if (local.value.deletionInProgress || local.value.deletionChecking) return
+        val threadId = local.value.deletionThreadId ?: return
+        if (eligibleDeletionDetail()?.id != threadId) return
+        update { copy(deletionChecking = true) }
+        viewModelScope.launch {
+            val blockers = deletionBlockers(threadId)
+            if (blockers.isNotEmpty()) {
+                update { copy(deletionChecking = false, deletionBlockers = blockers, deletionError = null) }
+                return@launch
+            }
+            update { copy(deletionChecking = false, deletionInProgress = true, deletionError = null) }
+            try {
+                threads.delete(threadId)
+            } catch (cause: CancellationException) {
+                throw cause
+            } catch (cause: Exception) {
+                update {
+                    copy(
+                        deletionInProgress = false,
+                        deletionError = cause.message ?: "Thread deletion failed.",
+                    )
+                }
+            }
+        }
+    }
+
+    private fun eligibleDeletionDetail(): de.chennemann.agentic.t3.contract.OrchestrationThreadDetail? {
+        val active = environments.activeEnvironment.value ?: return null
+        val config = repository.clientConfig.value.value ?: return null
+        if (config.environment.environmentId != active.id || !config.environment.capabilities.threadDeletion) return null
+        val focusedId = repository.focusedThreadId.value ?: return null
+        return repository.focusedThread.value.value?.thread?.takeIf { it.id == focusedId }
+    }
+
+    private suspend fun deletionBlockers(threadId: String): List<String> {
+        val detail = eligibleDeletionDetail()?.takeIf { it.id == threadId } ?: return listOf("Thread changed")
+        val blockers = mutableListOf<String>()
+        if (detail.session?.status in ActiveSessionStatuses || detail.latestTurn?.state in ActiveSessionStatuses) {
+            blockers += "Active turn"
+        }
+        if (detail.activities.any { it.kind.endsWith(".requested") }) blockers += "Pending work"
+        if (local.value.inFlightRequests.isNotEmpty() || local.value.sending) blockers += "Pending work"
+        if (draft.value.isNotBlank()) blockers += "Unsent draft"
+        val environmentId = environments.activeEnvironment.value?.id
+        val pending = environmentId?.let { commandOutbox?.hasThreadWork(it, threadId, excludeDeletion = true) } == true
+        if (pending) blockers += "Pending command"
+        return blockers.distinct()
+    }
+
     private fun submissionUnavailable(message: String) {
         update { copy(sending = false, commandError = message) }
     }
@@ -752,6 +1183,7 @@ class ChatViewModel(
         drafts: ComposerDraftRepository?,
     ) {
         if (draftSelectionInitialized && key == displayedDraftKey) return
+        val previousKey = displayedDraftKey
         if (draftSelectionInitialized) flushPendingDraftWrite(displayedDraftKey)
         displayedDraftKey = key
         draftSelectionInitialized = true
@@ -762,6 +1194,12 @@ class ChatViewModel(
         }
         if (draftCache.containsKey(key)) {
             showDraft(draftCache.getValue(key))
+            return
+        }
+        if (previousKey == null && unthreadedDraft.isNotEmpty()) {
+            val value = unthreadedDraft
+            unthreadedDraft = ""
+            setDraft(key, value, persistImmediately = true)
             return
         }
 
@@ -912,9 +1350,10 @@ class ChatViewModel(
                     ThreadPickerItemUi(
                         id = it.id,
                         title = it.title,
-                        supportingText = it.updatedAt,
+                        supportingText = it.snoozedUntil?.let { until -> "Snoozed until $until" } ?: it.updatedAt,
                         archived = it.archivedAt != null,
                         active = it.session?.status in ActiveSessionStatuses,
+                        snoozedUntil = it.snoozedUntil,
                     )
                 },
                 settledThreads = pickerThreads.filter { it.isSettled() }.map {
@@ -924,6 +1363,7 @@ class ChatViewModel(
                         supportingText = it.updatedAt,
                         archived = it.archivedAt != null,
                         active = it.session?.status in ActiveSessionStatuses,
+                        snoozedUntil = it.snoozedUntil,
                     )
                 },
                 selectedThreadId = orchestration.threadId,
@@ -933,14 +1373,66 @@ class ChatViewModel(
             ),
             latestTurnChanges = detail?.latestTurnChanges() ?: LatestTurnChangesUiState(),
             activePicker = local.activePicker,
-            isTurnRunning = detail?.session?.status in ActiveSessionStatuses,
+            isTurnRunning = detail?.session?.status in ActiveSessionStatuses &&
+                detail?.session?.activeTurnId != null,
             canRenameThread = detail != null,
             canArchiveThread = detail != null && detail.archivedAt == null,
             isThreadArchived = detail?.archivedAt != null,
+            canDeleteThread = detail != null &&
+                orchestration.config.value?.environment?.capabilities?.threadDeletion == true &&
+                orchestration.config.value.environment.environmentId == environment.active?.id,
             renameDialog = if (local.renameVisible) {
                 RenameThreadUi(local.renameDraft, local.renameSaving)
             } else {
                 null
+            },
+            environmentRemoval = local.environmentRemovalId?.let { environmentId ->
+                EnvironmentRemovalUi(
+                    environmentId = environmentId,
+                    label = local.environmentRemovalLabel.orEmpty(),
+                    removing = local.environmentRemovalSaving,
+                    errorMessage = local.environmentRemovalError,
+                )
+            },
+            projectCreation = null,
+            projectRename = null,
+            projectRemoval = null,
+            sessionTermination = SessionTerminationUi(
+                canTerminate = detail?.session?.status in ActiveSessionStatuses &&
+                    detail?.session?.threadId == detail?.id &&
+                    local.sessionTerminatingThreadId == null,
+                terminating = local.sessionTerminatingThreadId == detail?.id,
+                terminal = local.sessionTerminalThreadId == detail?.id &&
+                    detail?.session?.status !in ActiveSessionStatuses,
+                errorMessage = local.sessionTerminationError.takeIf {
+                    local.sessionTerminationErrorThreadId == detail?.id
+                },
+            ),
+            threadSnooze = ThreadSnoozeUi(
+                supported = orchestration.config.value?.environment?.capabilities?.threadSnooze == true &&
+                    orchestration.config.value.environment.environmentId == environment.active?.id,
+                isSnoozed = detail?.snoozedUntil != null,
+                snoozedAt = detail?.snoozedAt,
+                snoozedUntil = detail?.snoozedUntil,
+                wakeReason = detail?.lastWakeReason,
+                canSnooze = orchestration.config.value?.environment?.capabilities?.threadSnooze == true &&
+                    orchestration.config.value.environment.environmentId == environment.active?.id &&
+                    detail != null && detail.snoozedUntil == null && local.snoozeActionThreadId == null,
+                canWake = orchestration.config.value?.environment?.capabilities?.threadSnooze == true &&
+                    orchestration.config.value.environment.environmentId == environment.active?.id &&
+                    detail?.snoozedUntil != null && local.snoozeActionThreadId == null,
+                actionInProgress = local.snoozeActionThreadId == detail?.id,
+                errorMessage = local.snoozeError.takeIf { local.snoozeErrorThreadId == detail?.id },
+            ),
+            threadDeletion = local.deletionThreadId?.takeIf { local.deletionVisible }?.let { threadId ->
+                ThreadDeletionUi(
+                    threadId = threadId,
+                    title = local.deletionTitle,
+                    blockers = local.deletionBlockers,
+                    checking = local.deletionChecking,
+                    deleting = local.deletionInProgress,
+                    errorMessage = local.deletionError,
+                )
             },
         )
     }
@@ -1033,7 +1525,32 @@ class ChatViewModel(
                 turnPhase = TurnPhaseActivity,
             )
         }
-        val items = messages + activities
+        val latestActionablePlan = detail.proposedPlans
+            .filter { it.implementationThreadId == null && it.implementedAt == null }
+            .maxWithOrNull(compareBy<de.chennemann.agentic.t3.contract.ProposedPlan> { it.updatedAt }.thenBy { it.id })
+        val plans = detail.proposedPlans.map { plan ->
+            val continuing = local.planContinuationId == plan.id
+            TimedItem(
+                at = plan.createdAt,
+                item = ChatTimelineItemUi.Activity(
+                    ChatActivityUi.ProposedPlan(
+                        id = plan.id,
+                        summary = "Proposed plan",
+                        planMarkdown = plan.planMarkdown,
+                        canContinue = plan.id == latestActionablePlan?.id &&
+                            detail.session?.status !in ActiveSessionStatuses &&
+                            !continuing,
+                        continuing = continuing,
+                        errorMessage = local.planContinuationError.takeIf {
+                            local.planContinuationErrorId == plan.id
+                        },
+                    ),
+                ),
+                turnId = plan.turnId,
+                turnPhase = TurnPhaseActivity,
+            )
+        }
+        val items = messages + activities + plans
         val turnStartedAt = items
             .filter { it.turnId != null }
             .groupBy { requireNotNull(it.turnId) }
@@ -1179,6 +1696,9 @@ class ChatViewModel(
     ) {
         fun timelineInput() = TimelineInput(
             detail = orchestration.thread.value?.thread?.takeIf { it.id == orchestration.threadId },
+            planContinuationId = local.planContinuationId,
+            planContinuationErrorId = local.planContinuationErrorId,
+            planContinuationError = local.planContinuationError,
             inFlightRequests = local.inFlightRequests,
             textAnswers = local.textAnswers,
             optionAnswers = local.optionAnswers,
@@ -1187,9 +1707,19 @@ class ChatViewModel(
 
     private data class TimelineInput(
         val detail: de.chennemann.agentic.t3.contract.OrchestrationThreadDetail?,
+        val planContinuationId: String?,
+        val planContinuationErrorId: String?,
+        val planContinuationError: String?,
         val inFlightRequests: Set<String>,
         val textAnswers: Map<String, String>,
         val optionAnswers: Map<String, Set<String>>,
+    )
+
+    private data class WorkflowPresentation(
+        val project: ProjectWorkflowState,
+        val shared: SharedTextWorkflowState,
+        val cache: CacheAdministrationState,
+        val shortcutError: String?,
     )
 
     private data class LocalState(
@@ -1214,6 +1744,29 @@ class ChatViewModel(
         val groqSettingsVisible: Boolean = false,
         val groqSettingsSaving: Boolean = false,
         val groqSettingsError: String? = null,
+        val environmentRemovalId: String? = null,
+        val environmentRemovalLabel: String? = null,
+        val environmentRemovalSaving: Boolean = false,
+        val environmentRemovalError: String? = null,
+        val planContinuationId: String? = null,
+        val planContinuationErrorId: String? = null,
+        val planContinuationError: String? = null,
+        val sessionTerminatingThreadId: String? = null,
+        val sessionTerminalThreadId: String? = null,
+        val sessionTerminationErrorThreadId: String? = null,
+        val sessionTerminationError: String? = null,
+        val snoozeActionThreadId: String? = null,
+        val snoozeAction: SnoozeAction? = null,
+        val snoozeTargetUntil: String? = null,
+        val snoozeErrorThreadId: String? = null,
+        val snoozeError: String? = null,
+        val deletionVisible: Boolean = false,
+        val deletionThreadId: String? = null,
+        val deletionTitle: String = "",
+        val deletionBlockers: List<String> = emptyList(),
+        val deletionChecking: Boolean = false,
+        val deletionInProgress: Boolean = false,
+        val deletionError: String? = null,
     ) {
         fun structural(): LocalState = copy(
             sending = false,
@@ -1232,6 +1785,8 @@ class ChatViewModel(
     )
 
 }
+
+private enum class SnoozeAction { SNOOZE, WAKE }
 
 private data class OrchestrationBundle(
     val config: ProjectionState<EnvironmentClientConfig>,
@@ -1408,7 +1963,7 @@ private fun quickSwitchProjects(
 ): List<ProjectQuickSwitchUi> {
     val snapshot = shell ?: return emptyList()
     val activeThreadsByProject = snapshot.threads
-        .filter { it.archivedAt == null && !it.isSettled() }
+        .filter { it.archivedAt == null && !it.isSettled() && it.snoozedUntil == null }
         .groupBy { it.projectId }
     return snapshot.projects
         .mapNotNull { project ->
@@ -1734,6 +2289,7 @@ private val RuntimeModes = listOf(
 )
 private val ActiveSessionStatuses = setOf("starting", "running")
 private const val MaxQuickSwitchProjects = 5
+private const val NewThreadDraftPrefix = "new-project:"
 private const val DefaultRuntimeMode = "full-access"
 private const val DraftPersistenceDelayMillis = 300L
 private const val TurnPhaseUser = 0

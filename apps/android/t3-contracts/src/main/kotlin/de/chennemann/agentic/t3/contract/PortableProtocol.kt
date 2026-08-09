@@ -47,7 +47,8 @@ data class ExecutionEnvironmentCapabilities(
     val connectionProbe: Boolean = false,
     val repositoryIdentity: Boolean = false,
     val threadSettlement: Boolean = false,
-    val threadSnooze: Boolean = false
+    val threadSnooze: Boolean = false,
+    val threadDeletion: Boolean = false
 )
 
 @Serializable
@@ -152,6 +153,9 @@ data class OrchestrationThreadShell(
     val session: ThreadSession? = null,
     val settledAt: String? = null,
     val settledOverride: String? = null,
+    val snoozedAt: String? = null,
+    val snoozedUntil: String? = null,
+    val lastWakeReason: String? = null,
     val hasPendingApprovals: Boolean = false,
     val hasPendingUserInput: Boolean = false,
     val hasActionableProposedPlan: Boolean = false
@@ -237,6 +241,9 @@ data class OrchestrationThreadDetail(
     val session: ThreadSession? = null,
     val settledAt: String? = null,
     val settledOverride: String? = null,
+    val snoozedAt: String? = null,
+    val snoozedUntil: String? = null,
+    val lastWakeReason: String? = null,
     val messages: List<OrchestrationMessage> = emptyList(),
     val activities: List<OrchestrationActivity> = emptyList(),
     val proposedPlans: List<ProposedPlan> = emptyList(),
@@ -340,11 +347,42 @@ data class NewThreadBootstrap(
 @Serializable
 data class StartTurnBootstrap(val createThread: NewThreadBootstrap)
 
+@Serializable
+data class SourceProposedPlan(val threadId: String, val planId: String)
+
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
 @JsonClassDiscriminator("type")
 sealed interface ClientOrchestrationCommand {
     val commandId: String
+
+    @Serializable
+    @SerialName("project.create")
+    data class CreateProject(
+        override val commandId: String,
+        val projectId: String,
+        val title: String,
+        val workspaceRoot: String,
+        @EncodeDefault
+        val defaultModelSelection: ModelSelection? = null,
+        val createdAt: String
+    ) : ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("project.meta.update")
+    data class UpdateProjectMetadata(
+        override val commandId: String,
+        val projectId: String,
+        val title: String? = null,
+        val workspaceRoot: String? = null,
+        val defaultModelSelection: ModelSelection? = null,
+        val scripts: List<JsonElement>? = null
+    ) : ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("project.delete")
+    data class DeleteProject(override val commandId: String, val projectId: String, val force: Boolean? = null) :
+        ClientOrchestrationCommand
 
     @Serializable
     @SerialName("thread.create")
@@ -374,7 +412,8 @@ sealed interface ClientOrchestrationCommand {
         val interactionMode: String,
         val runtimeMode: String,
         val createdAt: String,
-        val bootstrap: StartTurnBootstrap? = null
+        val bootstrap: StartTurnBootstrap? = null,
+        val sourceProposedPlan: SourceProposedPlan? = null
     ) : ClientOrchestrationCommand
 
     @Serializable
@@ -385,6 +424,11 @@ sealed interface ClientOrchestrationCommand {
         val turnId: String,
         val createdAt: String
     ) : ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("thread.session.stop")
+    data class StopSession(override val commandId: String, val threadId: String, val createdAt: String) :
+        ClientOrchestrationCommand
 
     @Serializable
     @SerialName("thread.meta.update")
@@ -400,6 +444,10 @@ sealed interface ClientOrchestrationCommand {
     data class ArchiveThread(override val commandId: String, val threadId: String) : ClientOrchestrationCommand
 
     @Serializable
+    @SerialName("thread.delete")
+    data class DeleteThread(override val commandId: String, val threadId: String) : ClientOrchestrationCommand
+
+    @Serializable
     @SerialName("thread.unarchive")
     data class UnarchiveThread(override val commandId: String, val threadId: String) : ClientOrchestrationCommand
 
@@ -410,6 +458,20 @@ sealed interface ClientOrchestrationCommand {
     @Serializable
     @SerialName("thread.unsettle")
     data class UnsettleThread(
+        override val commandId: String,
+        val threadId: String,
+        @EncodeDefault
+        val reason: String = "user"
+    ) : ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("thread.snooze")
+    data class SnoozeThread(override val commandId: String, val threadId: String, val snoozedUntil: String) :
+        ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("thread.unsnooze")
+    data class UnsnoozeThread(
         override val commandId: String,
         val threadId: String,
         @EncodeDefault

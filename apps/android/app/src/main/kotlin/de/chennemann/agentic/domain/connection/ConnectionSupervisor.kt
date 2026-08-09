@@ -9,6 +9,7 @@ import de.chennemann.agentic.data.t3.T3TransportException
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
 import de.chennemann.agentic.domain.environment.SavedEnvironment
 import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
+import de.chennemann.agentic.domain.orchestration.PendingCommandReplayer
 import de.chennemann.agentic.domain.orchestration.ProjectionSource
 import de.chennemann.agentic.domain.orchestration.Reduction
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
@@ -28,6 +29,7 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.util.concurrent.atomic.AtomicBoolean
 
 class ConnectionSupervisor(
     private val environments: EnvironmentRepository,
@@ -38,11 +40,13 @@ class ConnectionSupervisor(
     private val snapshots: OrchestrationSnapshotClient,
     private val streams: OrchestrationStreamClient,
     private val network: NetworkMonitor,
-    scope: CoroutineScope,
+    private val pendingCommands: PendingCommandReplayer,
+    private val scope: CoroutineScope,
 ) : ConnectionController {
     private val mutableState = MutableStateFlow<ConnectionState>(ConnectionState.NoEnvironment)
     override val state: StateFlow<ConnectionState> = mutableState.asStateFlow()
     private val restartGeneration = MutableStateFlow(0L)
+    private val replayingPendingCommands = AtomicBoolean(false)
 
     init {
         scope.launch {
@@ -79,6 +83,18 @@ class ConnectionSupervisor(
     override fun wake() {
         if (mutableState.value != ConnectionState.Live) {
             restartGeneration.update { it + 1 }
+        }
+    }
+
+    override fun retryPendingCommands() {
+        val environment = environments.activeEnvironment.value ?: return
+        if (!replayingPendingCommands.compareAndSet(false, true)) return
+        scope.launch {
+            try {
+                pendingCommands.replay(environment)
+            } finally {
+                replayingPendingCommands.set(false)
+            }
         }
     }
 
@@ -159,6 +175,16 @@ class ConnectionSupervisor(
         val shell = snapshots.shellSnapshot(environment.baseUrl, token)
         orchestration.setShellSnapshot(environment.id, shell, ProjectionSource.LIVE)
         environments.markConnected(environment.id, System.currentTimeMillis())
+        replayPendingCommands(environment)
+    }
+
+    private suspend fun replayPendingCommands(environment: SavedEnvironment) {
+        if (!replayingPendingCommands.compareAndSet(false, true)) return
+        try {
+            pendingCommands.replay(environment)
+        } finally {
+            replayingPendingCommands.set(false)
+        }
     }
 
     private suspend fun superviseShell(

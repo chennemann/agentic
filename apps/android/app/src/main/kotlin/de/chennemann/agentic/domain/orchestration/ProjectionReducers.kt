@@ -206,6 +206,18 @@ object ThreadProjectionReducer {
 
         "thread.archived" -> thread.copy(archivedAt = payload.string("archivedAt") ?: payload.string("updatedAt"))
         "thread.unarchived" -> thread.copy(archivedAt = null)
+        "thread.snoozed" -> thread.copy(
+            snoozedAt = payload.string("snoozedAt"),
+            snoozedUntil = payload.string("snoozedUntil"),
+            lastWakeReason = null,
+            updatedAt = payload.string("updatedAt") ?: thread.updatedAt,
+        )
+        "thread.unsnoozed" -> thread.copy(
+            snoozedAt = null,
+            snoozedUntil = null,
+            lastWakeReason = payload.string("reason"),
+            updatedAt = payload.string("updatedAt") ?: thread.updatedAt,
+        )
         "thread.approval-response-requested" -> thread.removeRequestActivity(
             "approval.requested",
             payload.string("requestId"),
