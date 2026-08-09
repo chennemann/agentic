@@ -589,22 +589,16 @@ class ChatViewModel(
                 projectThreads.isEmpty() -> null
                 else -> projectThreads[(focusedIndex + 1) % projectThreads.size].id
             }
-            if (repository.selectedProjectId.value != projectId) {
+            if (nextThreadId == null) {
                 threads.selectProject(projectId)
+            } else {
+                threads.selectThread(nextThreadId)
             }
-            threads.selectThread(nextThreadId)
         }
     }
 
     private fun selectThread(threadId: String) {
         launchCommand {
-            val projectId = repository.shell.value.value
-                ?.threads
-                ?.firstOrNull { it.id == threadId }
-                ?.projectId
-            if (projectId != null && projectId != repository.selectedProjectId.value) {
-                threads.selectProject(projectId)
-            }
             threads.selectThread(threadId)
             update { copy(activePicker = null, pickerProjectId = null) }
         }

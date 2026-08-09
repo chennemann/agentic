@@ -77,6 +77,7 @@ interface OrchestrationRepository {
 
     suspend fun applyThreadItem(
         environmentId: String,
+        threadId: String,
         item: de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem,
     ): Reduction<ProjectionState<OrchestrationThreadDetailSnapshot>>
 

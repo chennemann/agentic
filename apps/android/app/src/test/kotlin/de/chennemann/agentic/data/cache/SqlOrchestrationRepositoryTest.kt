@@ -28,6 +28,36 @@ import org.junit.jupiter.api.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class SqlOrchestrationRepositoryTest {
     @Test
+    fun `switching between cached threads never emits an empty focused projection`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AgenticDb.Schema.create(driver)
+        val database = AgenticDb(driver)
+        val repository = SqlOrchestrationRepository(
+            database = database,
+            dispatcher = StandardTestDispatcher(testScheduler),
+            scope = backgroundScope,
+        )
+        repository.loadCached(EnvironmentId)
+        repository.focusThread(EnvironmentId, "thread-one")
+        repository.setThreadSnapshot(EnvironmentId, threadSnapshot("thread-one"), ProjectionSource.LIVE)
+        repository.focusThread(EnvironmentId, "thread-two")
+        repository.setThreadSnapshot(EnvironmentId, threadSnapshot("thread-two"), ProjectionSource.LIVE)
+        repository.focusThread(EnvironmentId, "thread-one")
+        val observedThreadIds = mutableListOf<String?>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            repository.focusedThread.collect { observedThreadIds += it.value?.thread?.id }
+        }
+        observedThreadIds.clear()
+
+        repository.focusThread(EnvironmentId, "thread-two")
+        runCurrent()
+
+        assertEquals(listOf("thread-two"), observedThreadIds)
+        assertEquals("thread-two", repository.focusedThread.value.value?.thread?.id)
+        driver.close()
+    }
+
+    @Test
     fun `reloading the active environment does not invalidate the restored thread`() = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         AgenticDb.Schema.create(driver)
@@ -266,10 +296,13 @@ class SqlOrchestrationRepositoryTest {
         updatedAt = Timestamp,
     )
 
-    private fun threadSnapshot(checkpoints: List<JsonElement> = emptyList()) = OrchestrationThreadDetailSnapshot(
+    private fun threadSnapshot(
+        id: String = ThreadId,
+        checkpoints: List<JsonElement> = emptyList(),
+    ) = OrchestrationThreadDetailSnapshot(
         snapshotSequence = 1,
         thread = OrchestrationThreadDetail(
-            id = ThreadId,
+            id = id,
             projectId = ProjectId,
             title = "Thread",
             createdAt = Timestamp,

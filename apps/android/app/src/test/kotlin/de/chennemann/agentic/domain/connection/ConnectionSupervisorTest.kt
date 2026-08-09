@@ -29,8 +29,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
+import de.chennemann.agentic.t3.contract.OrchestrationThreadShell
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
+import de.chennemann.agentic.t3.contract.ThreadSession
 import kotlinx.coroutines.test.runTest
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -375,7 +377,7 @@ private class SupervisorTransport(
         bearerToken: String,
     ): OrchestrationShellSnapshot {
         shellBaseUrls += baseUrl
-        return OrchestrationShellSnapshot(emptyList(), emptyList(), 0, "2026-01-01T00:00:00Z")
+        return OrchestrationShellSnapshot(emptyList(), shellThreads, 0, "2026-01-01T00:00:00Z")
     }
 
     override suspend fun threadSnapshot(
@@ -418,6 +420,48 @@ private class SupervisorTransport(
         return when {
             completeFirstThreadStream && threadStreamRequests == 1 ->
                 flowOf(OrchestrationThreadStreamItem.Synchronized)
+
+    @Test
+    fun `active thread progress synchronizes before the thread is focused`() = runTest {
+        val activeThread = threadShell("thread-active", "running")
+        val idleThread = threadShell("thread-idle", null)
+        val transport = SupervisorTransport(shellThreads = listOf(activeThread, idleThread))
+        ConnectionSupervisor(
+            environments = SupervisorEnvironmentRepository(savedEnvironment("one")),
+            orchestration = SupervisorOrchestrationRepository(),
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            config = transport,
+            snapshots = transport,
+            streams = transport,
+            network = OnlineMonitor,
+            pendingCommands = NoOpPendingCommandReplayer,
+            scope = backgroundScope,
+        )
+
+        runCurrent()
+
+        assertTrue("thread-active" in transport.threadRequests)
+        assertTrue("thread-idle" !in transport.threadRequests)
+    }
+}
+
+private val NoOpPendingCommandReplayer = PendingCommandReplayer { }
+
+private class RetryCommandClient(
+    var failing: Boolean,
+) : OrchestrationCommandClient {
+    val commandIds = mutableListOf<String>()
+
+    override suspend fun dispatch(
+        baseUrl: String,
+        bearerToken: String,
+        command: ClientOrchestrationCommand,
+    ): DispatchResult {
+        commandIds += command.commandId
+        if (failing) error("offline")
+        return DispatchResult(1)
+    }
 
             failFirstThreadStream && threadStreamRequests == 1 -> flow {
                 emit(OrchestrationThreadStreamItem.Synchronized)
@@ -474,6 +518,7 @@ private class SupervisorOrchestrationRepository : OrchestrationRepository {
     override suspend fun focusThread(
         environmentId: String,
         threadId: String?,
+    private val shellThreads: List<OrchestrationThreadShell> = emptyList(),
     ) {
         focusedThreadId.value = threadId
     }
@@ -534,3 +579,22 @@ private fun threadSnapshot(threadId: String): OrchestrationThreadDetailSnapshot 
             updatedAt = "2026-01-01T00:00:00Z",
         ),
     )
+        threadId: String,
+
+private fun threadShell(
+    threadId: String,
+    status: String?,
+) = OrchestrationThreadShell(
+    id = threadId,
+    projectId = "project",
+    title = threadId,
+    createdAt = "2026-01-01T00:00:00Z",
+    updatedAt = "2026-01-01T00:00:00Z",
+    session = status?.let {
+        ThreadSession(
+            threadId = threadId,
+            status = it,
+            updatedAt = "2026-01-01T00:00:00Z",
+        )
+    },
+)

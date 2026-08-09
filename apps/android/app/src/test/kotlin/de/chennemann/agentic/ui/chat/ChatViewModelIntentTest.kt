@@ -252,7 +252,7 @@ class ChatViewModelIntentTest {
         viewModel.onEvent(ChatUiEvent.ProjectQuickSwitchRequested("project-1"))
         advanceUntilIdle()
 
-        assertEquals(listOf("project-2", "project-1"), threadActions.selectedProjects)
+        assertEquals(listOf("project-2"), threadActions.selectedProjects)
         assertEquals(listOf("thread-2", "thread-1"), threadActions.selectedThreads)
         assertEquals("project-1", viewModel.state.value.threadPicker.selectedProjectId)
         assertEquals("thread-1", viewModel.state.value.threadId)
@@ -1499,3 +1499,8 @@ private class FakeVoiceInputService(
         cancellations += 1
     }
 }
+        repository.shell.value.value
+            ?.threads
+            ?.firstOrNull { it.id == threadId }
+            ?.let { repository.selectedProjectId.value = it.projectId }
+        threadId: String,

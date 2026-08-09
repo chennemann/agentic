@@ -136,10 +136,18 @@ class ConnectionSupervisor(
         refreshShell(environment, token)
         mutableState.value = ConnectionState.Synchronizing
         launch {
-            orchestration.focusedThreadId
-                .collectLatest { threadId ->
-                    if (threadId != null) superviseThread(environment, token, threadId)
+            combine(orchestration.shell, orchestration.focusedThreadId) { shell, focusedThreadId ->
+                shell.value?.threads.orEmpty()
+                    .filter { it.session?.status in ActiveThreadStatuses }
+                    .mapTo(mutableSetOf()) { it.id }
+                    .apply { focusedThreadId?.let(::add) }
+            }.distinctUntilChanged().collectLatest { threadIds ->
+                coroutineScope {
+                    threadIds.forEach { threadId ->
+                        launch { superviseThread(environment, token, threadId) }
+                    }
                 }
+            }
         }
         superviseShell(environment, token, clientConfig.shellResumeCompletionMarker)
     }
@@ -218,14 +226,15 @@ class ConnectionSupervisor(
     ) {
         var needsSnapshot = true
         var retryDelay = InitialRetryMillis
-        while (orchestration.focusedThreadId.value == threadId) {
+        var sequence = 0L
+        while (true) {
             try {
                 if (needsSnapshot) {
                     val snapshot = snapshots.threadSnapshot(environment.baseUrl, token, threadId)
                     orchestration.setThreadSnapshot(environment.id, snapshot, ProjectionSource.LIVE)
+                    sequence = snapshot.snapshotSequence
                     needsSnapshot = false
                 }
-                val sequence = orchestration.focusedThread.value.sequence ?: 0
                 var gap = false
                 streams.threadStream(
                     environment.baseUrl,
@@ -234,13 +243,16 @@ class ConnectionSupervisor(
                     sequence,
                     requestCompletionMarker = true,
                 ).collect { item ->
-                    when (orchestration.applyThreadItem(environment.id, item)) {
+                    when (val reduction = orchestration.applyThreadItem(environment.id, threadId, item)) {
                         is Reduction.Gap -> gap = true
-                        is Reduction.Applied -> if (item is OrchestrationThreadStreamItem.Synchronized) {
-                            mutableState.value = ConnectionState.Live
+                        is Reduction.Applied -> {
+                            sequence = reduction.state.sequence ?: sequence
+                            if (item is OrchestrationThreadStreamItem.Synchronized) {
+                                mutableState.value = ConnectionState.Live
+                            }
                         }
 
-                        is Reduction.Ignored -> Unit
+                        is Reduction.Ignored -> sequence = reduction.state.sequence ?: sequence
                     }
                     if (gap) throw SequenceGap()
                 }
@@ -277,5 +289,6 @@ class ConnectionSupervisor(
         const val MaxRetryMillis = 16_000L
         const val StreamReconnectDelayMillis = 250L
         const val FailuresBeforeBackoffUi = 3
+        val ActiveThreadStatuses = setOf("starting", "running")
     }
 }

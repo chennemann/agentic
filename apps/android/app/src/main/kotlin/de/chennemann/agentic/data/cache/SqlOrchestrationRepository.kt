@@ -47,6 +47,7 @@ class SqlOrchestrationRepository(
     private val mutableSelectedProjectId = MutableStateFlow<String?>(null)
     override val selectedProjectId: StateFlow<String?> = mutableSelectedProjectId.asStateFlow()
     private var currentEnvironmentId: String? = null
+    private val threadProjections = mutableMapOf<String, ProjectionState<OrchestrationThreadDetailSnapshot>>()
 
     override suspend fun loadCached(environmentId: String) = withContext(dispatcher) {
         lock.withLock {
@@ -57,6 +58,7 @@ class SqlOrchestrationRepository(
             mutableShell.value = ProjectionState()
             mutableFocusedThread.value = ProjectionState()
             mutableFocusedThreadId.value = null
+            threadProjections.clear()
             mutableSelectedProjectId.value = preference(environmentId, SelectedProjectPreference)
             val storedThreadId = preference(environmentId, LastThreadPreference)
             projection(environmentId, ClientConfigKind, GlobalCacheKey)?.let {
@@ -81,13 +83,20 @@ class SqlOrchestrationRepository(
                         )
                     }
             }
+            mutableShell.value.value?.threads.orEmpty().forEach { thread ->
+                loadThreadProjection(environmentId, thread.id)?.let { threadProjections[thread.id] = it }
+            }
             if (storedThreadId != null) {
+                val restored = threadProjections[storedThreadId]
+                    ?: loadThreadProjection(environmentId, storedThreadId)?.also {
+                        threadProjections[storedThreadId] = it
+                    }
+                mutableFocusedThread.value = restored ?: ProjectionState()
                 mutableFocusedThreadId.value = storedThreadId
                 mutableShell.value.value
                     ?.threads
                     ?.firstOrNull { it.id == storedThreadId }
                     ?.let { mutableSelectedProjectId.value = it.projectId }
-                loadThreadProjection(environmentId, storedThreadId)
             }
             Unit
         }
@@ -163,8 +172,12 @@ class SqlOrchestrationRepository(
     ) = withContext(dispatcher) {
         lock.withLock {
             if (environmentId != currentEnvironmentId) return@withLock
+            val projection = threadId?.let { id ->
+                threadProjections[id]
+                    ?: loadThreadProjection(environmentId, id)?.also { threadProjections[id] = it }
+            } ?: ProjectionState()
+            mutableFocusedThread.value = projection
             mutableFocusedThreadId.value = threadId
-            mutableFocusedThread.value = ProjectionState()
             if (threadId != null) {
                 database.agenticT3Queries.upsertPreference(
                     environmentId,
@@ -182,7 +195,6 @@ class SqlOrchestrationRepository(
                             thread.projectId,
                         )
                     }
-                loadThreadProjection(environmentId, threadId)
             }
         }
     }
@@ -211,16 +223,18 @@ class SqlOrchestrationRepository(
     ) = withContext(dispatcher) {
         lock.withLock {
             if (
-                environmentId != currentEnvironmentId ||
-                snapshot.thread.id != mutableFocusedThreadId.value
+                environmentId != currentEnvironmentId
             ) {
                 return@withLock
             }
-            mutableFocusedThread.value = ThreadProjectionReducer.snapshot(
-                mutableFocusedThread.value,
+            val threadId = snapshot.thread.id
+            val state = ThreadProjectionReducer.snapshot(
+                threadProjections[threadId] ?: ProjectionState(),
                 snapshot,
                 source,
             )
+            threadProjections[threadId] = state
+            if (threadId == mutableFocusedThreadId.value) mutableFocusedThread.value = state
             cancelScheduledCache(environmentId, ThreadKind, snapshot.thread.id)
             cache(
                 environmentId,
@@ -234,23 +248,30 @@ class SqlOrchestrationRepository(
 
     override suspend fun applyThreadItem(
         environmentId: String,
+        threadId: String,
         item: OrchestrationThreadStreamItem,
     ): Reduction<ProjectionState<OrchestrationThreadDetailSnapshot>> = withContext(dispatcher) {
         lock.withLock {
             if (environmentId != currentEnvironmentId) {
-                return@withLock Reduction.Ignored(mutableFocusedThread.value)
+                return@withLock Reduction.Ignored(threadProjections[threadId] ?: ProjectionState())
             }
-            val reduction = ThreadProjectionReducer.reduce(mutableFocusedThread.value, item)
+            val reduction = ThreadProjectionReducer.reduce(
+                threadProjections[threadId] ?: ProjectionState(),
+                item,
+            )
             if (reduction is Reduction.Applied) {
-                mutableFocusedThread.value = reduction.state
+                threadProjections[threadId] = reduction.state
+                if (threadId == mutableFocusedThreadId.value) mutableFocusedThread.value = reduction.state
                 val value = reduction.state.value
                 if (value == null) {
-                    mutableFocusedThreadId.value?.let {
-                        cancelScheduledCache(environmentId, ThreadKind, it)
-                        database.agenticT3Queries.deleteProjection(environmentId, ThreadKind, it)
+                    threadProjections.remove(threadId)
+                    cancelScheduledCache(environmentId, ThreadKind, threadId)
+                    database.agenticT3Queries.deleteProjection(environmentId, ThreadKind, threadId)
+                    if (threadId == mutableFocusedThreadId.value) {
+                        mutableFocusedThreadId.value = null
+                        mutableFocusedThread.value = ProjectionState()
+                        database.agenticT3Queries.deletePreference(environmentId, LastThreadPreference)
                     }
-                    mutableFocusedThreadId.value = null
-                    database.agenticT3Queries.deletePreference(environmentId, LastThreadPreference)
                 } else {
                     scheduleCache(
                         environmentId,
@@ -285,19 +306,18 @@ class SqlOrchestrationRepository(
     private fun loadThreadProjection(
         environmentId: String,
         threadId: String,
-    ) {
+    ): ProjectionState<OrchestrationThreadDetailSnapshot>? =
         projection(environmentId, ThreadKind, threadId)?.let {
             runCatching { PortableJson.decodeFromString<OrchestrationThreadDetailSnapshot>(it.payload) }
                 .getOrNull()
                 ?.let { snapshot ->
-                    mutableFocusedThread.value = ThreadProjectionReducer.snapshot(
-                        mutableFocusedThread.value,
+                    ThreadProjectionReducer.snapshot(
+                        ProjectionState(),
                         snapshot,
                         ProjectionSource.CACHE,
                     )
                 }
         }
-    }
 
     private fun reconcileFocusedThread(environmentId: String) {
         val threadId = mutableFocusedThreadId.value ?: return
@@ -305,6 +325,7 @@ class SqlOrchestrationRepository(
         val thread = shell.threads.firstOrNull { it.id == threadId }
         if (thread == null) {
             cancelScheduledCache(environmentId, ThreadKind, threadId)
+            threadProjections.remove(threadId)
             mutableFocusedThreadId.value = null
             mutableFocusedThread.value = ProjectionState()
             database.agenticT3Queries.deleteProjection(environmentId, ThreadKind, threadId)
