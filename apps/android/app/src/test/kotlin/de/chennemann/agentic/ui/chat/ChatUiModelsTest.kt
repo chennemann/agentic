@@ -6,6 +6,12 @@ import org.junit.jupiter.api.Test
 
 class ChatUiModelsTest {
     @Test
+    fun `saved and reconnecting conversations allow a manual connection retry`() {
+        assertTrue(ChatConnectionUi.Cached().canRetryConnection)
+        assertTrue(ChatConnectionUi.Reconnecting().canRetryConnection)
+    }
+
+    @Test
     fun `unknown activity keeps its server summary and safe detail`() {
         val activity = ChatActivityUi.Unknown(
             id = "activity-1",

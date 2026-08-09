@@ -11,7 +11,10 @@ import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationThreadShell
 import de.chennemann.agentic.t3.contract.PortableJson
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.advanceTimeBy
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -24,6 +27,39 @@ import org.junit.jupiter.api.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class SqlOrchestrationRepositoryTest {
+    @Test
+    fun `reloading the active environment does not invalidate the restored thread`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AgenticDb.Schema.create(driver)
+        val database = AgenticDb(driver)
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val repository = SqlOrchestrationRepository(database, dispatcher, backgroundScope)
+        repository.loadCached(EnvironmentId)
+        repository.setShellSnapshot(
+            environmentId = EnvironmentId,
+            snapshot = shellSnapshot(
+                projects = listOf(project("Project")),
+                threads = listOf(threadShell()),
+            ),
+            source = ProjectionSource.LIVE,
+        )
+        repository.focusThread(EnvironmentId, ThreadId)
+        repository.setThreadSnapshot(EnvironmentId, threadSnapshot(), ProjectionSource.LIVE)
+        val observedThreadIds = mutableListOf<String?>()
+        backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
+            repository.focusedThreadId.collect(observedThreadIds::add)
+        }
+        observedThreadIds.clear()
+
+        repository.loadCached(EnvironmentId)
+        runCurrent()
+
+        assertEquals(emptyList<String?>(), observedThreadIds)
+        assertEquals(ThreadId, repository.focusedThreadId.value)
+        assertEquals(ThreadId, repository.focusedThread.value.value?.thread?.id)
+        driver.close()
+    }
+
     @Test
     fun `last focused thread and cached detail restore after repository restart`() = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)

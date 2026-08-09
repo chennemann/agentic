@@ -344,6 +344,17 @@ sealed interface ChatConnectionUi {
     ) : ChatConnectionUi
 }
 
+val ChatConnectionUi.canRetryConnection: Boolean
+    get() = when (this) {
+        is ChatConnectionUi.Cached,
+        is ChatConnectionUi.Reconnecting,
+        is ChatConnectionUi.Blocked,
+        -> true
+
+        is ChatConnectionUi.Failed -> canRetry
+        else -> false
+    }
+
 enum class ChatPickerUi {
     NAVIGATION,
     ENVIRONMENT,

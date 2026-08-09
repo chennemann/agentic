@@ -15,6 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import de.chennemann.agentic.ui.chat.ChatConnectionUi
+import de.chennemann.agentic.ui.chat.canRetryConnection
 
 @Composable
 fun ConnectionStatusBanner(
@@ -24,8 +25,7 @@ fun ConnectionStatusBanner(
 ) {
     if (connection is ChatConnectionUi.Live) return
 
-    val retry = (connection is ChatConnectionUi.Failed && connection.canRetry) ||
-        connection is ChatConnectionUi.Blocked
+    val retry = connection.canRetryConnection
     val busy = connection is ChatConnectionUi.Connecting ||
         connection is ChatConnectionUi.Synchronizing ||
         connection is ChatConnectionUi.Reconnecting

@@ -50,6 +50,7 @@ class SqlOrchestrationRepository(
 
     override suspend fun loadCached(environmentId: String) = withContext(dispatcher) {
         lock.withLock {
+            if (currentEnvironmentId == environmentId) return@withLock
             cancelScheduledCaches(environmentId)
             currentEnvironmentId = environmentId
             mutableClientConfig.value = ProjectionState()
