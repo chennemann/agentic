@@ -6,6 +6,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsFocused
+import androidx.compose.ui.test.assertIsNotFocused
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -13,7 +15,9 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
+import androidx.compose.ui.test.swipeUp
 import de.chennemann.agentic.ui.theme.MobileTheme
+import de.chennemann.agentic.ui.components.ComposerInputTestTag
 import org.junit.Rule
 import org.junit.Test
 
@@ -72,6 +76,59 @@ class T3ChatScreenLongThreadTest {
             compose.onAllNodesWithText("stream chunk 3").fetchSemanticsNodes().isNotEmpty()
         }
         compose.onNodeWithText("stream chunk 3").assertIsDisplayed()
+    }
+
+    @Test
+    fun automatic_composer_focus_only_follows_at_the_end_of_history() {
+        compose.setContent {
+            MobileTheme {
+                T3ChatScreen(
+                    state = longThreadState().copy(
+                        composer = ComposerUiState(enabled = true),
+                        isTurnRunning = false,
+                    ),
+                    onEvent = {},
+                )
+            }
+        }
+
+        compose.onNodeWithTag(ChatTimelineTestTag).performTouchInput { swipeDown() }
+        compose.onNodeWithTag(ComposerInputTestTag).assertIsNotFocused()
+
+        compose.onNodeWithTag(ChatTimelineTestTag).performTouchInput { swipeUp() }
+        compose.onNodeWithTag(ComposerInputTestTag).assertIsNotFocused()
+
+        compose.onNodeWithTag(FollowLatestTestTag).performClick()
+        compose.waitUntil(5_000) {
+            runCatching {
+                compose.onNodeWithTag(ComposerInputTestTag).assertIsFocused()
+            }.isSuccess
+        }
+        compose.onNodeWithTag(ComposerInputTestTag).assertIsFocused()
+
+        compose.onNodeWithTag(ChatTimelineTestTag).performTouchInput { swipeDown() }
+        compose.onNodeWithTag(ComposerInputTestTag).assertIsNotFocused()
+    }
+
+    @Test
+    fun manually_focused_composer_stays_focused_while_scrolling_history() {
+        compose.setContent {
+            MobileTheme {
+                T3ChatScreen(
+                    state = longThreadState().copy(
+                        composer = ComposerUiState(enabled = true),
+                        isTurnRunning = false,
+                    ),
+                    onEvent = {},
+                )
+            }
+        }
+
+        compose.onNodeWithTag(ComposerInputTestTag).performClick()
+        compose.onNodeWithTag(ComposerInputTestTag).assertIsFocused()
+
+        compose.onNodeWithTag(ChatTimelineTestTag).performTouchInput { swipeDown() }
+        compose.onNodeWithTag(ComposerInputTestTag).assertIsFocused()
     }
 }
 

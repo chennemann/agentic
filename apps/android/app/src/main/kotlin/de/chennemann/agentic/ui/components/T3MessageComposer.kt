@@ -62,10 +62,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -117,12 +120,15 @@ fun T3MessageComposer(
     onEvent: (ChatUiEvent) -> Unit,
     modifier: Modifier = Modifier,
     sessionTermination: SessionTerminationUi = SessionTerminationUi(),
+    inputFocusRequested: Boolean? = null,
+    onInputFocusedManually: () -> Unit = {},
 ) {
     var expanded by rememberSaveable { mutableStateOf(false) }
     var commandMenuDismissed by remember { mutableStateOf(false) }
     val inputInteractionSource = remember { MutableInteractionSource() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
+    val inputFocusRequester = remember { FocusRequester() }
     val requestMicrophonePermission = rememberMicrophonePermissionRequest(
         onGranted = { onEvent(ChatUiEvent.VoiceInputPressed) },
         onDenied = { onEvent(ChatUiEvent.MicrophonePermissionDenied) },
@@ -156,6 +162,20 @@ fun T3MessageComposer(
         inputInteractionSource.interactions.collect { interaction ->
             if (interaction is PressInteraction.Press) {
                 expanded = false
+                onInputFocusedManually()
+            }
+        }
+    }
+    LaunchedEffect(inputFocusRequested, state.enabled) {
+        when {
+            inputFocusRequested == true && state.enabled -> {
+                inputFocusRequester.requestFocus()
+                keyboardController?.show()
+            }
+
+            inputFocusRequested == false -> {
+                focusManager.clearFocus()
+                keyboardController?.hide()
             }
         }
     }
@@ -198,6 +218,8 @@ fun T3MessageComposer(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(end = 88.dp)
+                        .focusRequester(inputFocusRequester)
+                        .testTag(ComposerInputTestTag)
                         .onPreviewKeyEvent { keyEvent ->
                             val stroke = keyEvent.toHardwareKeyStroke(KeyboardFocus.COMPOSER)
                                 ?: return@onPreviewKeyEvent false
@@ -489,6 +511,8 @@ fun T3MessageComposer(
         }
     }
 }
+
+const val ComposerInputTestTag = "composer-input"
 
 @Composable
 private fun ComposerSummary(

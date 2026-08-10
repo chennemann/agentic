@@ -97,6 +97,9 @@ fun T3ChatScreen(
     val dragging by listState.interactionSource.collectIsDraggedAsState()
     val expandedActivities = remember(state.threadId) { mutableStateMapOf<String, Boolean>() }
     var followLatest by remember(state.threadId) { mutableStateOf(true) }
+    var inputFocusRequested by remember(state.threadId) { mutableStateOf<Boolean?>(null) }
+    var inputFocusedManually by remember(state.threadId) { mutableStateOf(false) }
+    var historyDragActive by remember(state.threadId) { mutableStateOf(false) }
     var composerHeightPx by remember { mutableIntStateOf(0) }
     val density = LocalDensity.current
     val composerHeight = with(density) { composerHeightPx.toDp() }
@@ -117,6 +120,16 @@ fun T3ChatScreen(
         snapshotFlow { dragging to listState.isAtEnd() }
             .distinctUntilChanged()
             .collect { (isDragging, isAtEnd) ->
+                if (isDragging) {
+                    historyDragActive = true
+                    if (!isAtEnd && !inputFocusedManually) inputFocusRequested = false
+                } else if (historyDragActive) {
+                    if (isAtEnd) {
+                        inputFocusedManually = false
+                        inputFocusRequested = true
+                    }
+                    historyDragActive = false
+                }
                 if (isDragging && !isAtEnd) {
                     followLatest = false
                 } else if (isAtEnd) {
@@ -235,7 +248,11 @@ fun T3ChatScreen(
                     SmallFloatingActionButton(
                         onClick = {
                             followLatest = true
-                            scope.launch { listState.scrollToLatest() }
+                            scope.launch {
+                                listState.scrollToLatest()
+                                inputFocusedManually = false
+                                inputFocusRequested = true
+                            }
                         },
                         modifier = Modifier
                             .align(Alignment.BottomEnd)
@@ -329,6 +346,11 @@ fun T3ChatScreen(
                 sessionTermination = state.sessionTermination,
                 onEvent = onEvent,
                 modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
+                inputFocusRequested = inputFocusRequested,
+                onInputFocusedManually = {
+                    inputFocusedManually = true
+                    inputFocusRequested = true
+                },
             )
         }
     }
@@ -532,6 +554,8 @@ private fun IsolatedDraftComposer(
     sessionTermination: SessionTerminationUi,
     onEvent: (ChatUiEvent) -> Unit,
     modifier: Modifier = Modifier,
+    inputFocusRequested: Boolean? = null,
+    onInputFocusedManually: () -> Unit = {},
 ) {
     if (draft == null) {
         T3MessageComposer(
@@ -540,6 +564,8 @@ private fun IsolatedDraftComposer(
             onEvent = onEvent,
             modifier = modifier,
             sessionTermination = sessionTermination,
+            inputFocusRequested = inputFocusRequested,
+            onInputFocusedManually = onInputFocusedManually,
         )
     } else {
         val value by draft.collectAsStateWithLifecycle()
@@ -549,6 +575,8 @@ private fun IsolatedDraftComposer(
             onEvent = onEvent,
             modifier = modifier,
             sessionTermination = sessionTermination,
+            inputFocusRequested = inputFocusRequested,
+            onInputFocusedManually = onInputFocusedManually,
         )
     }
 }
