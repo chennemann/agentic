@@ -268,3 +268,6 @@ hs_err_pid*
 !/gradle/wrapper/gradle-wrapper.jar
 
 # End of https://www.toptal.com/developers/gitignore/api/android,intellij,androidstudio,gradle,turbo
+
+# Independent sibling checkout used for cross-project development.
+/apps/t3code/

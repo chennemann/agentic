@@ -15,6 +15,19 @@ The repository is Android-only and is built with:
 - Navigation 3 with serializable routes
 - KTLint for Kotlin formatting and style
 
+## Workspace Layout
+
+This repository is the coordinating workspace for two independent projects:
+
+- `apps/android` is the Agentic Android application and belongs to this repository.
+- `apps/t3code` is a separate T3 Code Git checkout with its own history and remotes.
+
+Agents may read and edit both projects when a task crosses the portable protocol boundary. Run Git
+commands for T3 Code with `git -C apps/t3code ...`, and never stage or commit T3 Code files in the
+Agentic repository. T3 Code is the source of truth for portable contracts and server behavior;
+Agentic owns the Android implementation that consumes those contracts. Do not add a build-time
+dependency between the repositories.
+
 ## Quick Reference Commands
 
 ```bash
