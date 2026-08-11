@@ -83,14 +83,10 @@ class SqlOrchestrationRepository(
                         )
                     }
             }
-            mutableShell.value.value?.threads.orEmpty().forEach { thread ->
-                loadThreadProjection(environmentId, thread.id)?.let { threadProjections[thread.id] = it }
-            }
             if (storedThreadId != null) {
-                val restored = threadProjections[storedThreadId]
-                    ?: loadThreadProjection(environmentId, storedThreadId)?.also {
-                        threadProjections[storedThreadId] = it
-                    }
+                val restored = loadThreadProjection(environmentId, storedThreadId)?.also {
+                    threadProjections[storedThreadId] = it
+                }
                 mutableFocusedThread.value = restored ?: ProjectionState()
                 mutableFocusedThreadId.value = storedThreadId
                 mutableShell.value.value

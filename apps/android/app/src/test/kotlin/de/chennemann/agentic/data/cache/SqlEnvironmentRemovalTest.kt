@@ -10,6 +10,31 @@ import org.junit.jupiter.api.Test
 
 class SqlEnvironmentRemovalTest {
     @Test
+    fun `restores the active environment before asynchronous work runs`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AgenticDb.Schema.create(driver)
+        val database = AgenticDb(driver)
+        database.agenticT3Queries.upsertEnvironment(
+            "one",
+            "Environment one",
+            "https://one.test/",
+            "os",
+            "arch",
+            "1",
+            1,
+            42,
+        )
+
+        val repository = SqlEnvironmentRepository(
+            database = database,
+            dispatcher = StandardTestDispatcher(testScheduler),
+        )
+
+        assertEquals("one", repository.activeEnvironment.value?.id)
+        driver.close()
+    }
+
+    @Test
     fun `removal deletes only the targeted environment data`() = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         AgenticDb.Schema.create(driver)
@@ -24,7 +49,6 @@ class SqlEnvironmentRemovalTest {
         val repository = SqlEnvironmentRepository(
             database = database,
             dispatcher = StandardTestDispatcher(testScheduler),
-            scope = backgroundScope,
         )
 
         repository.remove("one")

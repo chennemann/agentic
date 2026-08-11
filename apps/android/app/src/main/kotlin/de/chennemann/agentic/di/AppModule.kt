@@ -134,7 +134,6 @@ val appModule = module {
         SqlEnvironmentRepository(
             database = get(),
             dispatcher = get<DispatcherProvider>().io,
-            scope = get(named(AppScopeName)),
         )
     }
     single<OrchestrationRepository> {

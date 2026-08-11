@@ -5,26 +5,20 @@ import de.chennemann.agentic.domain.environment.EnvironmentRepository
 import de.chennemann.agentic.domain.environment.SavedEnvironment
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
 import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class SqlEnvironmentRepository(
     private val database: AgenticDb,
     private val dispatcher: CoroutineDispatcher,
-    scope: CoroutineScope,
 ) : EnvironmentRepository {
-    private val mutableEnvironments = MutableStateFlow<List<SavedEnvironment>>(emptyList())
+    private val initialEnvironments = readEnvironments()
+    private val mutableEnvironments = MutableStateFlow(initialEnvironments)
     override val environments: StateFlow<List<SavedEnvironment>> = mutableEnvironments.asStateFlow()
-    private val mutableActiveEnvironment = MutableStateFlow<SavedEnvironment?>(null)
+    private val mutableActiveEnvironment = MutableStateFlow(initialEnvironments.firstOrNull { it.active })
     override val activeEnvironment: StateFlow<SavedEnvironment?> = mutableActiveEnvironment.asStateFlow()
-
-    init {
-        scope.launch(dispatcher) { refresh() }
-    }
 
     override suspend fun save(
         baseUrl: String,
@@ -84,7 +78,13 @@ class SqlEnvironmentRepository(
     }
 
     private fun refresh() {
-        val rows = database.agenticT3Queries.selectAllEnvironments { id, label, baseUrl, os, arch, version, active, at ->
+        val rows = readEnvironments()
+        mutableEnvironments.value = rows
+        mutableActiveEnvironment.value = rows.firstOrNull { it.active }
+    }
+
+    private fun readEnvironments() =
+        database.agenticT3Queries.selectAllEnvironments { id, label, baseUrl, os, arch, version, active, at ->
             SavedEnvironment(
                 id = id,
                 label = label,
@@ -96,7 +96,4 @@ class SqlEnvironmentRepository(
                 lastConnectedAt = at,
             )
         }.executeAsList()
-        mutableEnvironments.value = rows
-        mutableActiveEnvironment.value = rows.firstOrNull { it.active }
-    }
 }
