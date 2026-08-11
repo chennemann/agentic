@@ -5,7 +5,7 @@ import app.cash.sqldelight.coroutines.mapToOneOrNull
 import de.chennemann.agentic.db.AgenticDb
 import de.chennemann.agentic.domain.preferences.FavoriteModelId
 import de.chennemann.agentic.domain.preferences.ModelFavoriteRepository
-import de.chennemann.agentic.t3.contract.PortableJson
+import de.chennemann.agentic.t3.contract.T3Json
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -42,7 +42,7 @@ class SqlModelFavoriteRepository(
         database.agenticT3Queries.upsertPreference(
             environmentId,
             PreferenceKey,
-            PortableJson.encodeToString(next.map { it.toStored() }),
+            T3Json.encodeToString(next.map { it.toStored() }),
         )
         Unit
     }
@@ -50,7 +50,7 @@ class SqlModelFavoriteRepository(
     private fun decode(payload: String?): List<FavoriteModelId> = payload
         ?.let {
             runCatching {
-                PortableJson.decodeFromString<List<StoredFavoriteModel>>(it)
+                T3Json.decodeFromString<List<StoredFavoriteModel>>(it)
                     .map(StoredFavoriteModel::toDomain)
                     .distinct()
             }.getOrNull()

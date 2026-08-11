@@ -2,7 +2,7 @@ package de.chennemann.agentic.domain.orchestration
 
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.DispatchResult
-import de.chennemann.agentic.t3.contract.EnvironmentClientConfig
+import de.chennemann.agentic.t3.contract.ServerConfig
 import de.chennemann.agentic.t3.contract.OrchestrationProject
 import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
@@ -183,7 +183,7 @@ private class ConfirmingProjectDispatcher(
 }
 
 private class ProjectRepository(projects: List<OrchestrationProject> = emptyList()) : OrchestrationRepository {
-    override val clientConfig = MutableStateFlow(ProjectionState<EnvironmentClientConfig>())
+    override val clientConfig = MutableStateFlow(ProjectionState<ServerConfig>())
     override val shell = MutableStateFlow(
         ProjectionState(
             value = OrchestrationShellSnapshot(projects, emptyList(), 0, "2026-08-06T00:00:00Z"),
@@ -221,7 +221,7 @@ private class ProjectRepository(projects: List<OrchestrationProject> = emptyList
     }
 
     override suspend fun loadCached(environmentId: String) = Unit
-    override suspend fun setClientConfig(environmentId: String, config: EnvironmentClientConfig, source: ProjectionSource) = Unit
+    override suspend fun setClientConfig(environmentId: String, config: ServerConfig, source: ProjectionSource) = Unit
     override suspend fun setShellSnapshot(environmentId: String, snapshot: OrchestrationShellSnapshot, source: ProjectionSource) = Unit
     override suspend fun applyShellItem(environmentId: String, item: OrchestrationShellStreamItem) = Reduction.Ignored(shell.value)
     override suspend fun focusThread(environmentId: String, threadId: String?) = Unit

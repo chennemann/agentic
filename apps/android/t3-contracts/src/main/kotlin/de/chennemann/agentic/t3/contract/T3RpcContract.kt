@@ -12,20 +12,15 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 
-const val T3_PORTABLE_PROTOCOL_NAME = "t3-portable-client"
-const val T3_PORTABLE_PROTOCOL_VERSION = 1
-const val T3_SOURCE_COMMIT = "0ed054375c12940436df680807a05fd4aa3be5f6"
-const val T3_ARTIFACT_CHECKSUM = "c594f7fe3fc3c93cbcaed5931fe4791de1233073a9a0a79941c802a3ae323f44"
-
 @OptIn(ExperimentalSerializationApi::class)
-val PortableJson = Json {
+val T3Json = Json {
     ignoreUnknownKeys = true
     explicitNulls = false
     prettyPrint = false
 }
 
 @OptIn(ExperimentalSerializationApi::class)
-val PortableCommandJson = Json(PortableJson) {
+val T3CommandJson = Json(T3Json) {
     explicitNulls = true
 }
 
@@ -43,7 +38,6 @@ data class EnvironmentPlatform(val os: String, val arch: String)
 
 @Serializable
 data class ExecutionEnvironmentCapabilities(
-    val portableClientProtocol: Int? = null,
     val connectionProbe: Boolean = false,
     val repositoryIdentity: Boolean = false,
     val threadSettlement: Boolean = false,
@@ -82,13 +76,12 @@ data class TokenExchangeResponse(
 )
 
 @Serializable
-data class EnvironmentClientConfig(
+data class ServerConfig(
     val environment: ExecutionEnvironmentDescriptor,
     val auth: ServerAuthDescriptor,
     val providers: List<ProviderInstance>,
-    val shellResumeCompletionMarker: Boolean,
-    val threadResumeCompletionMarker: Boolean,
-    val protocolVersion: Int
+    val shellResumeCompletionMarker: Boolean = false,
+    val threadResumeCompletionMarker: Boolean = false
 )
 
 @Serializable

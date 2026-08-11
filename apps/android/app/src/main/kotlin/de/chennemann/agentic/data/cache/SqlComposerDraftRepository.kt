@@ -4,7 +4,7 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import de.chennemann.agentic.db.AgenticDb
 import de.chennemann.agentic.domain.preferences.ComposerDraftRepository
-import de.chennemann.agentic.t3.contract.PortableJson
+import de.chennemann.agentic.t3.contract.T3Json
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -35,14 +35,14 @@ class SqlComposerDraftRepository(
             database.agenticT3Queries.upsertPreference(
                 environmentId,
                 preferenceKey(threadId),
-                PortableJson.encodeToString(draft),
+                T3Json.encodeToString(draft),
             )
         }
         Unit
     }
 
     private fun decode(payload: String?): String = payload
-        ?.let { runCatching { PortableJson.decodeFromString<String>(it) }.getOrNull() }
+        ?.let { runCatching { T3Json.decodeFromString<String>(it) }.getOrNull() }
         .orEmpty()
 
     private fun preferenceKey(threadId: String) = "$PreferencePrefix$threadId"

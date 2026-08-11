@@ -40,7 +40,7 @@ import de.chennemann.agentic.domain.voice.GroqApiKeyStore
 import de.chennemann.agentic.domain.voice.VoiceInputService
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.DispatchResult
-import de.chennemann.agentic.t3.contract.EnvironmentClientConfig
+import de.chennemann.agentic.t3.contract.ServerConfig
 import de.chennemann.agentic.t3.contract.EnvironmentPlatform
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentCapabilities
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
@@ -59,7 +59,7 @@ import de.chennemann.agentic.t3.contract.ProviderInstance
 import de.chennemann.agentic.t3.contract.ProviderModel
 import de.chennemann.agentic.t3.contract.ProviderOptionSelection
 import de.chennemann.agentic.t3.contract.ProposedPlan
-import de.chennemann.agentic.t3.contract.PortableJson
+import de.chennemann.agentic.t3.contract.T3Json
 import de.chennemann.agentic.t3.contract.ServerAuthDescriptor
 import de.chennemann.agentic.t3.contract.ThreadSession
 import kotlinx.coroutines.Dispatchers
@@ -1264,7 +1264,7 @@ class ChatViewModelIntentTest {
                             kind = "user-input.requested",
                             tone = "info",
                             summary = "Choose an approach",
-                            payload = PortableJson.parseToJsonElement(
+                            payload = T3Json.parseToJsonElement(
                                 """
                                 {
                                   "requestId": "request-1",
@@ -1904,7 +1904,7 @@ class ChatViewModelIntentTest {
             kind = "tool.started",
             tone = "tool",
             summary = "Run command started",
-            payload = PortableJson.parseToJsonElement(
+            payload = T3Json.parseToJsonElement(
                 """
                 {
                   "itemType": "command_execution",
@@ -2263,7 +2263,7 @@ private class FakeViewModelEnvironmentRepository : EnvironmentRepository {
 }
 
 private class FakeOrchestrationRepository : OrchestrationRepository {
-    override val clientConfig = MutableStateFlow(ProjectionState<EnvironmentClientConfig>())
+    override val clientConfig = MutableStateFlow(ProjectionState<ServerConfig>())
     override val shell = MutableStateFlow(ProjectionState<OrchestrationShellSnapshot>())
     override val focusedThread = MutableStateFlow(ProjectionState<OrchestrationThreadDetailSnapshot>())
     override val focusedThreadId = MutableStateFlow<String?>(null)
@@ -2273,7 +2273,7 @@ private class FakeOrchestrationRepository : OrchestrationRepository {
 
     override suspend fun setClientConfig(
         environmentId: String,
-        config: EnvironmentClientConfig,
+        config: ServerConfig,
         source: ProjectionSource,
     ) = Unit
 
@@ -2406,13 +2406,13 @@ private fun recentProjectsShell(): OrchestrationShellSnapshot = OrchestrationShe
 
 private fun submissionRepository(selection: ModelSelection) = FakeOrchestrationRepository().apply {
     clientConfig.value = ProjectionState(
-        value = EnvironmentClientConfig(
+        value = ServerConfig(
             environment = ExecutionEnvironmentDescriptor(
                 environmentId = "environment",
                 label = "Environment",
                 platform = EnvironmentPlatform("linux", "x64"),
                 serverVersion = "1",
-                capabilities = ExecutionEnvironmentCapabilities(portableClientProtocol = 1),
+                capabilities = ExecutionEnvironmentCapabilities(),
             ),
             auth = ServerAuthDescriptor(
                 policy = "remote-reachable",
@@ -2428,7 +2428,7 @@ private fun submissionRepository(selection: ModelSelection) = FakeOrchestrationR
                         ProviderModel(
                             slug = "model",
                             name = "Model",
-                            capabilities = PortableJson.parseToJsonElement(
+                            capabilities = T3Json.parseToJsonElement(
                                 """
                                 {
                                   "optionDescriptors": [
@@ -2453,7 +2453,6 @@ private fun submissionRepository(selection: ModelSelection) = FakeOrchestrationR
             ),
             shellResumeCompletionMarker = true,
             threadResumeCompletionMarker = true,
-            protocolVersion = 1,
         ),
         source = ProjectionSource.LIVE,
     )
@@ -2511,7 +2510,7 @@ private fun toolActivity(
     kind = kind,
     tone = "tool",
     summary = "Run command",
-    payload = PortableJson.parseToJsonElement(
+    payload = T3Json.parseToJsonElement(
         """
         {
           "title": "Run command",
@@ -2547,7 +2546,7 @@ private fun orchestrationMessage(
 private fun turnDiffCheckpoint(
     turnId: String,
     files: String,
-): kotlinx.serialization.json.JsonElement = PortableJson.parseToJsonElement(
+): kotlinx.serialization.json.JsonElement = T3Json.parseToJsonElement(
     """
     {
       "turnId": "$turnId",

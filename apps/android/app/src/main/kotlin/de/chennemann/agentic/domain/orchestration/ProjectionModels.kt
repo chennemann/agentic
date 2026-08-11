@@ -1,6 +1,6 @@
 package de.chennemann.agentic.domain.orchestration
 
-import de.chennemann.agentic.t3.contract.EnvironmentClientConfig
+import de.chennemann.agentic.t3.contract.ServerConfig
 import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import kotlinx.coroutines.flow.StateFlow
@@ -34,7 +34,7 @@ sealed interface Reduction<out T> {
 }
 
 interface OrchestrationRepository {
-    val clientConfig: StateFlow<ProjectionState<EnvironmentClientConfig>>
+    val clientConfig: StateFlow<ProjectionState<ServerConfig>>
     val shell: StateFlow<ProjectionState<OrchestrationShellSnapshot>>
     val focusedThread: StateFlow<ProjectionState<OrchestrationThreadDetailSnapshot>>
     val focusedThreadId: StateFlow<String?>
@@ -44,7 +44,7 @@ interface OrchestrationRepository {
 
     suspend fun setClientConfig(
         environmentId: String,
-        config: EnvironmentClientConfig,
+        config: ServerConfig,
         source: ProjectionSource,
     )
 

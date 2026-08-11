@@ -1,7 +1,7 @@
 package de.chennemann.agentic.domain.orchestration
 
 import de.chennemann.agentic.data.auth.CredentialStore
-import de.chennemann.agentic.data.t3.OrchestrationCommandClient
+import de.chennemann.agentic.data.t3.T3RpcClient
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
 import de.chennemann.agentic.domain.environment.SavedEnvironment
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
@@ -114,7 +114,7 @@ fun interface PendingCommandReplayer {
 class DurableCommandDispatcher(
     private val environments: EnvironmentRepository,
     private val credentials: CredentialStore,
-    private val client: OrchestrationCommandClient,
+    private val client: T3RpcClient,
     private val outbox: CommandOutbox,
 ) : CommandDispatcher, PendingCommandReplayer {
     override suspend fun dispatch(command: ClientOrchestrationCommand): DispatchResult {

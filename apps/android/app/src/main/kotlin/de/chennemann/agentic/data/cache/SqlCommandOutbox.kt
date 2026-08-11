@@ -8,7 +8,7 @@ import de.chennemann.agentic.domain.orchestration.CommandOutbox
 import de.chennemann.agentic.domain.orchestration.OutboxCommand
 import de.chennemann.agentic.domain.orchestration.OutboxCommandStatus
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
-import de.chennemann.agentic.t3.contract.PortableCommandJson
+import de.chennemann.agentic.t3.contract.T3CommandJson
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -26,7 +26,7 @@ class SqlCommandOutbox(
             database.agenticT3Queries.enqueueCommand(
                 environment_id = environmentId,
                 command_id = command.commandId,
-                command_json = PortableCommandJson.encodeToString(ClientOrchestrationCommand.serializer(), command),
+                command_json = T3CommandJson.encodeToString(ClientOrchestrationCommand.serializer(), command),
                 created_at = System.currentTimeMillis(),
             )
             Unit
@@ -55,7 +55,7 @@ class SqlCommandOutbox(
     private fun decode(rows: List<Command_outbox>): List<OutboxCommand> = rows.map { row ->
         OutboxCommand(
             environmentId = row.environment_id,
-            command = PortableCommandJson.decodeFromString(ClientOrchestrationCommand.serializer(), row.command_json),
+            command = T3CommandJson.decodeFromString(ClientOrchestrationCommand.serializer(), row.command_json),
             status = if (row.status == "failed") OutboxCommandStatus.FAILED else OutboxCommandStatus.PENDING,
             attemptCount = row.attempt_count,
             lastError = row.last_error,

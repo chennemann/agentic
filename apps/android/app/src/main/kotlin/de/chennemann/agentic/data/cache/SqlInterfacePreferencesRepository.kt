@@ -7,7 +7,7 @@ import de.chennemann.agentic.domain.preferences.InterfacePreferences
 import de.chennemann.agentic.domain.preferences.InterfacePreferencesRepository
 import de.chennemann.agentic.domain.preferences.ThemePreference
 import de.chennemann.agentic.domain.preferences.validated
-import de.chennemann.agentic.t3.contract.PortableJson
+import de.chennemann.agentic.t3.contract.T3Json
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -19,14 +19,14 @@ class SqlInterfacePreferencesRepository(private val database: AgenticDb, private
     InterfacePreferencesRepository {
     override val preferences: Flow<InterfacePreferences> = database.agenticT3Queries
         .selectPreference(GlobalScope, PreferenceKey).asFlow().mapToOneOrNull(dispatcher)
-        .map { raw -> raw?.let { runCatching { PortableJson.decodeFromString<InterfacePreferences>(it) }.getOrNull() }?.validated() ?: InterfacePreferences() }
+        .map { raw -> raw?.let { runCatching { T3Json.decodeFromString<InterfacePreferences>(it) }.getOrNull() }?.validated() ?: InterfacePreferences() }
 
     override suspend fun setTheme(theme: ThemePreference) = update { copy(theme = theme) }
     override suspend fun setInterfaceScale(scale: Float) = update { copy(interfaceScale = scale).validated() }
     override suspend fun setCodeScale(scale: Float) = update { copy(codeScale = scale).validated() }
 
     private suspend fun update(transform: InterfacePreferences.() -> InterfacePreferences) = withContext(dispatcher) {
-        database.agenticT3Queries.upsertPreference(GlobalScope, PreferenceKey, PortableJson.encodeToString(preferences.first().transform()))
+        database.agenticT3Queries.upsertPreference(GlobalScope, PreferenceKey, T3Json.encodeToString(preferences.first().transform()))
         Unit
     }
 

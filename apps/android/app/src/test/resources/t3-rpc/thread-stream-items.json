@@ -114,7 +114,7 @@
             "id": "message-user",
             "role": "user",
             "streaming": false,
-            "text": "Create the portable fixture",
+            "text": "Create the RPC fixture",
             "turnId": "turn-golden",
             "updatedAt": "2026-01-01T00:00:00.000Z"
           },
@@ -276,7 +276,7 @@
         },
         "runtimeMode": "approval-required",
         "threadId": "thread-golden",
-        "titleSeed": "Create the portable fixture"
+        "titleSeed": "Create the RPC fixture"
       },
       "sequence": 45,
       "type": "thread.turn-start-requested"

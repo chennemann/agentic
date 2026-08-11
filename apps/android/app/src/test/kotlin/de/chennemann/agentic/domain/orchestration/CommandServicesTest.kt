@@ -6,12 +6,12 @@ import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.DispatchResult
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
 import de.chennemann.agentic.t3.contract.ModelSelection
-import de.chennemann.agentic.t3.contract.EnvironmentClientConfig
+import de.chennemann.agentic.t3.contract.ServerConfig
 import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
-import de.chennemann.agentic.t3.contract.PortableCommandJson
+import de.chennemann.agentic.t3.contract.T3CommandJson
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
@@ -64,7 +64,7 @@ class CommandServicesTest {
         val secondStart = commands.recorded[1] as ClientOrchestrationCommand.StartTurn
 
         assertEquals("First useful line Second", firstCreate.title)
-        val encoded = PortableCommandJson
+        val encoded = T3CommandJson
             .encodeToJsonElement(ClientOrchestrationCommand.serializer(), firstStart)
             .jsonObject
         assertNull(encoded["titleSeed"])
@@ -95,7 +95,7 @@ class CommandServicesTest {
     }
 
     @Test
-    fun `approval and structured user input map to portable commands`() = runTest {
+    fun `approval and structured user input map to RPC commands`() = runTest {
         service.respondToApproval("thread", "approval", "acceptForSession")
         service.respondToUserInput(
             "thread",
@@ -127,7 +127,7 @@ class CommandServicesTest {
     }
 
     @Test
-    fun `session stop and turn interrupt remain distinct portable commands`() = runTest {
+    fun `session stop and turn interrupt remain distinct RPC commands`() = runTest {
         service.interrupt("thread-1", "turn-1")
         service.terminateSession("thread-1")
 
@@ -199,13 +199,13 @@ private class FakeEnvironmentRepository(
 }
 
 private class EmptyOrchestrationRepository : OrchestrationRepository {
-    override val clientConfig = MutableStateFlow(ProjectionState<EnvironmentClientConfig>())
+    override val clientConfig = MutableStateFlow(ProjectionState<ServerConfig>())
     override val shell = MutableStateFlow(ProjectionState<OrchestrationShellSnapshot>())
     override val focusedThread = MutableStateFlow(ProjectionState<OrchestrationThreadDetailSnapshot>())
     override val focusedThreadId = MutableStateFlow<String?>(null)
     override val selectedProjectId = MutableStateFlow<String?>(null)
     override suspend fun loadCached(environmentId: String) = Unit
-    override suspend fun setClientConfig(environmentId: String, config: EnvironmentClientConfig, source: ProjectionSource) = Unit
+    override suspend fun setClientConfig(environmentId: String, config: ServerConfig, source: ProjectionSource) = Unit
     override suspend fun setShellSnapshot(environmentId: String, snapshot: OrchestrationShellSnapshot, source: ProjectionSource) = Unit
     override suspend fun applyShellItem(environmentId: String, item: OrchestrationShellStreamItem) = Reduction.Ignored(shell.value)
     override suspend fun focusThread(environmentId: String, threadId: String?) = Unit

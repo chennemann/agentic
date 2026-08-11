@@ -6,11 +6,10 @@ import de.chennemann.agentic.data.auth.PairingTarget
 import de.chennemann.agentic.data.auth.PairingUrlParser
 import de.chennemann.agentic.data.t3.AndroidClientMetadata
 import de.chennemann.agentic.data.t3.EnvironmentAuthClient
-import de.chennemann.agentic.data.t3.EnvironmentConfigClient
 import de.chennemann.agentic.data.t3.EnvironmentMetadataClient
 import de.chennemann.agentic.data.t3.REQUIRED_T3_SCOPES
+import de.chennemann.agentic.data.t3.T3RpcClient
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
-import de.chennemann.agentic.t3.contract.T3_PORTABLE_PROTOCOL_VERSION
 
 data class PairingPreview(
     val target: PairingTarget,
@@ -34,7 +33,7 @@ class EnvironmentService(
     private val credentials: CredentialStore,
     private val metadataClient: EnvironmentMetadataClient,
     private val authClient: EnvironmentAuthClient,
-    private val configClient: EnvironmentConfigClient,
+    private val rpc: T3RpcClient,
     private val clientMetadata: AndroidClientMetadata,
 ) : EnvironmentSelector {
     suspend fun inspect(
@@ -44,7 +43,6 @@ class EnvironmentService(
         val target = PairingUrlParser.parse(value, requireCredential)
         val descriptor = metadataClient.environmentDescriptor(target.baseUrl)
         PairingUrlParser.validateEnvironment(target, descriptor.environmentId)
-        validateProtocol(descriptor)
         return PairingPreview(target, descriptor)
     }
 
@@ -63,11 +61,8 @@ class EnvironmentService(
         if (!session.authenticated || !session.scopes.toSet().containsAll(REQUIRED_T3_SCOPES.split(' '))) {
             throw PairingException.Invalid()
         }
-        val config = configClient.clientConfig(preview.target.baseUrl, exchanged.accessToken)
-        if (
-            config.protocolVersion != T3_PORTABLE_PROTOCOL_VERSION ||
-            config.environment.environmentId != preview.descriptor.environmentId
-        ) {
+        val config = rpc.serverConfig(preview.target.baseUrl, exchanged.accessToken)
+        if (config.environment.environmentId != preview.descriptor.environmentId) {
             throw PairingException.EnvironmentMismatch()
         }
         credentials.write(preview.descriptor.environmentId, exchanged.accessToken)
@@ -76,12 +71,6 @@ class EnvironmentService(
 
     override suspend fun select(environmentId: String) {
         environments.select(environmentId)
-    }
-
-    private fun validateProtocol(descriptor: ExecutionEnvironmentDescriptor) {
-        if (descriptor.capabilities.portableClientProtocol != T3_PORTABLE_PROTOCOL_VERSION) {
-            throw UnsupportedProtocolException()
-        }
     }
 }
 
@@ -104,7 +93,3 @@ class RegisteredEnvironmentRemover(
     }
 
 }
-
-class UnsupportedProtocolException : IllegalStateException(
-    "This server does not advertise T3 portable client protocol v1.",
-)

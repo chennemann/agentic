@@ -16,12 +16,9 @@ import de.chennemann.agentic.data.cache.SqlModelFavoriteRepository
 import de.chennemann.agentic.data.cache.SqlOrchestrationRepository
 import de.chennemann.agentic.data.t3.AndroidClientMetadata
 import de.chennemann.agentic.data.t3.EnvironmentAuthClient
-import de.chennemann.agentic.data.t3.EnvironmentConfigClient
 import de.chennemann.agentic.data.t3.EnvironmentMetadataClient
 import de.chennemann.agentic.data.t3.KtorT3Client
-import de.chennemann.agentic.data.t3.OrchestrationCommandClient
-import de.chennemann.agentic.data.t3.OrchestrationSnapshotClient
-import de.chennemann.agentic.data.t3.OrchestrationStreamClient
+import de.chennemann.agentic.data.t3.T3RpcClient
 import de.chennemann.agentic.data.voice.AndroidAudioRecorder
 import de.chennemann.agentic.data.voice.KeystoreGroqApiKeyStore
 import de.chennemann.agentic.data.voice.KtorGroqTranscriptionClient
@@ -70,12 +67,13 @@ import de.chennemann.agentic.domain.voice.AudioTranscriptionClient
 import de.chennemann.agentic.domain.voice.GroqApiKeyStore
 import de.chennemann.agentic.domain.voice.GroqVoiceInputService
 import de.chennemann.agentic.domain.voice.VoiceInputService
-import de.chennemann.agentic.t3.contract.PortableJson
+import de.chennemann.agentic.t3.contract.T3Json
 import de.chennemann.agentic.ui.chat.ChatViewModel
 import de.chennemann.agentic.ui.onboarding.OnboardingViewModel
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.okhttp.OkHttp
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.client.plugins.websocket.WebSockets
 import io.ktor.serialization.kotlinx.json.json
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CoroutineScope
@@ -92,8 +90,9 @@ val appModule = module {
     single {
         HttpClient(OkHttp) {
             install(ContentNegotiation) {
-                json(PortableJson)
+                json(T3Json)
             }
+            install(WebSockets)
             engine {
                 config {
                     connectTimeout(10, TimeUnit.SECONDS)
@@ -126,14 +125,11 @@ val appModule = module {
     }
     single<NetworkMonitor> { AndroidNetworkMonitor(get()) }
     single {
-        KtorT3Client(get())
+        KtorT3Client(get(), get(named(AppScopeName)))
     }
     single<EnvironmentMetadataClient> { get<KtorT3Client>() }
     single<EnvironmentAuthClient> { get<KtorT3Client>() }
-    single<EnvironmentConfigClient> { get<KtorT3Client>() }
-    single<OrchestrationSnapshotClient> { get<KtorT3Client>() }
-    single<OrchestrationCommandClient> { get<KtorT3Client>() }
-    single<OrchestrationStreamClient> { get<KtorT3Client>() }
+    single<T3RpcClient> { get<KtorT3Client>() }
     single<EnvironmentRepository> {
         SqlEnvironmentRepository(
             database = get(),
@@ -218,9 +214,7 @@ val appModule = module {
             orchestration = get(),
             credentials = get(),
             metadata = get(),
-            config = get(),
-            snapshots = get(),
-            streams = get(),
+            rpc = get(),
             network = get(),
             pendingCommands = get(),
             scope = get(named(AppScopeName)),

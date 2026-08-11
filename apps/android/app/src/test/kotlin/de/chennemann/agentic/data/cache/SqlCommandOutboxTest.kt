@@ -2,7 +2,7 @@ package de.chennemann.agentic.data.cache
 
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import de.chennemann.agentic.data.auth.CredentialStore
-import de.chennemann.agentic.data.t3.OrchestrationCommandClient
+import de.chennemann.agentic.data.t3.T3RpcClient
 import de.chennemann.agentic.db.AgenticDb
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
 import de.chennemann.agentic.domain.environment.SavedEnvironment
@@ -11,6 +11,11 @@ import de.chennemann.agentic.domain.orchestration.OutboxCommandStatus
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.DispatchResult
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
+import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
+import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
+import de.chennemann.agentic.t3.contract.ServerConfig
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.first
@@ -123,7 +128,7 @@ class SqlCommandOutboxTest {
     }
 }
 
-private class RecoveringClient : OrchestrationCommandClient {
+private class RecoveringClient : T3RpcClient {
     var failing = true
     val commandIds = mutableListOf<String>()
 
@@ -136,6 +141,24 @@ private class RecoveringClient : OrchestrationCommandClient {
         if (failing) error("offline")
         return DispatchResult(1)
     }
+
+    override suspend fun serverConfig(baseUrl: String, bearerToken: String): ServerConfig =
+        error("Not used by this test")
+
+    override fun shellStream(
+        baseUrl: String,
+        bearerToken: String,
+        afterSequence: Long?,
+        requestCompletionMarker: Boolean,
+    ): Flow<OrchestrationShellStreamItem> = emptyFlow()
+
+    override fun threadStream(
+        baseUrl: String,
+        bearerToken: String,
+        threadId: String,
+        afterSequence: Long?,
+        requestCompletionMarker: Boolean,
+    ): Flow<OrchestrationThreadStreamItem> = emptyFlow()
 }
 
 private object OutboxCredentialStore : CredentialStore {

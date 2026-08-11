@@ -1,10 +1,8 @@
 package de.chennemann.agentic.domain.connection
 
 import de.chennemann.agentic.data.auth.CredentialStore
-import de.chennemann.agentic.data.t3.EnvironmentConfigClient
 import de.chennemann.agentic.data.t3.EnvironmentMetadataClient
-import de.chennemann.agentic.data.t3.OrchestrationSnapshotClient
-import de.chennemann.agentic.data.t3.OrchestrationStreamClient
+import de.chennemann.agentic.data.t3.T3RpcClient
 import de.chennemann.agentic.data.t3.T3TransportException
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
 import de.chennemann.agentic.domain.environment.SavedEnvironment
@@ -14,7 +12,6 @@ import de.chennemann.agentic.domain.orchestration.ProjectionSource
 import de.chennemann.agentic.domain.orchestration.Reduction
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
-import de.chennemann.agentic.t3.contract.T3_PORTABLE_PROTOCOL_VERSION
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.awaitCancellation
@@ -36,9 +33,7 @@ class ConnectionSupervisor(
     private val orchestration: OrchestrationRepository,
     private val credentials: CredentialStore,
     private val metadata: EnvironmentMetadataClient,
-    private val config: EnvironmentConfigClient,
-    private val snapshots: OrchestrationSnapshotClient,
-    private val streams: OrchestrationStreamClient,
+    private val rpc: T3RpcClient,
     private val network: NetworkMonitor,
     private val pendingCommands: PendingCommandReplayer,
     private val scope: CoroutineScope,
@@ -113,11 +108,6 @@ class ConnectionSupervisor(
                     "Authentication expired. Pair this environment again.",
                 )
                 awaitCancellation()
-            } catch (_: UnsupportedProtocol) {
-                mutableState.value = ConnectionState.UnsupportedProtocol(
-                    "This environment does not support T3 portable client protocol v1.",
-                )
-                awaitCancellation()
             } catch (cause: Exception) {
                 if (!network.online.value) continue
                 mutableState.value = ConnectionState.Backoff(
@@ -135,21 +125,10 @@ class ConnectionSupervisor(
         val token = credentials.read(environment.id)
             ?: throw T3TransportException.Authentication(401)
         val descriptor = metadata.environmentDescriptor(environment.baseUrl)
-        if (
-            descriptor.environmentId != environment.id ||
-            descriptor.capabilities.portableClientProtocol != T3_PORTABLE_PROTOCOL_VERSION
-        ) {
-            throw UnsupportedProtocol()
-        }
-        val clientConfig = config.clientConfig(environment.baseUrl, token)
-        if (
-            clientConfig.protocolVersion != T3_PORTABLE_PROTOCOL_VERSION ||
-            clientConfig.environment.environmentId != environment.id
-        ) {
-            throw UnsupportedProtocol()
-        }
+        if (descriptor.environmentId != environment.id) throw EnvironmentMismatch()
+        val clientConfig = rpc.serverConfig(environment.baseUrl, token)
+        if (clientConfig.environment.environmentId != environment.id) throw EnvironmentMismatch()
         orchestration.setClientConfig(environment.id, clientConfig, ProjectionSource.LIVE)
-        refreshShell(environment, token)
         mutableState.value = ConnectionState.Synchronizing
         launch {
             combine(orchestration.shell, orchestration.focusedThreadId) { shell, focusedThreadId ->
@@ -168,16 +147,6 @@ class ConnectionSupervisor(
         superviseShell(environment, token, clientConfig.shellResumeCompletionMarker)
     }
 
-    private suspend fun refreshShell(
-        environment: SavedEnvironment,
-        token: String,
-    ) {
-        val shell = snapshots.shellSnapshot(environment.baseUrl, token)
-        orchestration.setShellSnapshot(environment.id, shell, ProjectionSource.LIVE)
-        environments.markConnected(environment.id, System.currentTimeMillis())
-        replayPendingCommands(environment)
-    }
-
     private suspend fun replayPendingCommands(environment: SavedEnvironment) {
         if (!replayingPendingCommands.compareAndSet(false, true)) return
         try {
@@ -194,11 +163,12 @@ class ConnectionSupervisor(
     ) {
         var retryDelay = InitialRetryMillis
         var consecutiveFailures = 0
+        var forceSnapshot = orchestration.shell.value.sequence == null
         while (true) {
-            val sequence = orchestration.shell.value.sequence ?: 0
+            val sequence = if (forceSnapshot) null else orchestration.shell.value.sequence
             var gap = false
             try {
-                streams.shellStream(
+                rpc.shellStream(
                     environment.baseUrl,
                     token,
                     sequence,
@@ -210,9 +180,10 @@ class ConnectionSupervisor(
                             item is OrchestrationShellStreamItem.Synchronized ||
                             !requestMarker
                         ) {
-                            mutableState.value = ConnectionState.Live
+                            markSynchronized(environment)
                             retryDelay = InitialRetryMillis
                             consecutiveFailures = 0
+                            forceSnapshot = false
                         }
 
                         is Reduction.Ignored -> Unit
@@ -220,7 +191,7 @@ class ConnectionSupervisor(
                     if (gap) throw SequenceGap()
                 }
             } catch (_: SequenceGap) {
-                refreshShell(environment, token)
+                forceSnapshot = true
                 retryDelay = InitialRetryMillis
                 consecutiveFailures = 0
                 continue
@@ -250,19 +221,14 @@ class ConnectionSupervisor(
         token: String,
         threadId: String,
     ) {
-        var needsSnapshot = true
         var retryDelay = InitialRetryMillis
-        var sequence = 0L
+        var sequence = orchestration.focusedThread.value
+            .takeIf { it.value?.thread?.id == threadId }
+            ?.sequence
         while (true) {
             try {
-                if (needsSnapshot) {
-                    val snapshot = snapshots.threadSnapshot(environment.baseUrl, token, threadId)
-                    orchestration.setThreadSnapshot(environment.id, snapshot, ProjectionSource.LIVE)
-                    sequence = snapshot.snapshotSequence
-                    needsSnapshot = false
-                }
                 var gap = false
-                streams.threadStream(
+                rpc.threadStream(
                     environment.baseUrl,
                     token,
                     threadId,
@@ -274,7 +240,7 @@ class ConnectionSupervisor(
                         is Reduction.Applied -> {
                             sequence = reduction.state.sequence ?: sequence
                             if (item is OrchestrationThreadStreamItem.Synchronized) {
-                                mutableState.value = ConnectionState.Live
+                                markSynchronized(environment)
                             }
                         }
 
@@ -289,7 +255,7 @@ class ConnectionSupervisor(
             } catch (cause: T3TransportException.Authentication) {
                 throw cause
             } catch (_: SequenceGap) {
-                needsSnapshot = true
+                sequence = null
                 retryDelay = InitialRetryMillis
                 continue
             } catch (_: Exception) {
@@ -300,9 +266,15 @@ class ConnectionSupervisor(
         }
     }
 
+    private suspend fun markSynchronized(environment: SavedEnvironment) {
+        mutableState.value = ConnectionState.Live
+        environments.markConnected(environment.id, System.currentTimeMillis())
+        replayPendingCommands(environment)
+    }
+
     private class SequenceGap : Exception("Projection sequence gap detected.")
 
-    private class UnsupportedProtocol : Exception()
+    private class EnvironmentMismatch : Exception("The T3 environment identity changed.")
 
     private data class ConnectionTarget(
         val environment: SavedEnvironment?,

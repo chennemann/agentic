@@ -33,12 +33,12 @@ import de.chennemann.agentic.ui.chat.workflow.SharedTextWorkflowState
 import de.chennemann.agentic.ui.chat.workflow.ShortcutWorkflow
 import de.chennemann.agentic.domain.voice.GroqApiKeyStore
 import de.chennemann.agentic.domain.voice.VoiceInputService
-import de.chennemann.agentic.t3.contract.EnvironmentClientConfig
+import de.chennemann.agentic.t3.contract.ServerConfig
 import de.chennemann.agentic.t3.contract.ModelSelection
 import de.chennemann.agentic.t3.contract.OrchestrationActivity
 import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
-import de.chennemann.agentic.t3.contract.PortableJson
+import de.chennemann.agentic.t3.contract.T3Json
 import java.time.Instant
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CancellationException
@@ -1789,7 +1789,7 @@ class ChatViewModel(
 private enum class SnoozeAction { SNOOZE, WAKE }
 
 private data class OrchestrationBundle(
-    val config: ProjectionState<EnvironmentClientConfig>,
+    val config: ProjectionState<ServerConfig>,
     val shell: ProjectionState<OrchestrationShellSnapshot>,
     val thread: ProjectionState<OrchestrationThreadDetailSnapshot>,
     val projectId: String?,
@@ -2018,7 +2018,7 @@ private fun de.chennemann.agentic.t3.contract.OrchestrationThreadShell.isSettled
     settledOverride == "settled" || (settledOverride != "active" && settledAt != null)
 
 private fun modelOptions(
-    config: EnvironmentClientConfig?,
+    config: ServerConfig?,
     favorites: List<FavoriteModelId> = emptyList(),
 ): List<ProviderModelOptionUi> = config
     ?.providers
@@ -2070,7 +2070,7 @@ private sealed interface ProviderOptionDescriptor {
 }
 
 private fun providerOptionDescriptors(
-    config: EnvironmentClientConfig?,
+    config: ServerConfig?,
     modelId: String?,
 ): List<ProviderOptionDescriptor> {
     if (config == null || modelId == null) return emptyList()
@@ -2191,7 +2191,7 @@ private fun String.toFavoriteModelId(): FavoriteModelId? {
 }
 
 private fun slashCommands(
-    config: EnvironmentClientConfig?,
+    config: ServerConfig?,
     selectedModelId: String?,
 ): List<SlashCommandUi> {
     val instanceId = selectedModelId?.substringBefore('/')
@@ -2202,11 +2202,11 @@ private fun slashCommands(
         .map { SlashCommandUi(it.name, it.description) }
 }
 
-private val PrettyPortableJson = Json(PortableJson) {
+private val PrettyT3Json = Json(T3Json) {
     prettyPrint = true
 }
 
-private fun JsonObject.pretty(): String = PrettyPortableJson.encodeToString(this)
+private fun JsonObject.pretty(): String = PrettyT3Json.encodeToString(this)
 
 private fun ModelSelection.optionId(): String = optionId(instanceId, model)
 

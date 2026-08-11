@@ -26,7 +26,7 @@ class ChatUiModelsTest {
     }
 
     @Test
-    fun `approval model supports every portable decision`() {
+    fun `approval model supports every server decision`() {
         val approval = PendingApprovalUi(
             requestId = "approval-1",
             title = "Continue?",

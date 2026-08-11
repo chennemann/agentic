@@ -48,12 +48,12 @@ private class CacheEnvironmentRepository : EnvironmentRepository {
 private fun cacheEnvironment(id: String, active: Boolean) = SavedEnvironment(id, id, "https://example.test/", "linux", "x64", "1", active, null)
 private class CacheProjectionRepository : OrchestrationRepository {
     val cleared = mutableListOf<String>()
-    override val clientConfig = MutableStateFlow(ProjectionState<EnvironmentClientConfig>())
+    override val clientConfig = MutableStateFlow(ProjectionState<ServerConfig>())
     override val shell = MutableStateFlow(ProjectionState<OrchestrationShellSnapshot>())
     override val focusedThread = MutableStateFlow(ProjectionState<OrchestrationThreadDetailSnapshot>())
     override val focusedThreadId = MutableStateFlow<String?>(null); override val selectedProjectId = MutableStateFlow<String?>(null)
     override suspend fun loadCached(environmentId: String)=Unit
-    override suspend fun setClientConfig(environmentId:String,config:EnvironmentClientConfig,source:ProjectionSource)=Unit
+    override suspend fun setClientConfig(environmentId:String,config:ServerConfig,source:ProjectionSource)=Unit
     override suspend fun setShellSnapshot(environmentId:String,snapshot:OrchestrationShellSnapshot,source:ProjectionSource)=Unit
     override suspend fun applyShellItem(environmentId:String,item:OrchestrationShellStreamItem)=Reduction.Ignored(shell.value)
     override suspend fun focusThread(environmentId:String,threadId:String?)=Unit; override suspend fun selectProject(environmentId:String,projectId:String?)=Unit

@@ -9,7 +9,7 @@ import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetail
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
-import de.chennemann.agentic.t3.contract.PortableJson
+import de.chennemann.agentic.t3.contract.T3Json
 import de.chennemann.agentic.t3.contract.ProposedPlan
 import de.chennemann.agentic.t3.contract.ThreadSession
 import kotlinx.serialization.Serializable
@@ -19,10 +19,10 @@ import kotlinx.serialization.json.jsonPrimitive
 
 object ClientConfigReducer {
     fun reduce(
-        current: ProjectionState<de.chennemann.agentic.t3.contract.EnvironmentClientConfig>,
-        incoming: de.chennemann.agentic.t3.contract.EnvironmentClientConfig,
+        current: ProjectionState<de.chennemann.agentic.t3.contract.ServerConfig>,
+        incoming: de.chennemann.agentic.t3.contract.ServerConfig,
         source: ProjectionSource,
-    ): ProjectionState<de.chennemann.agentic.t3.contract.EnvironmentClientConfig> {
+    ): ProjectionState<de.chennemann.agentic.t3.contract.ServerConfig> {
         if (source == ProjectionSource.CACHE && current.source == ProjectionSource.LIVE) return current
         return ProjectionState(
             value = incoming,
@@ -280,7 +280,7 @@ private fun OrchestrationThreadDetail.removeRequestActivity(
 private fun JsonObject.string(key: String): String? = this[key]?.jsonPrimitive?.content
 
 private inline fun <reified T> JsonObject.decodeOrNull(key: String? = null): T? = runCatching {
-    PortableJson.decodeFromJsonElement<T>(if (key == null) this else getValue(key))
+    T3Json.decodeFromJsonElement<T>(if (key == null) this else getValue(key))
 }.getOrNull()
 
 private fun <T> List<T>.replaceById(

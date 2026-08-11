@@ -2,8 +2,8 @@
 
 ## Project Overview
 
-Agentic is a native Android chat client for the T3 Code environment server. It consumes portable
-T3 protocol v1 over authenticated JSON HTTP and Server-Sent Events. The Android runtime must remain
+Agentic is a native Android chat client for the T3 Code environment server. It consumes the
+authenticated T3 HTTP and WebSocket RPC APIs. The Android runtime must remain
 provider-neutral: provider instance IDs, model names, modes, commands, and activities come from the
 server contract.
 
@@ -22,9 +22,9 @@ This repository is the coordinating workspace for two independent projects:
 - `apps/android` is the Agentic Android application and belongs to this repository.
 - `apps/t3code` is a separate T3 Code Git checkout with its own history and remotes.
 
-Agents may read and edit both projects when a task crosses the portable protocol boundary. Run Git
+Agents may read and edit both projects when a task crosses the T3 RPC contract boundary. Run Git
 commands for T3 Code with `git -C apps/t3code ...`, and never stage or commit T3 Code files in the
-Agentic repository. T3 Code is the source of truth for portable contracts and server behavior;
+Agentic repository. T3 Code is the source of truth for RPC contracts and server behavior;
 Agentic owns the Android implementation that consumes those contracts. Do not add a build-time
 dependency between the repositories.
 
@@ -54,7 +54,7 @@ adb shell am start -W -n de.chennemann.agentic/.MainActivity
 
 1. T3 is the source of truth for projects, threads, messages, activities, approvals, and user input.
 2. Android stores projection snapshots as a cache and applies sequenced stream items.
-3. HTTP/SSE transport and T3 DTOs must not leak into Compose.
+3. HTTP/WebSocket transport and T3 DTOs must not leak into Compose.
 4. Provider routing uses stable provider instance IDs. Never branch on provider driver names.
 5. Unknown additive activity payloads remain visible through a generic provider-neutral UI model.
 6. Do not add legacy protocol fallbacks, server hosting, or sibling-repository build dependencies.

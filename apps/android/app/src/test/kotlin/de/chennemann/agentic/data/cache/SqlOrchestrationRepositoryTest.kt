@@ -9,7 +9,7 @@ import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetail
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationThreadShell
-import de.chennemann.agentic.t3.contract.PortableJson
+import de.chennemann.agentic.t3.contract.T3Json
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
@@ -216,7 +216,7 @@ class SqlOrchestrationRepositoryTest {
             ThreadId,
             1,
             1,
-            PortableJson.encodeToString(oversizedThreadSnapshot()),
+            T3Json.encodeToString(oversizedThreadSnapshot()),
             1,
         )
 

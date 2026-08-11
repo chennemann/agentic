@@ -1,7 +1,7 @@
 package de.chennemann.agentic.data.voice
 
 import de.chennemann.agentic.domain.voice.AudioTranscriptionClient
-import de.chennemann.agentic.t3.contract.PortableJson
+import de.chennemann.agentic.t3.contract.T3Json
 import io.ktor.client.HttpClient
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.forms.formData
@@ -43,7 +43,7 @@ class KtorGroqTranscriptionClient(
         if (!response.status.isSuccess()) {
             throw IllegalStateException(response.status.failureMessage())
         }
-        return PortableJson.decodeFromString<GroqTranscriptionResponse>(
+        return T3Json.decodeFromString<GroqTranscriptionResponse>(
             response.bodyAsText(),
         ).text
     }

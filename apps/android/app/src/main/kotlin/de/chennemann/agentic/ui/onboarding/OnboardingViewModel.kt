@@ -7,7 +7,6 @@ import de.chennemann.agentic.domain.environment.EnvironmentRepository
 import de.chennemann.agentic.domain.environment.EnvironmentRemover
 import de.chennemann.agentic.domain.environment.EnvironmentService
 import de.chennemann.agentic.domain.environment.PairingPreview
-import de.chennemann.agentic.domain.environment.UnsupportedProtocolException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
@@ -174,6 +173,5 @@ private fun Throwable.toUiError(): OnboardingErrorUi = when (this) {
     is PairingException.MissingCredential,
     -> OnboardingErrorUi.InvalidPairing(message.orEmpty())
 
-    is UnsupportedProtocolException -> OnboardingErrorUi.UnsupportedServer(message.orEmpty())
     else -> OnboardingErrorUi.ConnectionFailed(message ?: "The environment could not be reached.")
 }

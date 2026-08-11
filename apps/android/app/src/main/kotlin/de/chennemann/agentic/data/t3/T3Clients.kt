@@ -3,12 +3,10 @@ package de.chennemann.agentic.data.t3
 import de.chennemann.agentic.t3.contract.AuthSession
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.DispatchResult
-import de.chennemann.agentic.t3.contract.EnvironmentClientConfig
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
-import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
-import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
+import de.chennemann.agentic.t3.contract.ServerConfig
 import de.chennemann.agentic.t3.contract.TokenExchangeResponse
 import kotlinx.coroutines.flow.Flow
 
@@ -37,39 +35,22 @@ interface EnvironmentAuthClient {
     ): AuthSession
 }
 
-interface EnvironmentConfigClient {
-    suspend fun clientConfig(
+interface T3RpcClient {
+    suspend fun serverConfig(
         baseUrl: String,
         bearerToken: String,
-    ): EnvironmentClientConfig
-}
+    ): ServerConfig
 
-interface OrchestrationSnapshotClient {
-    suspend fun shellSnapshot(
-        baseUrl: String,
-        bearerToken: String,
-    ): OrchestrationShellSnapshot
-
-    suspend fun threadSnapshot(
-        baseUrl: String,
-        bearerToken: String,
-        threadId: String,
-    ): OrchestrationThreadDetailSnapshot
-}
-
-interface OrchestrationCommandClient {
     suspend fun dispatch(
         baseUrl: String,
         bearerToken: String,
         command: ClientOrchestrationCommand,
     ): DispatchResult
-}
 
-interface OrchestrationStreamClient {
     fun shellStream(
         baseUrl: String,
         bearerToken: String,
-        afterSequence: Long,
+        afterSequence: Long?,
         requestCompletionMarker: Boolean,
     ): Flow<OrchestrationShellStreamItem>
 
@@ -77,7 +58,7 @@ interface OrchestrationStreamClient {
         baseUrl: String,
         bearerToken: String,
         threadId: String,
-        afterSequence: Long,
+        afterSequence: Long?,
         requestCompletionMarker: Boolean,
     ): Flow<OrchestrationThreadStreamItem>
 }
@@ -93,7 +74,11 @@ sealed class T3TransportException(
         val statusCode: Int,
     ) : T3TransportException("T3 request failed with HTTP $statusCode.")
 
-    class InvalidResponse : T3TransportException("T3 returned an invalid portable-protocol response.")
+    class InvalidResponse : T3TransportException("T3 returned an invalid RPC response.")
+
+    class Rpc(
+        message: String,
+    ) : T3TransportException(message)
 
     class Network : T3TransportException("The T3 environment could not be reached.")
 }

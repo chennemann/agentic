@@ -3,7 +3,7 @@ package de.chennemann.agentic.domain.orchestration
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationEvent
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
-import de.chennemann.agentic.t3.contract.PortableJson
+import de.chennemann.agentic.t3.contract.T3Json
 import kotlinx.serialization.builtins.ListSerializer
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
@@ -118,7 +118,7 @@ class ProjectionReducersTest {
             ProjectionState(),
             threadItems().first(),
         ) as Reduction.Applied
-        val payload = PortableJson.parseToJsonElement(
+        val payload = T3Json.parseToJsonElement(
             """
             {
               "threadId": "thread-golden",
@@ -205,18 +205,18 @@ class ProjectionReducersTest {
         assertEquals("Renamed golden thread", state.value?.thread?.title)
     }
 
-    private fun shellItems(): List<OrchestrationShellStreamItem> = PortableJson.decodeFromString(
+    private fun shellItems(): List<OrchestrationShellStreamItem> = T3Json.decodeFromString(
         ListSerializer(OrchestrationShellStreamItem.serializer()),
         fixture("shell-stream-items.json"),
     )
 
-    private fun threadItems(): List<OrchestrationThreadStreamItem> = PortableJson.decodeFromString(
+    private fun threadItems(): List<OrchestrationThreadStreamItem> = T3Json.decodeFromString(
         ListSerializer(OrchestrationThreadStreamItem.serializer()),
         fixture("thread-stream-items.json"),
     )
 
     private fun fixture(name: String): String = checkNotNull(
-        javaClass.getResource("/t3-portable-v1/$name"),
+        javaClass.getResource("/t3-rpc/$name"),
     ).readText()
 }
 

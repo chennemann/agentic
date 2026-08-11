@@ -3,11 +3,8 @@ package de.chennemann.agentic.domain.connection
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import de.chennemann.agentic.data.auth.CredentialStore
 import de.chennemann.agentic.data.cache.SqlCommandOutbox
-import de.chennemann.agentic.data.t3.EnvironmentConfigClient
 import de.chennemann.agentic.data.t3.EnvironmentMetadataClient
-import de.chennemann.agentic.data.t3.OrchestrationSnapshotClient
-import de.chennemann.agentic.data.t3.OrchestrationStreamClient
-import de.chennemann.agentic.data.t3.OrchestrationCommandClient
+import de.chennemann.agentic.data.t3.T3RpcClient
 import de.chennemann.agentic.data.t3.T3TransportException
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
 import de.chennemann.agentic.domain.environment.SavedEnvironment
@@ -18,7 +15,7 @@ import de.chennemann.agentic.domain.orchestration.PendingCommandReplayer
 import de.chennemann.agentic.domain.orchestration.ProjectionSource
 import de.chennemann.agentic.domain.orchestration.ProjectionState
 import de.chennemann.agentic.domain.orchestration.Reduction
-import de.chennemann.agentic.t3.contract.EnvironmentClientConfig
+import de.chennemann.agentic.t3.contract.ServerConfig
 import de.chennemann.agentic.db.AgenticDb
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.DispatchResult
@@ -62,9 +59,7 @@ class ConnectionSupervisorTest {
             orchestration = SupervisorOrchestrationRepository(),
             credentials = SupervisorCredentialStore("token"),
             metadata = transport,
-            config = transport,
-            snapshots = transport,
-            streams = transport,
+            rpc = transport,
             network = OnlineMonitor,
             pendingCommands = PendingCommandReplayer {
                 replayCount += 1
@@ -104,9 +99,7 @@ class ConnectionSupervisorTest {
             orchestration = SupervisorOrchestrationRepository(),
             credentials = SupervisorCredentialStore("token"),
             metadata = transport,
-            config = transport,
-            snapshots = transport,
-            streams = transport,
+            rpc = transport,
             network = OnlineMonitor,
             pendingCommands = dispatcher,
             scope = backgroundScope,
@@ -136,9 +129,7 @@ class ConnectionSupervisorTest {
             orchestration = SupervisorOrchestrationRepository(),
             credentials = SupervisorCredentialStore("token"),
             metadata = transport,
-            config = transport,
-            snapshots = transport,
-            streams = transport,
+            rpc = transport,
             network = OnlineMonitor,
             pendingCommands = PendingCommandReplayer { replayed += it.id },
             scope = backgroundScope,
@@ -164,9 +155,7 @@ class ConnectionSupervisorTest {
             orchestration = SupervisorOrchestrationRepository(),
             credentials = SupervisorCredentialStore("token"),
             metadata = transport,
-            config = transport,
-            snapshots = transport,
-            streams = transport,
+            rpc = transport,
             network = OnlineMonitor,
             pendingCommands = PendingCommandReplayer { replayedEnvironmentIds += it.id },
             scope = backgroundScope,
@@ -185,9 +174,7 @@ class ConnectionSupervisorTest {
             orchestration = SupervisorOrchestrationRepository(),
             credentials = SupervisorCredentialStore("token"),
             metadata = transport,
-            config = transport,
-            snapshots = transport,
-            streams = transport,
+            rpc = transport,
             network = OnlineMonitor,
             pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
@@ -215,9 +202,7 @@ class ConnectionSupervisorTest {
             orchestration = SupervisorOrchestrationRepository(),
             credentials = SupervisorCredentialStore("token"),
             metadata = transport,
-            config = transport,
-            snapshots = transport,
-            streams = transport,
+            rpc = transport,
             network = network,
             pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
@@ -242,9 +227,7 @@ class ConnectionSupervisorTest {
             orchestration = SupervisorOrchestrationRepository(),
             credentials = SupervisorCredentialStore("token"),
             metadata = transport,
-            config = transport,
-            snapshots = transport,
-            streams = transport,
+            rpc = transport,
             network = OnlineMonitor,
             pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
@@ -267,9 +250,7 @@ class ConnectionSupervisorTest {
             orchestration = SupervisorOrchestrationRepository(),
             credentials = SupervisorCredentialStore("token"),
             metadata = transport,
-            config = transport,
-            snapshots = transport,
-            streams = transport,
+            rpc = transport,
             network = OnlineMonitor,
             pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
@@ -291,9 +272,7 @@ class ConnectionSupervisorTest {
             orchestration = SupervisorOrchestrationRepository(),
             credentials = SupervisorCredentialStore("token"),
             metadata = transport,
-            config = transport,
-            snapshots = transport,
-            streams = transport,
+            rpc = transport,
             network = OnlineMonitor,
             pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
@@ -316,9 +295,7 @@ class ConnectionSupervisorTest {
             orchestration = orchestration,
             credentials = SupervisorCredentialStore("token"),
             metadata = transport,
-            config = transport,
-            snapshots = transport,
-            streams = transport,
+            rpc = transport,
             network = OnlineMonitor,
             pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
@@ -344,9 +321,7 @@ class ConnectionSupervisorTest {
             orchestration = orchestration,
             credentials = SupervisorCredentialStore("token"),
             metadata = transport,
-            config = transport,
-            snapshots = transport,
-            streams = transport,
+            rpc = transport,
             network = OnlineMonitor,
             pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
@@ -374,9 +349,7 @@ class ConnectionSupervisorTest {
             orchestration = orchestration,
             credentials = SupervisorCredentialStore(token = null),
             metadata = transport,
-            config = transport,
-            snapshots = transport,
-            streams = transport,
+            rpc = transport,
             network = OnlineMonitor,
             pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
@@ -399,9 +372,7 @@ class ConnectionSupervisorTest {
             orchestration = orchestration,
             credentials = SupervisorCredentialStore("token"),
             metadata = transport,
-            config = transport,
-            snapshots = transport,
-            streams = transport,
+            rpc = transport,
             network = OnlineMonitor,
             pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
@@ -431,9 +402,7 @@ class ConnectionSupervisorTest {
             orchestration = SupervisorOrchestrationRepository(),
             credentials = SupervisorCredentialStore("token"),
             metadata = transport,
-            config = transport,
-            snapshots = transport,
-            streams = transport,
+            rpc = transport,
             network = OnlineMonitor,
             pendingCommands = NoOpPendingCommandReplayer,
             scope = backgroundScope,
@@ -450,7 +419,7 @@ private val NoOpPendingCommandReplayer = PendingCommandReplayer { }
 
 private class RetryCommandClient(
     var failing: Boolean,
-) : OrchestrationCommandClient {
+) : T3RpcClient {
     val commandIds = mutableListOf<String>()
 
     override suspend fun dispatch(
@@ -462,6 +431,24 @@ private class RetryCommandClient(
         if (failing) error("offline")
         return DispatchResult(1)
     }
+
+    override suspend fun serverConfig(baseUrl: String, bearerToken: String): ServerConfig =
+        error("Not used by this test")
+
+    override fun shellStream(
+        baseUrl: String,
+        bearerToken: String,
+        afterSequence: Long?,
+        requestCompletionMarker: Boolean,
+    ): Flow<OrchestrationShellStreamItem> = flowOf()
+
+    override fun threadStream(
+        baseUrl: String,
+        bearerToken: String,
+        threadId: String,
+        afterSequence: Long?,
+        requestCompletionMarker: Boolean,
+    ): Flow<OrchestrationThreadStreamItem> = flowOf()
 }
 
 private object OnlineMonitor : NetworkMonitor {
@@ -520,9 +507,7 @@ private class SupervisorTransport(
     private val failFirstThreadStream: Boolean = false,
     private val shellThreads: List<OrchestrationThreadShell> = emptyList(),
 ) : EnvironmentMetadataClient,
-    EnvironmentConfigClient,
-    OrchestrationSnapshotClient,
-    OrchestrationStreamClient {
+    T3RpcClient {
     var descriptorRequests = 0
     var cancelledDescriptorRequests = 0
     val shellBaseUrls = mutableListOf<String>()
@@ -543,10 +528,10 @@ private class SupervisorTransport(
         return descriptor(baseUrl.substringAfter("https://").substringBefore('.'))
     }
 
-    override suspend fun clientConfig(
+    override suspend fun serverConfig(
         baseUrl: String,
         bearerToken: String,
-    ): EnvironmentClientConfig = EnvironmentClientConfig(
+    ): ServerConfig = ServerConfig(
         environment = descriptor(baseUrl.substringAfter("https://").substringBefore('.')),
         auth = ServerAuthDescriptor(
             policy = "remote-reachable",
@@ -557,43 +542,36 @@ private class SupervisorTransport(
         providers = emptyList(),
         shellResumeCompletionMarker = true,
         threadResumeCompletionMarker = true,
-        protocolVersion = 1,
     )
 
-    override suspend fun shellSnapshot(
+    override suspend fun dispatch(
         baseUrl: String,
         bearerToken: String,
-    ): OrchestrationShellSnapshot {
-        shellBaseUrls += baseUrl
-        return OrchestrationShellSnapshot(emptyList(), shellThreads, 0, "2026-01-01T00:00:00Z")
-    }
-
-    override suspend fun threadSnapshot(
-        baseUrl: String,
-        bearerToken: String,
-        threadId: String,
-    ): OrchestrationThreadDetailSnapshot {
-        threadRequests += threadId
-        return threadSnapshot(threadId)
-    }
+        command: ClientOrchestrationCommand,
+    ) = DispatchResult(1)
 
     override fun shellStream(
         baseUrl: String,
         bearerToken: String,
-        afterSequence: Long,
+        afterSequence: Long?,
         requestCompletionMarker: Boolean,
     ): Flow<OrchestrationShellStreamItem> {
         shellStreamRequests++
+        shellBaseUrls += baseUrl
+        val snapshot = OrchestrationShellStreamItem.Snapshot(
+            OrchestrationShellSnapshot(emptyList(), shellThreads, 0, "2026-01-01T00:00:00Z"),
+        )
         return when {
             completeFirstShellStream && shellStreamRequests == 1 ->
-                flowOf(OrchestrationShellStreamItem.Synchronized)
+                flowOf(snapshot, OrchestrationShellStreamItem.Synchronized)
 
             failFirstShellStream && shellStreamRequests == 1 -> flow {
+                emit(snapshot)
                 emit(OrchestrationShellStreamItem.Synchronized)
                 throw T3TransportException.Network()
             }
 
-            else -> cancellableFlow(OrchestrationShellStreamItem.Synchronized)
+            else -> cancellableFlow(snapshot, OrchestrationShellStreamItem.Synchronized)
         }
     }
 
@@ -601,26 +579,29 @@ private class SupervisorTransport(
         baseUrl: String,
         bearerToken: String,
         threadId: String,
-        afterSequence: Long,
+        afterSequence: Long?,
         requestCompletionMarker: Boolean,
     ): Flow<OrchestrationThreadStreamItem> {
         threadStreamRequests++
+        if (afterSequence == null) threadRequests += threadId
+        val snapshot = OrchestrationThreadStreamItem.Snapshot(threadSnapshot(threadId))
         return when {
             completeFirstThreadStream && threadStreamRequests == 1 ->
-                flowOf(OrchestrationThreadStreamItem.Synchronized)
+                flowOf(snapshot, OrchestrationThreadStreamItem.Synchronized)
 
             failFirstThreadStream && threadStreamRequests == 1 -> flow {
+                emit(snapshot)
                 emit(OrchestrationThreadStreamItem.Synchronized)
                 throw T3TransportException.Network()
             }
 
-            else -> cancellableFlow(OrchestrationThreadStreamItem.Synchronized)
+            else -> cancellableFlow(snapshot, OrchestrationThreadStreamItem.Synchronized)
         }
     }
 
-    private fun <T> cancellableFlow(item: T): Flow<T> = flow {
+    private fun <T> cancellableFlow(vararg items: T): Flow<T> = flow {
         try {
-            emit(item)
+            items.forEach { emit(it) }
             awaitCancellation()
         } finally {
             cancelledStreams++
@@ -629,7 +610,7 @@ private class SupervisorTransport(
 }
 
 private class SupervisorOrchestrationRepository : OrchestrationRepository {
-    override val clientConfig = MutableStateFlow(ProjectionState<EnvironmentClientConfig>())
+    override val clientConfig = MutableStateFlow(ProjectionState<ServerConfig>())
     override val shell = MutableStateFlow(ProjectionState<OrchestrationShellSnapshot>())
     override val focusedThread = MutableStateFlow(ProjectionState<OrchestrationThreadDetailSnapshot>())
     override val focusedThreadId = MutableStateFlow<String?>(null)
@@ -639,7 +620,7 @@ private class SupervisorOrchestrationRepository : OrchestrationRepository {
 
     override suspend fun setClientConfig(
         environmentId: String,
-        config: EnvironmentClientConfig,
+        config: ServerConfig,
         source: ProjectionSource,
     ) {
         clientConfig.value = ProjectionState(config, source = source)
@@ -657,7 +638,16 @@ private class SupervisorOrchestrationRepository : OrchestrationRepository {
         environmentId: String,
         item: OrchestrationShellStreamItem,
     ): Reduction<ProjectionState<OrchestrationShellSnapshot>> {
-        shell.value = shell.value.copy(synchronized = true)
+        shell.value = when (item) {
+            is OrchestrationShellStreamItem.Snapshot -> ProjectionState(
+                value = item.snapshot,
+                sequence = item.snapshot.snapshotSequence,
+                source = ProjectionSource.LIVE,
+            )
+
+            OrchestrationShellStreamItem.Synchronized -> shell.value.copy(synchronized = true)
+            else -> shell.value
+        }
         return Reduction.Applied(shell.value)
     }
 
@@ -688,7 +678,16 @@ private class SupervisorOrchestrationRepository : OrchestrationRepository {
         threadId: String,
         item: OrchestrationThreadStreamItem,
     ): Reduction<ProjectionState<OrchestrationThreadDetailSnapshot>> {
-        focusedThread.value = focusedThread.value.copy(synchronized = true)
+        focusedThread.value = when (item) {
+            is OrchestrationThreadStreamItem.Snapshot -> ProjectionState(
+                value = item.snapshot,
+                sequence = item.snapshot.snapshotSequence,
+                source = ProjectionSource.LIVE,
+            )
+
+            OrchestrationThreadStreamItem.Synchronized -> focusedThread.value.copy(synchronized = true)
+            else -> focusedThread.value
+        }
         return Reduction.Applied(focusedThread.value)
     }
 
@@ -711,7 +710,7 @@ private fun descriptor(id: String): ExecutionEnvironmentDescriptor = ExecutionEn
     label = id,
     platform = EnvironmentPlatform("linux", "x64"),
     serverVersion = "1",
-    capabilities = ExecutionEnvironmentCapabilities(portableClientProtocol = 1),
+    capabilities = ExecutionEnvironmentCapabilities(),
 )
 
 private fun threadSnapshot(threadId: String): OrchestrationThreadDetailSnapshot =

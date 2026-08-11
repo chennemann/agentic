@@ -8,12 +8,12 @@ import de.chennemann.agentic.domain.orchestration.ProjectionState
 import de.chennemann.agentic.domain.orchestration.Reduction
 import de.chennemann.agentic.domain.orchestration.ShellProjectionReducer
 import de.chennemann.agentic.domain.orchestration.ThreadProjectionReducer
-import de.chennemann.agentic.t3.contract.EnvironmentClientConfig
+import de.chennemann.agentic.t3.contract.ServerConfig
 import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
-import de.chennemann.agentic.t3.contract.PortableJson
+import de.chennemann.agentic.t3.contract.T3Json
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
@@ -35,8 +35,8 @@ class SqlOrchestrationRepository(
     private val lock = Mutex()
     private val cacheJobs = mutableMapOf<CacheIdentity, Job>()
     private val cacheGenerations = mutableMapOf<CacheIdentity, Long>()
-    private val mutableClientConfig = MutableStateFlow(ProjectionState<EnvironmentClientConfig>())
-    override val clientConfig: StateFlow<ProjectionState<EnvironmentClientConfig>> = mutableClientConfig.asStateFlow()
+    private val mutableClientConfig = MutableStateFlow(ProjectionState<ServerConfig>())
+    override val clientConfig: StateFlow<ProjectionState<ServerConfig>> = mutableClientConfig.asStateFlow()
     private val mutableShell = MutableStateFlow(ProjectionState<OrchestrationShellSnapshot>())
     override val shell: StateFlow<ProjectionState<OrchestrationShellSnapshot>> = mutableShell.asStateFlow()
     private val mutableFocusedThread = MutableStateFlow(ProjectionState<OrchestrationThreadDetailSnapshot>())
@@ -62,7 +62,7 @@ class SqlOrchestrationRepository(
             mutableSelectedProjectId.value = preference(environmentId, SelectedProjectPreference)
             val storedThreadId = preference(environmentId, LastThreadPreference)
             projection(environmentId, ClientConfigKind, GlobalCacheKey)?.let {
-                runCatching { PortableJson.decodeFromString<EnvironmentClientConfig>(it.payload) }
+                runCatching { T3Json.decodeFromString<ServerConfig>(it.payload) }
                     .getOrNull()
                     ?.let { config ->
                         mutableClientConfig.value = ClientConfigReducer.reduce(
@@ -73,7 +73,7 @@ class SqlOrchestrationRepository(
                     }
             }
             projection(environmentId, ShellKind, GlobalCacheKey)?.let {
-                runCatching { PortableJson.decodeFromString<OrchestrationShellSnapshot>(it.payload) }
+                runCatching { T3Json.decodeFromString<OrchestrationShellSnapshot>(it.payload) }
                     .getOrNull()
                     ?.let { shell ->
                         mutableShell.value = ShellProjectionReducer.snapshot(
@@ -104,7 +104,7 @@ class SqlOrchestrationRepository(
 
     override suspend fun setClientConfig(
         environmentId: String,
-        config: EnvironmentClientConfig,
+        config: ServerConfig,
         source: ProjectionSource,
     ) = withContext(dispatcher) {
         lock.withLock {
@@ -116,7 +116,7 @@ class SqlOrchestrationRepository(
                 ClientConfigKind,
                 GlobalCacheKey,
                 null,
-                PortableJson.encodeToString(config),
+                T3Json.encodeToString(config),
             )
         }
     }
@@ -136,7 +136,7 @@ class SqlOrchestrationRepository(
                 ShellKind,
                 GlobalCacheKey,
                 snapshot.snapshotSequence,
-                PortableJson.encodeToString(snapshot),
+                T3Json.encodeToString(snapshot),
             )
         }
     }
@@ -158,7 +158,7 @@ class SqlOrchestrationRepository(
                         GlobalCacheKey,
                         reduction.state.sequence,
                     ) {
-                        PortableJson.encodeToString(it)
+                        T3Json.encodeToString(it)
                     }
                 }
             }
@@ -241,7 +241,7 @@ class SqlOrchestrationRepository(
                 ThreadKind,
                 snapshot.thread.id,
                 snapshot.snapshotSequence,
-                PortableJson.encodeToString(snapshot),
+                T3Json.encodeToString(snapshot),
             )
         }
     }
@@ -279,7 +279,7 @@ class SqlOrchestrationRepository(
                         value.thread.id,
                         reduction.state.sequence,
                     ) {
-                        PortableJson.encodeToString(value)
+                        T3Json.encodeToString(value)
                     }
                 }
             }
@@ -322,7 +322,7 @@ class SqlOrchestrationRepository(
         threadId: String,
     ): ProjectionState<OrchestrationThreadDetailSnapshot>? =
         projection(environmentId, ThreadKind, threadId)?.let {
-            runCatching { PortableJson.decodeFromString<OrchestrationThreadDetailSnapshot>(it.payload) }
+            runCatching { T3Json.decodeFromString<OrchestrationThreadDetailSnapshot>(it.payload) }
                 .getOrNull()
                 ?.let { snapshot ->
                     ThreadProjectionReducer.snapshot(
