@@ -28,6 +28,16 @@ Agentic repository. T3 Code is the source of truth for RPC contracts and server 
 Agentic owns the Android implementation that consumes those contracts. Do not add a build-time
 dependency between the repositories.
 
+## Cross-Repository Commits
+
+When the user asks to commit work that changed both repositories, commit each repository
+independently rather than leaving the T3 Code side uncommitted:
+
+- Use `jj` in the Agentic repository and include only Agentic-owned files.
+- Use `git -C apps/t3code` for the T3 Code commit and include only T3-owned files.
+- Inspect both diffs before committing, preserve unrelated user changes, and use coherent commit
+  messages appropriate to each repository.
+
 ## Quick Reference Commands
 
 ```bash
