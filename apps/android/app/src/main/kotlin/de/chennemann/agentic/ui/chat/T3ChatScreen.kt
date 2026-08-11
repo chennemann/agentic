@@ -1,11 +1,8 @@
 package de.chennemann.agentic.ui.chat
 
-import android.app.Activity
-import android.content.Context
-import android.content.ContextWrapper
-import android.view.WindowManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -13,12 +10,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -40,7 +37,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -52,9 +48,12 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
@@ -99,21 +98,38 @@ fun T3ChatScreen(
     var followLatest by remember(state.threadId) { mutableStateOf(true) }
     var inputFocusRequested by remember(state.threadId) { mutableStateOf<Boolean?>(null) }
     var inputFocusedManually by remember(state.threadId) { mutableStateOf(false) }
+    var messageIdWhenKeyboardOpened by remember(state.threadId) { mutableStateOf<String?>(null) }
     var historyDragActive by remember(state.threadId) { mutableStateOf(false) }
     var composerHeightPx by remember { mutableIntStateOf(0) }
+    var consumedImeHeightPx by remember(state.threadId) { mutableIntStateOf(0) }
     val density = LocalDensity.current
+    val imeInsets = WindowInsets.ime
+    val imeHeightPx = imeInsets.getBottom(density)
     val composerHeight = with(density) { composerHeightPx.toDp() }
-    val imeHeight = with(density) { WindowInsets.ime.getBottom(this).toDp() }
     val lastItemSignature = state.timeline.lastOrNull().contentSignature()
-    val activity = LocalContext.current.findActivity()
-
-    DisposableEffect(activity) {
-        val window = activity?.window
-        val previousSoftInputMode = window?.attributes?.softInputMode
-        window?.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
-        onDispose {
-            previousSoftInputMode?.let(window::setSoftInputMode)
+    val latestMessageId = state.timeline.latestMessageId()
+    val historyScrollConnection = remember(state.threadId, latestMessageId) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (
+                    source == NestedScrollSource.UserInput &&
+                    available.y > 0f &&
+                    shouldDismissKeyboardOnHistoryScroll(
+                        keyboardOpenedManually = inputFocusedManually,
+                        messageArrivedSinceKeyboardOpened = messageIdWhenKeyboardOpened != latestMessageId,
+                    )
+                ) {
+                    inputFocusedManually = false
+                    inputFocusRequested = false
+                }
+                return Offset.Zero
+            }
         }
+    }
+
+    LaunchedEffect(latestMessageId) {
+        inputFocusedManually = false
+        messageIdWhenKeyboardOpened = null
     }
 
     LaunchedEffect(listState, dragging) {
@@ -122,12 +138,7 @@ fun T3ChatScreen(
             .collect { (isDragging, isAtEnd) ->
                 if (isDragging) {
                     historyDragActive = true
-                    if (!isAtEnd && !inputFocusedManually) inputFocusRequested = false
                 } else if (historyDragActive) {
-                    if (isAtEnd) {
-                        inputFocusedManually = false
-                        inputFocusRequested = true
-                    }
                     historyDragActive = false
                 }
                 if (isDragging && !isAtEnd) {
@@ -151,9 +162,17 @@ fun T3ChatScreen(
         }
     }
 
+    LaunchedEffect(imeHeightPx, followLatest) {
+        if (followLatest && imeHeightPx > consumedImeHeightPx) {
+            listState.scrollBy((imeHeightPx - consumedImeHeightPx).toFloat())
+        }
+        consumedImeHeightPx = imeHeightPx
+    }
+
     Box(
         modifier = modifier
             .fillMaxSize()
+            .imePadding()
             .onKeyEvent { keyEvent ->
                 val stroke = keyEvent.toHardwareKeyStroke(KeyboardFocus.GLOBAL)
                     ?: return@onKeyEvent false
@@ -184,12 +203,13 @@ fun T3ChatScreen(
                     state = listState,
                     modifier = Modifier
                         .fillMaxSize()
+                        .nestedScroll(historyScrollConnection)
                         .testTag(ChatTimelineTestTag),
                     contentPadding = PaddingValues(
                         start = 16.dp,
                         top = 12.dp,
                         end = 16.dp,
-                        bottom = 12.dp + composerHeight + imeHeight,
+                        bottom = 12.dp + composerHeight,
                     ),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
@@ -250,8 +270,6 @@ fun T3ChatScreen(
                             followLatest = true
                             scope.launch {
                                 listState.scrollToLatest()
-                                inputFocusedManually = false
-                                inputFocusRequested = true
                             }
                         },
                         modifier = Modifier
@@ -336,7 +354,6 @@ fun T3ChatScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .imePadding()
                 .zIndex(2f),
         ) {
             IsolatedDraftComposer(
@@ -349,6 +366,7 @@ fun T3ChatScreen(
                 inputFocusRequested = inputFocusRequested,
                 onInputFocusedManually = {
                     inputFocusedManually = true
+                    messageIdWhenKeyboardOpened = latestMessageId
                     inputFocusRequested = true
                 },
             )
@@ -785,6 +803,9 @@ private fun ChatTimelineItemUi?.contentSignature(): Any? = when (this) {
     null -> null
 }
 
+private fun List<ChatTimelineItemUi>.latestMessageId(): String? =
+    asReversed().firstNotNullOfOrNull { (it as? ChatTimelineItemUi.Message)?.value?.id }
+
 private fun androidx.compose.foundation.lazy.LazyListState.isAtEnd(): Boolean {
     val layout = layoutInfo
     val total = layout.totalItemsCount
@@ -910,9 +931,3 @@ private const val LayoutSettleDelayMillis = 16L
 
 internal const val ChatTimelineTestTag = "chat-timeline"
 internal const val FollowLatestTestTag = "follow-latest"
-
-private tailrec fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
-    is ContextWrapper -> baseContext.findActivity()
-    else -> null
-}
