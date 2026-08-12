@@ -106,7 +106,6 @@ interface ChatActions {
         projectId: String,
         prompt: String,
         modelSelection: ModelSelection,
-        interactionMode: String,
         runtimeMode: String,
     ): StartTurnResult
 
@@ -125,11 +124,6 @@ interface ChatActions {
         threadId: String,
         requestId: String,
         answers: JsonObject,
-    ): DispatchResult
-
-    suspend fun setInteractionMode(
-        threadId: String,
-        interactionMode: String,
     ): DispatchResult
 
     suspend fun setRuntimeMode(
@@ -223,7 +217,6 @@ class ChatService(
         projectId: String,
         prompt: String,
         modelSelection: ModelSelection,
-        interactionMode: String,
         runtimeMode: String,
     ): StartTurnResult {
         val now = Instant.now().toString()
@@ -236,7 +229,7 @@ class ChatService(
                 projectId = projectId,
                 title = titleSeed,
                 modelSelection = modelSelection,
-                interactionMode = interactionMode,
+                interactionMode = "default",
                 runtimeMode = runtimeMode,
                 branch = null,
                 worktreePath = null,
@@ -253,7 +246,7 @@ class ChatService(
                 text = prompt,
             ),
             modelSelection = modelSelection,
-            interactionMode = interactionMode,
+            interactionMode = "default",
             runtimeMode = runtimeMode,
             createdAt = now,
         )
@@ -297,18 +290,6 @@ class ChatService(
             threadId = threadId,
             requestId = requestId,
             answers = answers,
-            createdAt = Instant.now().toString(),
-        ),
-    )
-
-    override suspend fun setInteractionMode(
-        threadId: String,
-        interactionMode: String,
-    ): DispatchResult = dispatch(
-        ClientOrchestrationCommand.SetInteractionMode(
-            commandId = uuid(),
-            threadId = threadId,
-            interactionMode = interactionMode,
             createdAt = Instant.now().toString(),
         ),
     )

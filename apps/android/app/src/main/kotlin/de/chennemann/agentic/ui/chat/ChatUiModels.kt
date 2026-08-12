@@ -317,7 +317,6 @@ enum class EnvironmentConnectionIndicatorUi {
 
 data class ComposerUiState(
     val draft: String = "",
-    val selectedInteractionMode: InteractionModeUi = InteractionModeUi.DEFAULT,
     val selectedProviderModelId: String? = null,
     val providerModels: List<ProviderModelOptionUi> = emptyList(),
     val providerOptions: List<ProviderOptionUi> = emptyList(),
@@ -403,13 +402,6 @@ data class SlashCommandUi(
     val description: String? = null,
 )
 
-enum class InteractionModeUi(
-    val label: String,
-) {
-    DEFAULT("Default"),
-    PLAN("Plan"),
-}
-
 sealed interface ChatConnectionUi {
     data object Live : ChatConnectionUi
 
@@ -493,10 +485,6 @@ sealed interface ChatUiEvent {
     data object TurnInterruptRequested : ChatUiEvent
 
     data object SessionTerminationRequested : ChatUiEvent
-
-    data class InteractionModeSelected(
-        val mode: InteractionModeUi,
-    ) : ChatUiEvent
 
     data class ProviderModelSelected(
         val id: String,

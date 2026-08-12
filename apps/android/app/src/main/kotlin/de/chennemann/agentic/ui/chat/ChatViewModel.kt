@@ -393,13 +393,6 @@ class ChatViewModel(
             }
             ChatUiEvent.SessionTerminationRequested -> terminateSession()
 
-            is ChatUiEvent.InteractionModeSelected -> {
-                update { copy(interactionMode = event.mode) }
-                repository.focusedThreadId.value?.let { threadId ->
-                    launchCommand { chat.setInteractionMode(threadId, event.mode.contractValue()) }
-                }
-            }
-
             is ChatUiEvent.ProviderModelSelected -> update {
                 copy(providerModelId = event.id, activePicker = null)
             }
@@ -782,9 +775,6 @@ class ChatViewModel(
         val threadId = repository.focusedThreadId.value
         val detail = repository.focusedThread.value.value?.thread
             ?.takeIf { it.id == threadId }
-        val interactionMode = local.value.interactionMode.takeUnless {
-            it == InteractionModeUi.DEFAULT && detail?.interactionMode == "plan"
-        } ?: InteractionModeUi.PLAN
         val runtimeMode = local.value.runtimeModeId
             ?: detail?.runtimeMode
             ?: DefaultRuntimeMode
@@ -795,7 +785,6 @@ class ChatViewModel(
                 projectId = projectId,
                 prompt = prompt,
                 modelSelection = selection,
-                interactionMode = interactionMode.contractValue(),
                 runtimeMode = runtimeMode,
             )
             setDraft(draftKey, "", persistImmediately = true)
@@ -1270,9 +1259,6 @@ class ChatViewModel(
             ?: detail?.modelSelection?.optionId()
             ?: project?.defaultModelSelection?.optionId()
             ?: modelOptions.firstOrNull()?.id
-        val interaction = local.interactionMode.takeUnless {
-            it == InteractionModeUi.DEFAULT && detail?.interactionMode == "plan"
-        } ?: InteractionModeUi.PLAN
         val runtime = local.runtimeModeId ?: detail?.runtimeMode ?: DefaultRuntimeMode
         val inheritedOptions = listOfNotNull(
             detail?.modelSelection?.takeIf { it.optionId() == selectedModelId },
@@ -1302,7 +1288,6 @@ class ChatViewModel(
             connection = environment.connection.toUi(),
             composer = ComposerUiState(
                 draft = "",
-                selectedInteractionMode = interaction,
                 selectedProviderModelId = selectedModelId,
                 providerModels = modelOptions,
                 providerOptions = providerOptions,
@@ -1729,7 +1714,6 @@ class ChatViewModel(
         val providerModelId: String? = null,
         val providerOptionValues: Map<String, JsonPrimitive> = emptyMap(),
         val runtimeModeId: String? = null,
-        val interactionMode: InteractionModeUi = InteractionModeUi.DEFAULT,
         val sending: Boolean = false,
         val commandError: String? = null,
         val renameVisible: Boolean = false,
@@ -2214,8 +2198,6 @@ private fun optionId(
     instanceId: String,
     model: String,
 ): String = "$instanceId/$model"
-
-private fun InteractionModeUi.contractValue(): String = name.lowercase()
 
 private fun ApprovalDecisionUi.contractValue(): String = when (this) {
     ApprovalDecisionUi.ACCEPT -> "accept"

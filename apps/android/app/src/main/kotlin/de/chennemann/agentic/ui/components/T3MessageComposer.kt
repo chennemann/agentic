@@ -10,7 +10,6 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
@@ -64,7 +63,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -95,7 +93,6 @@ import de.chennemann.agentic.ui.chat.toChatUiEvent
 import de.chennemann.agentic.ui.chat.toHardwareKeyStroke
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import de.chennemann.agentic.ui.chat.ComposerUiState
-import de.chennemann.agentic.ui.chat.InteractionModeUi
 import de.chennemann.agentic.ui.chat.ProjectQuickSwitchUi
 import de.chennemann.agentic.ui.chat.ProviderModelOptionUi
 import de.chennemann.agentic.ui.chat.ProviderOptionUi
@@ -105,7 +102,6 @@ import de.chennemann.agentic.ui.chat.SessionTerminationUi
 import de.chennemann.agentic.ui.chat.VoiceInputStatusUi
 import kotlin.math.roundToInt
 
-private val ModeSwipeThreshold = 28.dp
 private val ComposerBackground = Color.Black
 private val ComposerContent = Color.White
 private val ComposerMuted = Color(0xFFB8B8B8)
@@ -187,24 +183,10 @@ fun T3MessageComposer(
     ) {
         Column {
             Text(
-                text = if (state.selectedInteractionMode == InteractionModeUi.PLAN) {
-                    "Build · Plan"
-                } else {
-                    "Build"
-                },
+                text = "Build",
                 style = MaterialTheme.typography.labelMedium.copy(fontFamily = FontFamily.Monospace),
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier
-                    .clickable(
-                        enabled = state.enabled && !state.sending,
-                        onClick = {
-                            onEvent(
-                                ChatUiEvent.InteractionModeSelected(
-                                    state.selectedInteractionMode.next(),
-                                ),
-                            )
-                        },
-                    )
                     .padding(start = 16.dp, top = 18.dp, end = 16.dp, bottom = 2.dp),
             )
 
@@ -231,43 +213,7 @@ fun T3MessageComposer(
                             if (action == KeyboardAction.NEWLINE) return@onPreviewKeyEvent false
                             action.toChatUiEvent()?.let(onEvent)
                             true
-                        }
-                        .pointerInput(
-                            state.selectedInteractionMode,
-                            state.enabled,
-                            state.sending,
-                            state.voiceInputStatus,
-                        ) {
-                            if (
-                                !state.enabled ||
-                                state.sending ||
-                                state.voiceInputStatus != VoiceInputStatusUi.IDLE
-                            ) {
-                                return@pointerInput
-                            }
-                            val threshold = ModeSwipeThreshold.toPx()
-                            var delta = 0f
-                            var changed = false
-                            detectHorizontalDragGestures(
-                                onDragStart = {
-                                    delta = 0f
-                                    changed = false
-                                },
-                                onHorizontalDrag = { _, dragAmount ->
-                                    if (changed) return@detectHorizontalDragGestures
-                                    delta += dragAmount
-                                    if (delta in -threshold..threshold) {
-                                        return@detectHorizontalDragGestures
-                                    }
-                                    changed = true
-                                    onEvent(
-                                        ChatUiEvent.InteractionModeSelected(
-                                            state.selectedInteractionMode.next(),
-                                        ),
-                                    )
-                                },
-                            )
-                    },
+                        },
                     enabled = state.enabled &&
                         state.voiceInputStatus == VoiceInputStatusUi.IDLE,
                     placeholder = {
@@ -1043,11 +989,6 @@ private fun ProjectQuickSwitchButton(
             }
         }
     }
-}
-
-private fun InteractionModeUi.next(): InteractionModeUi = when (this) {
-    InteractionModeUi.DEFAULT -> InteractionModeUi.PLAN
-    InteractionModeUi.PLAN -> InteractionModeUi.DEFAULT
 }
 
 private val ServiceModeOptionIds = setOf("fastmode", "servicemode", "servicetier")

@@ -46,7 +46,6 @@ class CommandServicesTest {
             projectId = "project",
             prompt = "\n First useful line\nSecond",
             modelSelection = ModelSelection("instance", "model"),
-            interactionMode = "plan",
             runtimeMode = "approval-required",
         )
         val firstCreate = commands.recorded[0] as ClientOrchestrationCommand.CreateThread
@@ -57,7 +56,6 @@ class CommandServicesTest {
             projectId = "project",
             prompt = "Another",
             modelSelection = ModelSelection("instance", "model"),
-            interactionMode = "default",
             runtimeMode = "full-access",
         )
         val secondCreate = commands.recorded[0] as ClientOrchestrationCommand.CreateThread
@@ -70,6 +68,8 @@ class CommandServicesTest {
         assertNull(encoded["titleSeed"])
         assertTrue("bootstrap" !in encoded)
         assertEquals("project", firstCreate.projectId)
+        assertEquals("default", firstCreate.interactionMode)
+        assertEquals("default", firstStart.interactionMode)
         assertNull(firstCreate.branch)
         assertNull(firstCreate.worktreePath)
         assertEquals(firstCreate.threadId, firstStart.threadId)
@@ -86,12 +86,12 @@ class CommandServicesTest {
             projectId = "project",
             prompt = "Continue",
             modelSelection = ModelSelection("instance", "model"),
-            interactionMode = "default",
             runtimeMode = "full-access",
         )
 
         val start = commands.recorded.single() as ClientOrchestrationCommand.StartTurn
         assertEquals("existing-thread", start.threadId)
+        assertEquals("default", start.interactionMode)
     }
 
     @Test

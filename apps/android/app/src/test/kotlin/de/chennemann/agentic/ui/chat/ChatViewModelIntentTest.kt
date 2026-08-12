@@ -1151,7 +1151,7 @@ class ChatViewModelIntentTest {
     }
 
     @Test
-    fun `message submission preserves inherited model options and visible thread modes`() = runTest(dispatcher) {
+    fun `message submission preserves inherited model options and runtime mode`() = runTest(dispatcher) {
         val selection = ModelSelection(
             instanceId = "provider",
             model = "model",
@@ -1180,7 +1180,6 @@ class ChatViewModelIntentTest {
         assertEquals("project-1", call.projectId)
         assertEquals("send this", call.prompt)
         assertEquals(selection, call.modelSelection)
-        assertEquals("plan", call.interactionMode)
         assertEquals("full-access", call.runtimeMode)
         assertEquals("", viewModel.draft.value)
         assertEquals(false, viewModel.state.value.composer.sending)
@@ -2160,7 +2159,6 @@ private class NoOpChatActions(
         projectId: String,
         prompt: String,
         modelSelection: ModelSelection,
-        interactionMode: String,
         runtimeMode: String,
     ): StartTurnResult {
         startTurnFailure?.let { throw it }
@@ -2169,7 +2167,6 @@ private class NoOpChatActions(
             projectId,
             prompt,
             modelSelection,
-            interactionMode,
             runtimeMode,
         )
         return StartTurnResult(DispatchResult(1), threadId ?: "new-thread")
@@ -2201,11 +2198,6 @@ private class NoOpChatActions(
         answers: JsonObject,
     ) = DispatchResult(1)
 
-    override suspend fun setInteractionMode(
-        threadId: String,
-        interactionMode: String,
-    ) = DispatchResult(1)
-
     override suspend fun setRuntimeMode(
         threadId: String,
         runtimeMode: String,
@@ -2228,7 +2220,6 @@ private data class StartTurnCall(
     val projectId: String,
     val prompt: String,
     val modelSelection: ModelSelection,
-    val interactionMode: String,
     val runtimeMode: String,
 )
 

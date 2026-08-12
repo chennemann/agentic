@@ -906,7 +906,6 @@ private fun previewChatState(): ChatUiState = ChatUiState(
     ),
     composer = ComposerUiState(
         draft = "",
-        selectedInteractionMode = InteractionModeUi.PLAN,
         selectedProviderModelId = "instance-a/model-a",
         providerModels = listOf(
             ProviderModelOptionUi(
