@@ -40,7 +40,7 @@ class CommandServicesTest {
     private val service = ChatService(commands)
 
     @Test
-    fun `new turn creates the thread before starting it with unique client ids`() = runTest {
+    fun `new turn atomically bootstraps the thread with unique client ids`() = runTest {
         service.startTurn(
             threadId = null,
             projectId = "project",
@@ -48,8 +48,8 @@ class CommandServicesTest {
             modelSelection = ModelSelection("instance", "model"),
             runtimeMode = "approval-required",
         )
-        val firstCreate = commands.recorded[0] as ClientOrchestrationCommand.CreateThread
-        val firstStart = commands.recorded[1] as ClientOrchestrationCommand.StartTurn
+        val firstStart = commands.recorded.single() as ClientOrchestrationCommand.StartTurn
+        val firstCreate = requireNotNull(firstStart.bootstrap?.createThread)
         commands.recorded.clear()
         service.startTurn(
             threadId = null,
@@ -58,25 +58,46 @@ class CommandServicesTest {
             modelSelection = ModelSelection("instance", "model"),
             runtimeMode = "full-access",
         )
-        val secondCreate = commands.recorded[0] as ClientOrchestrationCommand.CreateThread
-        val secondStart = commands.recorded[1] as ClientOrchestrationCommand.StartTurn
+        val secondStart = commands.recorded.single() as ClientOrchestrationCommand.StartTurn
+        val secondCreate = requireNotNull(secondStart.bootstrap?.createThread)
 
         assertEquals("First useful line Second", firstCreate.title)
         val encoded = T3CommandJson
             .encodeToJsonElement(ClientOrchestrationCommand.serializer(), firstStart)
             .jsonObject
         assertNull(encoded["titleSeed"])
-        assertTrue("bootstrap" !in encoded)
+        assertTrue("bootstrap" in encoded)
         assertEquals("project", firstCreate.projectId)
         assertEquals("default", firstCreate.interactionMode)
         assertEquals("default", firstStart.interactionMode)
         assertNull(firstCreate.branch)
         assertNull(firstCreate.worktreePath)
-        assertEquals(firstCreate.threadId, firstStart.threadId)
-        assertNotEquals(firstCreate.commandId, firstStart.commandId)
-        assertNotEquals(firstCreate.commandId, secondCreate.commandId)
-        assertNotEquals(firstCreate.threadId, secondCreate.threadId)
+        assertNotEquals(firstStart.threadId, secondStart.threadId)
         assertNotEquals(firstStart.message.messageId, secondStart.message.messageId)
+    }
+
+    @Test
+    fun `new worktree is prepared atomically from the selected base ref`() = runTest {
+        service.startTurn(
+            threadId = null,
+            projectId = "project",
+            prompt = "Build it",
+            modelSelection = ModelSelection("instance", "model"),
+            runtimeMode = "full-access",
+            workspace = NewThreadWorkspace.CreateWorktree(
+                projectCwd = "/workspace/project",
+                baseBranch = "main",
+                startFromOrigin = true,
+            ),
+        )
+
+        val start = commands.recorded.single() as ClientOrchestrationCommand.StartTurn
+        val bootstrap = requireNotNull(start.bootstrap)
+        assertEquals("main", bootstrap.createThread.branch)
+        assertNull(bootstrap.createThread.worktreePath)
+        assertEquals("/workspace/project", bootstrap.prepareWorktree?.projectCwd)
+        assertEquals("main", bootstrap.prepareWorktree?.baseBranch)
+        assertEquals(true, bootstrap.prepareWorktree?.startFromOrigin)
     }
 
     @Test

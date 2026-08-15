@@ -42,7 +42,8 @@ data class ExecutionEnvironmentCapabilities(
     val repositoryIdentity: Boolean = false,
     val threadSettlement: Boolean = false,
     val threadSnooze: Boolean = false,
-    val threadDeletion: Boolean = false
+    val threadDeletion: Boolean = false,
+    val threadWorktrees: Boolean = false
 )
 
 @Serializable
@@ -93,6 +94,25 @@ data class FilesystemBrowseEntry(val name: String, val fullPath: String)
 
 @Serializable
 data class FilesystemBrowseResult(val parentPath: String, val entries: List<FilesystemBrowseEntry>)
+
+@Serializable
+data class VcsRef(
+    val name: String,
+    val isRemote: Boolean = false,
+    val remoteName: String? = null,
+    val current: Boolean,
+    val isDefault: Boolean,
+    val worktreePath: String? = null
+)
+
+@Serializable
+data class VcsListRefsResult(
+    val refs: List<VcsRef>,
+    val isRepo: Boolean,
+    val hasPrimaryRemote: Boolean,
+    val nextCursor: Int? = null,
+    val totalCount: Int
+)
 
 @Serializable
 data class ProviderInstance(
@@ -348,7 +368,19 @@ data class NewThreadBootstrap(
 )
 
 @Serializable
-data class StartTurnBootstrap(val createThread: NewThreadBootstrap)
+data class PrepareWorktreeBootstrap(
+    val projectCwd: String,
+    val baseBranch: String,
+    val branch: String? = null,
+    val startFromOrigin: Boolean? = null
+)
+
+@Serializable
+data class StartTurnBootstrap(
+    val createThread: NewThreadBootstrap,
+    val prepareWorktree: PrepareWorktreeBootstrap? = null,
+    val runSetupScript: Boolean? = null
+)
 
 @Serializable
 data class SourceProposedPlan(val threadId: String, val planId: String)

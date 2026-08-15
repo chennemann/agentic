@@ -21,6 +21,7 @@ import de.chennemann.agentic.domain.orchestration.ProjectDestinationBrowser
 import de.chennemann.agentic.domain.orchestration.ProjectDestinationListing
 import de.chennemann.agentic.domain.orchestration.Reduction
 import de.chennemann.agentic.domain.orchestration.StartTurnResult
+import de.chennemann.agentic.domain.orchestration.NewThreadWorkspace
 import de.chennemann.agentic.domain.orchestration.ThreadActions
 import de.chennemann.agentic.domain.preferences.ComposerDraftRepository
 import de.chennemann.agentic.domain.preferences.InterfacePreferences
@@ -2203,6 +2204,7 @@ private class NoOpChatActions(
         prompt: String,
         modelSelection: ModelSelection,
         runtimeMode: String,
+        workspace: NewThreadWorkspace,
     ): StartTurnResult {
         startTurnFailure?.let { throw it }
         startTurnCalls += StartTurnCall(

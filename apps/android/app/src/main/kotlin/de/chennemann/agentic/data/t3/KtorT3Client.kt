@@ -11,6 +11,7 @@ import de.chennemann.agentic.t3.contract.ServerConfig
 import de.chennemann.agentic.t3.contract.T3CommandJson
 import de.chennemann.agentic.t3.contract.T3Json
 import de.chennemann.agentic.t3.contract.TokenExchangeResponse
+import de.chennemann.agentic.t3.contract.VcsListRefsResult
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
@@ -66,7 +67,8 @@ class KtorT3Client(
 ) : EnvironmentMetadataClient,
     EnvironmentAuthClient,
     T3RpcClient,
-    ProjectDestinationRpcClient {
+    ProjectDestinationRpcClient,
+    ThreadWorkspaceRpcClient {
     private val connectionMutex = Mutex()
     private val connections = mutableMapOf<ConnectionKey, EffectRpcConnection>()
 
@@ -125,6 +127,21 @@ class KtorT3Client(
         bearerToken = bearerToken,
         tag = "filesystem.browse",
         payload = buildJsonObject { put("partialPath", partialPath) },
+    )
+
+    override suspend fun listRefs(
+        baseUrl: String,
+        bearerToken: String,
+        cwd: String,
+    ): VcsListRefsResult = rpcCall(
+        baseUrl = baseUrl,
+        bearerToken = bearerToken,
+        tag = "vcs.listRefs",
+        payload = buildJsonObject {
+            put("cwd", cwd)
+            put("includeMatchingRemoteRefs", true)
+            put("limit", 100)
+        },
     )
 
     override fun shellStream(

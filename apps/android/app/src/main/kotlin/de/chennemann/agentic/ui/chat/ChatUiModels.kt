@@ -331,6 +331,9 @@ data class ComposerUiState(
     val providerOptions: List<ProviderOptionUi> = emptyList(),
     val selectedRuntimeModeId: String? = null,
     val runtimeModes: List<RuntimeModeOptionUi> = emptyList(),
+    val workspaceChoices: List<ThreadWorkspaceOptionUi> = emptyList(),
+    val selectedWorkspaceId: String = "in-place",
+    val workspaceChoicesLoading: Boolean = false,
     val slashCommands: List<SlashCommandUi> = emptyList(),
     val quickSwitchProjects: List<ProjectQuickSwitchUi> = emptyList(),
     val sending: Boolean = false,
@@ -406,6 +409,12 @@ data class RuntimeModeOptionUi(
     val description: String? = null,
 )
 
+data class ThreadWorkspaceOptionUi(
+    val id: String,
+    val label: String,
+    val description: String,
+)
+
 data class SlashCommandUi(
     val name: String,
     val description: String? = null,
@@ -461,6 +470,7 @@ enum class ChatPickerUi {
     PROJECT_THREAD,
     PROVIDER_MODEL,
     RUNTIME_MODE,
+    THREAD_WORKSPACE,
     LATEST_TURN_CHANGES,
 }
 
@@ -517,6 +527,8 @@ sealed interface ChatUiEvent {
     data class RuntimeModeSelected(
         val id: String,
     ) : ChatUiEvent
+
+    data class ThreadWorkspaceSelected(val id: String) : ChatUiEvent
 
     data class SlashCommandSelected(
         val name: String,

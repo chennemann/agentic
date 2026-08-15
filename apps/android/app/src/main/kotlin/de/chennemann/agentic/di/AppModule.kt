@@ -20,6 +20,7 @@ import de.chennemann.agentic.data.t3.EnvironmentMetadataClient
 import de.chennemann.agentic.data.t3.KtorT3Client
 import de.chennemann.agentic.data.t3.ProjectDestinationRpcClient
 import de.chennemann.agentic.data.t3.T3RpcClient
+import de.chennemann.agentic.data.t3.ThreadWorkspaceRpcClient
 import de.chennemann.agentic.data.voice.AndroidAudioRecorder
 import de.chennemann.agentic.data.voice.KeystoreGroqApiKeyStore
 import de.chennemann.agentic.data.voice.KtorGroqTranscriptionClient
@@ -50,6 +51,8 @@ import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.domain.orchestration.PendingCommandReplayer
 import de.chennemann.agentic.domain.orchestration.ProjectActions
 import de.chennemann.agentic.domain.orchestration.ProjectDestinationBrowser
+import de.chennemann.agentic.domain.orchestration.ThreadWorkspaceBrowser
+import de.chennemann.agentic.domain.orchestration.ThreadWorkspaceService
 import de.chennemann.agentic.domain.orchestration.ProjectDestinationService
 import de.chennemann.agentic.domain.orchestration.ProjectService
 import de.chennemann.agentic.ui.chat.workflow.CacheAdministration
@@ -133,6 +136,7 @@ val appModule = module {
     single<EnvironmentMetadataClient> { get<KtorT3Client>() }
     single<EnvironmentAuthClient> { get<KtorT3Client>() }
     single<T3RpcClient> { get<KtorT3Client>() }
+    single<ThreadWorkspaceRpcClient> { get<KtorT3Client>() }
     single<ProjectDestinationRpcClient> { get<KtorT3Client>() }
     single<EnvironmentRepository> {
         SqlEnvironmentRepository(
@@ -205,6 +209,8 @@ val appModule = module {
     single<ProjectActions> { get<ProjectService>() }
     single { ProjectDestinationService(get(), get(), get()) }
     single<ProjectDestinationBrowser> { get<ProjectDestinationService>() }
+    single { ThreadWorkspaceService(get(), get(), get(), get()) }
+    single<ThreadWorkspaceBrowser> { get<ThreadWorkspaceService>() }
     factory<ProjectWorkflow> { DefaultProjectWorkflow(get(), get(), get(), get()) }
     factory<SharedTextWorkflow> {
         DefaultSharedTextWorkflow(get(), get(), get(), get(), get(), get())
@@ -247,6 +253,7 @@ val appModule = module {
             shortcutWorkflow = get(),
             interfacePreferences = get(),
             cacheAdministration = get(),
+            threadWorkspaces = get(),
         )
     }
 }

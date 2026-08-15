@@ -9,6 +9,7 @@ import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.ServerConfig
 import de.chennemann.agentic.t3.contract.TokenExchangeResponse
+import de.chennemann.agentic.t3.contract.VcsListRefsResult
 import kotlinx.coroutines.flow.Flow
 
 const val REQUIRED_T3_SCOPES = "orchestration:read orchestration:operate"
@@ -70,6 +71,14 @@ interface ProjectDestinationRpcClient {
         bearerToken: String,
         partialPath: String,
     ): FilesystemBrowseResult
+}
+
+interface ThreadWorkspaceRpcClient {
+    suspend fun listRefs(
+        baseUrl: String,
+        bearerToken: String,
+        cwd: String,
+    ): VcsListRefsResult
 }
 
 sealed class T3TransportException(

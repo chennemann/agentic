@@ -567,6 +567,36 @@ private fun ExpandedControls(
         }
 
         AccessSection(state = state, onEvent = onEvent)
+
+        if (state.workspaceChoices.isNotEmpty()) {
+            ThreadWorkspaceSection(state = state, onEvent = onEvent)
+        }
+    }
+}
+
+@Composable
+private fun ThreadWorkspaceSection(
+    state: ComposerUiState,
+    onEvent: (ChatUiEvent) -> Unit,
+) {
+    val selected = state.workspaceChoices.firstOrNull { it.id == state.selectedWorkspaceId }
+    Column {
+        SectionHeading(icon = Icons.Tune, label = "Thread workspace")
+        TextButton(
+            onClick = { onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.THREAD_WORKSPACE)) },
+            enabled = state.enabled && !state.workspaceChoicesLoading,
+            modifier = Modifier.padding(start = SectionContentIndent),
+        ) {
+            Text(selected?.label ?: "Choose workspace")
+        }
+        selected?.description?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodySmall,
+                color = ComposerMuted,
+                modifier = Modifier.padding(start = SectionContentIndent + 12.dp),
+            )
+        }
     }
 }
 

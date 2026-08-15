@@ -4,6 +4,9 @@ import de.chennemann.agentic.domain.environment.EnvironmentRepository
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.DispatchResult
 import de.chennemann.agentic.t3.contract.ModelSelection
+import de.chennemann.agentic.t3.contract.NewThreadBootstrap
+import de.chennemann.agentic.t3.contract.PrepareWorktreeBootstrap
+import de.chennemann.agentic.t3.contract.StartTurnBootstrap
 import de.chennemann.agentic.t3.contract.TurnMessageInput
 import de.chennemann.agentic.t3.contract.SourceProposedPlan
 import java.time.Instant
@@ -107,6 +110,7 @@ interface ChatActions {
         prompt: String,
         modelSelection: ModelSelection,
         runtimeMode: String,
+        workspace: NewThreadWorkspace = NewThreadWorkspace.InPlace(),
     ): StartTurnResult
 
     suspend fun interrupt(
@@ -218,22 +222,30 @@ class ChatService(
         prompt: String,
         modelSelection: ModelSelection,
         runtimeMode: String,
+        workspace: NewThreadWorkspace,
     ): StartTurnResult {
         val now = Instant.now().toString()
         val targetThreadId = threadId ?: uuid()
         val titleSeed = deriveThreadTitle(prompt)
-        val create = if (threadId == null) {
-            ClientOrchestrationCommand.CreateThread(
-                commandId = uuid(),
-                threadId = targetThreadId,
+        val bootstrap = if (threadId == null) {
+            StartTurnBootstrap(
+                createThread = NewThreadBootstrap(
                 projectId = projectId,
                 title = titleSeed,
                 modelSelection = modelSelection,
                 interactionMode = "default",
                 runtimeMode = runtimeMode,
-                branch = null,
-                worktreePath = null,
+                    branch = workspace.branch,
+                    worktreePath = workspace.worktreePath,
                 createdAt = now,
+                ),
+                prepareWorktree = (workspace as? NewThreadWorkspace.CreateWorktree)?.let {
+                    PrepareWorktreeBootstrap(
+                        projectCwd = it.projectCwd,
+                        baseBranch = it.baseBranch,
+                        startFromOrigin = it.startFromOrigin,
+                    )
+                },
             )
         } else {
             null
@@ -249,8 +261,9 @@ class ChatService(
             interactionMode = "default",
             runtimeMode = runtimeMode,
             createdAt = now,
+            bootstrap = bootstrap,
         )
-        val result = commands.dispatchInOrder(listOfNotNull(create, start)).last()
+        val result = commands.dispatch(start)
         return StartTurnResult(result, targetThreadId)
     }
 
@@ -337,6 +350,29 @@ class ChatService(
 
     private suspend fun dispatch(command: ClientOrchestrationCommand): DispatchResult {
         return commands.dispatch(command)
+    }
+}
+
+sealed interface NewThreadWorkspace {
+    val branch: String?
+    val worktreePath: String?
+
+    data class InPlace(override val branch: String? = null) : NewThreadWorkspace {
+        override val worktreePath: String? = null
+    }
+
+    data class Existing(
+        override val branch: String,
+        override val worktreePath: String,
+    ) : NewThreadWorkspace
+
+    data class CreateWorktree(
+        val projectCwd: String,
+        val baseBranch: String,
+        val startFromOrigin: Boolean,
+    ) : NewThreadWorkspace {
+        override val branch: String = baseBranch
+        override val worktreePath: String? = null
     }
 }
 

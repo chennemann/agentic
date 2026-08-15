@@ -531,6 +531,28 @@ fun ChatSelectionSheets(
             }
         }
 
+        ChatPickerUi.THREAD_WORKSPACE -> {
+            PickerSheet(
+                title = "Thread workspace",
+                onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
+            ) {
+                if (state.composer.workspaceChoicesLoading) {
+                    item { Text("Loading workspace choicesâ€¦") }
+                }
+                items(
+                    items = state.composer.workspaceChoices,
+                    key = { it.id },
+                ) { option ->
+                    PickerRow(
+                        label = option.label,
+                        supportingText = option.description,
+                        selected = option.id == state.composer.selectedWorkspaceId,
+                        onClick = { onEvent(ChatUiEvent.ThreadWorkspaceSelected(option.id)) },
+                    )
+                }
+            }
+        }
+
         ChatPickerUi.LATEST_TURN_CHANGES -> {
             PickerSheet(
                 title = "Latest turn changes",

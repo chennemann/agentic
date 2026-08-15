@@ -14,6 +14,9 @@ import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.domain.orchestration.ProjectionState
 import de.chennemann.agentic.domain.orchestration.ThreadService
 import de.chennemann.agentic.domain.orchestration.ThreadActions
+import de.chennemann.agentic.domain.orchestration.NewThreadWorkspace
+import de.chennemann.agentic.domain.orchestration.ThreadWorkspaceBrowser
+import de.chennemann.agentic.domain.orchestration.ThreadWorkspaceChoice
 import de.chennemann.agentic.domain.preferences.ComposerDraftRepository
 import de.chennemann.agentic.domain.preferences.FavoriteModelId
 import de.chennemann.agentic.domain.preferences.ModelFavoriteRepository
@@ -92,6 +95,7 @@ class ChatViewModel(
     private val shortcutWorkflow: ShortcutWorkflow? = null,
     private val interfacePreferences: InterfacePreferencesRepository? = null,
     private val cacheAdministration: CacheAdministration? = null,
+    private val threadWorkspaces: ThreadWorkspaceBrowser? = null,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
     private val mutableDraft = MutableStateFlow("")
@@ -438,20 +442,25 @@ class ChatViewModel(
                 }
             }
 
+            is ChatUiEvent.ThreadWorkspaceSelected -> update {
+                copy(selectedWorkspaceId = event.id, activePicker = null)
+            }
+
             is ChatUiEvent.SlashCommandSelected -> {
                 setDraft("/${event.name} ")
                 update { copy(activePicker = null) }
             }
 
-            is ChatUiEvent.PickerRequested -> update {
-                copy(
+            is ChatUiEvent.PickerRequested -> {
+                update { copy(
                     activePicker = event.picker,
                     pickerProjectId = if (event.picker == ChatPickerUi.PROJECT_THREAD) {
                         repository.selectedProjectId.value
                     } else {
                         pickerProjectId
                     },
-                )
+                ) }
+                if (event.picker == ChatPickerUi.THREAD_WORKSPACE) loadWorkspaceChoices()
             }
 
             ChatUiEvent.PickerDismissed -> update {
@@ -798,10 +807,45 @@ class ChatViewModel(
                 prompt = prompt,
                 modelSelection = selection,
                 runtimeMode = runtimeMode,
+                workspace = local.value.workspaceChoices
+                    .firstOrNull { it.id == local.value.selectedWorkspaceId }
+                    ?.workspace
+                    ?: NewThreadWorkspace.InPlace(),
             )
             setDraft(draftKey, "", persistImmediately = true)
             update { copy(sending = false, commandError = null) }
             if (threadId == null) threads.selectThread(result.threadId)
+        }
+    }
+
+    private fun loadWorkspaceChoices() {
+        if (repository.focusedThreadId.value != null || local.value.workspaceChoicesLoading) return
+        val projectId = repository.selectedProjectId.value ?: return
+        val browser = threadWorkspaces ?: return
+        update { copy(workspaceChoicesLoading = true, commandError = null) }
+        viewModelScope.launch {
+            try {
+                val choices = browser.choices(projectId)
+                update {
+                    copy(
+                        workspaceChoices = choices,
+                        selectedWorkspaceId = selectedWorkspaceId.takeIf { id -> choices.any { it.id == id } }
+                            ?: "in-place",
+                        workspaceChoicesLoading = false,
+                    )
+                }
+            } catch (cause: CancellationException) {
+                throw cause
+            } catch (cause: Exception) {
+                update {
+                    copy(
+                        workspaceChoices = listOf(DefaultWorkspaceChoice),
+                        selectedWorkspaceId = "in-place",
+                        workspaceChoicesLoading = false,
+                        commandError = cause.message ?: "Workspace choices could not be loaded.",
+                    )
+                }
+            }
         }
     }
 
@@ -1305,6 +1349,15 @@ class ChatViewModel(
                 providerOptions = providerOptions,
                 selectedRuntimeModeId = runtime,
                 runtimeModes = RuntimeModes,
+                workspaceChoices = if (orchestration.threadId == null) {
+                    local.workspaceChoices.ifEmpty { listOf(DefaultWorkspaceChoice) }.map {
+                        ThreadWorkspaceOptionUi(it.id, it.label, it.description)
+                    }
+                } else {
+                    emptyList()
+                },
+                selectedWorkspaceId = local.selectedWorkspaceId,
+                workspaceChoicesLoading = local.workspaceChoicesLoading,
                 slashCommands = slashCommands(orchestration.config.value, selectedModelId),
                 quickSwitchProjects = quickSwitchProjects(
                     shell = shell,
@@ -1726,6 +1779,9 @@ class ChatViewModel(
         val providerModelId: String? = null,
         val providerOptionValues: Map<String, JsonPrimitive> = emptyMap(),
         val runtimeModeId: String? = null,
+        val workspaceChoices: List<ThreadWorkspaceChoice> = emptyList(),
+        val selectedWorkspaceId: String = "in-place",
+        val workspaceChoicesLoading: Boolean = false,
         val sending: Boolean = false,
         val commandError: String? = null,
         val renameVisible: Boolean = false,
@@ -1767,6 +1823,7 @@ class ChatViewModel(
         fun structural(): LocalState = copy(
             sending = false,
             commandError = null,
+            workspaceChoicesLoading = false,
         )
     }
 
@@ -2285,6 +2342,12 @@ private val ActiveSessionStatuses = setOf("starting", "running")
 private const val MaxQuickSwitchProjects = 5
 private const val NewThreadDraftPrefix = "new-project:"
 private const val DefaultRuntimeMode = "full-access"
+private val DefaultWorkspaceChoice = ThreadWorkspaceChoice(
+    id = "in-place",
+    label = "Local checkout",
+    description = "Use the project's current checkout",
+    workspace = NewThreadWorkspace.InPlace(),
+)
 private const val DraftPersistenceDelayMillis = 300L
 private const val TurnPhaseUser = 0
 private const val TurnPhaseAssistant = 1
