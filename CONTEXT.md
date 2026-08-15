@@ -24,3 +24,8 @@ A single user-observable capability or behavioral guarantee, paired with separat
 from the frozen T3 reference clients, portable protocol, and Agentic rather than represented as a
 screen or feature bundle.
 _Avoid_: Gap item, screen inventory, reference-client feature bundle
+
+**Active thread workspace**:
+The filesystem root selected for a thread: its resolved worktree when present, otherwise its
+project workspace root. Workspace-file operations remain within this root.
+_Avoid_: Environment filesystem, project directory when a thread worktree is active
