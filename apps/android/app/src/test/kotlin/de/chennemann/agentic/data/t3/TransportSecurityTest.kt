@@ -6,8 +6,8 @@ import org.junit.jupiter.api.Test
 
 class TransportSecurityTest {
     @Test
-    fun `token exchange requests exactly the orchestration read and operate scopes`() {
-        assertEquals("orchestration:read orchestration:operate", REQUIRED_T3_SCOPES)
+    fun `token exchange requests exactly the portable client scopes`() {
+        assertEquals("orchestration:read orchestration:operate terminal:operate", REQUIRED_T3_SCOPES)
     }
 
     @Test

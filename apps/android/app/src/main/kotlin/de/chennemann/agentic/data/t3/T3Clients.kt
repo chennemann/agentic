@@ -9,12 +9,15 @@ import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.ServerConfig
 import de.chennemann.agentic.t3.contract.TokenExchangeResponse
+import de.chennemann.agentic.t3.contract.TerminalAttachEvent
+import de.chennemann.agentic.t3.contract.TerminalMetadataEvent
+import de.chennemann.agentic.t3.contract.TerminalSessionSnapshot
 import de.chennemann.agentic.t3.contract.VcsListRefsResult
 import de.chennemann.agentic.t3.contract.WorkspaceEntriesResult
 import de.chennemann.agentic.t3.contract.WorkspaceFileResult
 import kotlinx.coroutines.flow.Flow
 
-const val REQUIRED_T3_SCOPES = "orchestration:read orchestration:operate"
+const val REQUIRED_T3_SCOPES = "orchestration:read orchestration:operate terminal:operate"
 
 data class AndroidClientMetadata(
     val label: String,
@@ -93,6 +96,16 @@ interface WorkspaceFilesRpcClient {
         absolutePath: String,
         mimeType: String,
     ): String
+}
+
+interface TerminalRpcClient {
+    fun terminalMetadata(baseUrl: String, bearerToken: String): Flow<TerminalMetadataEvent>
+    fun attachTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String): Flow<TerminalAttachEvent>
+    suspend fun openTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cwd: String): TerminalSessionSnapshot
+    suspend fun writeTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, data: String)
+    suspend fun clearTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String)
+    suspend fun restartTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cwd: String): TerminalSessionSnapshot
+    suspend fun closeTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String)
 }
 
 interface AttachmentAssetClient {

@@ -44,7 +44,8 @@ data class ExecutionEnvironmentCapabilities(
     val threadSnooze: Boolean = false,
     val threadDeletion: Boolean = false,
     val threadWorktrees: Boolean = false,
-    val workspaceFiles: Boolean = false
+    val workspaceFiles: Boolean = false,
+    val executionSessions: Boolean = false
 )
 
 @Serializable
@@ -109,6 +110,108 @@ data class WorkspaceFileResult(
     val byteLength: Long,
     val truncated: Boolean
 )
+
+@Serializable
+data class TerminalSessionSnapshot(
+    val threadId: String,
+    val terminalId: String,
+    val cwd: String,
+    val worktreePath: String? = null,
+    val status: String,
+    val pid: Int? = null,
+    val history: String = "",
+    val exitCode: Int? = null,
+    val exitSignal: Int? = null,
+    val label: String,
+    val updatedAt: String,
+    val sequence: Long? = null
+)
+
+@Serializable
+data class TerminalSummary(
+    val threadId: String,
+    val terminalId: String,
+    val cwd: String,
+    val worktreePath: String? = null,
+    val status: String,
+    val pid: Int? = null,
+    val exitCode: Int? = null,
+    val exitSignal: Int? = null,
+    val hasRunningSubprocess: Boolean = false,
+    val label: String,
+    val updatedAt: String
+)
+
+@Serializable
+@JsonClassDiscriminator("type")
+sealed interface TerminalMetadataEvent {
+    @Serializable
+    @SerialName("snapshot")
+    data class Snapshot(val terminals: List<TerminalSummary>) : TerminalMetadataEvent
+
+    @Serializable
+    @SerialName("upsert")
+    data class Upsert(val terminal: TerminalSummary) : TerminalMetadataEvent
+
+    @Serializable
+    @SerialName("remove")
+    data class Remove(val threadId: String, val terminalId: String) : TerminalMetadataEvent
+}
+
+@Serializable
+@JsonClassDiscriminator("type")
+sealed interface TerminalAttachEvent {
+    @Serializable
+    @SerialName("snapshot")
+    data class Snapshot(val snapshot: TerminalSessionSnapshot) : TerminalAttachEvent
+
+    @Serializable
+    @SerialName("output")
+    data class Output(val threadId: String, val terminalId: String, val data: String, val sequence: Long? = null) :
+        TerminalAttachEvent
+
+    @Serializable
+    @SerialName("exited")
+    data class Exited(
+        val threadId: String,
+        val terminalId: String,
+        val exitCode: Int? = null,
+        val exitSignal: Int? = null,
+        val sequence: Long? = null
+    ) : TerminalAttachEvent
+
+    @Serializable
+    @SerialName("closed")
+    data class Closed(val threadId: String, val terminalId: String, val sequence: Long? = null) : TerminalAttachEvent
+
+    @Serializable
+    @SerialName("error")
+    data class Error(val threadId: String, val terminalId: String, val message: String, val sequence: Long? = null) :
+        TerminalAttachEvent
+
+    @Serializable
+    @SerialName("cleared")
+    data class Cleared(val threadId: String, val terminalId: String, val sequence: Long? = null) : TerminalAttachEvent
+
+    @Serializable
+    @SerialName("restarted")
+    data class Restarted(
+        val threadId: String,
+        val terminalId: String,
+        val snapshot: TerminalSessionSnapshot,
+        val sequence: Long? = null
+    ) : TerminalAttachEvent
+
+    @Serializable
+    @SerialName("activity")
+    data class Activity(
+        val threadId: String,
+        val terminalId: String,
+        val hasRunningSubprocess: Boolean,
+        val label: String,
+        val sequence: Long? = null
+    ) : TerminalAttachEvent
+}
 
 @Serializable
 data class VcsRef(

@@ -97,6 +97,7 @@ fun T3ChatScreen(
     composerDraft: StateFlow<String>? = null,
     modifier: Modifier = Modifier,
     onOpenFiles: (String) -> Unit = {},
+    onOpenTerminal: (String) -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -363,6 +364,13 @@ fun T3ChatScreen(
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                         ) { Text("Files") }
                     }
+                }
+                state.threadId?.takeIf { state.canUseTerminal }?.let { threadId ->
+                    OutlinedButton(
+                        onClick = { onOpenTerminal(threadId) },
+                        modifier = Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 8.dp).zIndex(1f),
+                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                    ) { Text("Terminal") }
                 }
             }
         }

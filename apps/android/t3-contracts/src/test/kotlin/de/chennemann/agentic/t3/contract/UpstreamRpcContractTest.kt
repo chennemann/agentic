@@ -9,6 +9,15 @@ import org.junit.jupiter.api.Test
 
 class UpstreamRpcContractTest {
     @Test
+    fun `terminal attach snapshot tolerates additive provider-neutral fields`() {
+        val event = T3Json.decodeFromString<TerminalAttachEvent>(
+            """{"type":"snapshot","future":"ignored","snapshot":{"threadId":"thread-1","terminalId":"term-1","cwd":"/workspace","worktreePath":null,"status":"running","pid":42,"history":"ready","exitCode":null,"exitSignal":null,"label":"shell","updatedAt":"now","futureState":true}}"""
+        )
+
+        assertEquals("ready", (event as TerminalAttachEvent.Snapshot).snapshot.history)
+    }
+
+    @Test
     fun `workspace file result preserves partial read metadata`() {
         val result = T3Json.decodeFromString<WorkspaceFileResult>(
             """{"relativePath":"README.md","contents":"hello","byteLength":1048580,"truncated":true}"""

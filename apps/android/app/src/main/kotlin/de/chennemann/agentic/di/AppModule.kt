@@ -24,7 +24,10 @@ import de.chennemann.agentic.data.t3.ThreadWorkspaceRpcClient
 import de.chennemann.agentic.data.t3.WorkspaceFilesRpcClient
 import de.chennemann.agentic.domain.orchestration.WorkspaceFilesBrowser
 import de.chennemann.agentic.domain.orchestration.WorkspaceFilesService
+import de.chennemann.agentic.domain.orchestration.TerminalSessionService
+import de.chennemann.agentic.domain.orchestration.TerminalSessions
 import de.chennemann.agentic.ui.files.WorkspaceFilesViewModel
+import de.chennemann.agentic.ui.terminal.TerminalViewModel
 import de.chennemann.agentic.data.voice.AndroidAudioRecorder
 import de.chennemann.agentic.data.voice.KeystoreGroqApiKeyStore
 import de.chennemann.agentic.data.voice.KtorGroqTranscriptionClient
@@ -225,6 +228,8 @@ val appModule = module {
     single<ThreadWorkspaceBrowser> { get<ThreadWorkspaceService>() }
     single { WorkspaceFilesService(get(), get(), get(), get()) }
     single<WorkspaceFilesBrowser> { get<WorkspaceFilesService>() }
+    single { TerminalSessionService(get(), get(), get(), get()) }
+    single<TerminalSessions> { get<TerminalSessionService>() }
     factory<ProjectWorkflow> { DefaultProjectWorkflow(get(), get(), get(), get()) }
     factory<SharedTextWorkflow> {
         DefaultSharedTextWorkflow(get(), get(), get(), get(), get(), get())
@@ -248,6 +253,7 @@ val appModule = module {
     single<ConnectionController> { get<ConnectionSupervisor>() }
     viewModel { OnboardingViewModel(get(), get(), get()) }
     viewModel { WorkspaceFilesViewModel(get()) }
+    viewModel { TerminalViewModel(get()) }
     viewModel {
         ChatViewModel(
             environments = get(),

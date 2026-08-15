@@ -14,3 +14,6 @@ data object ChatRoute : AppRoute
 
 @Serializable
 data class WorkspaceFilesRoute(val threadId: String) : AppRoute
+
+@Serializable
+data class TerminalRoute(val threadId: String) : AppRoute

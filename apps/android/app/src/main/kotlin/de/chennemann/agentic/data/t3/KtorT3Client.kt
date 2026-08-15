@@ -70,6 +70,7 @@ class KtorT3Client(
     ProjectDestinationRpcClient,
     ThreadWorkspaceRpcClient,
     WorkspaceFilesRpcClient,
+    TerminalRpcClient,
     AttachmentAssetClient {
     private val connectionMutex = Mutex()
     private val connections = mutableMapOf<ConnectionKey, EffectRpcConnection>()
@@ -171,6 +172,39 @@ class KtorT3Client(
             put("relativePath", relativePath)
         },
     )
+
+    override fun terminalMetadata(baseUrl: String, bearerToken: String) =
+        rpcStream<de.chennemann.agentic.t3.contract.TerminalMetadataEvent>(baseUrl, bearerToken, "subscribeTerminalMetadata", buildJsonObject {})
+
+    override fun attachTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String) =
+        rpcStream<de.chennemann.agentic.t3.contract.TerminalAttachEvent>(
+            baseUrl,
+            bearerToken,
+            "terminal.attach",
+            buildJsonObject { put("threadId", threadId); put("terminalId", terminalId) },
+        )
+
+    override suspend fun openTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cwd: String) =
+        rpcCall<de.chennemann.agentic.t3.contract.TerminalSessionSnapshot>(
+            baseUrl, bearerToken, "terminal.open", terminalPayload(threadId, terminalId) { put("cwd", cwd) },
+        )
+
+    override suspend fun writeTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, data: String) {
+        rpcCall<JsonElement>(baseUrl, bearerToken, "terminal.write", terminalPayload(threadId, terminalId) { put("data", data) })
+    }
+
+    override suspend fun clearTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String) {
+        rpcCall<JsonElement>(baseUrl, bearerToken, "terminal.clear", terminalPayload(threadId, terminalId))
+    }
+
+    override suspend fun restartTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cwd: String) =
+        rpcCall<de.chennemann.agentic.t3.contract.TerminalSessionSnapshot>(
+            baseUrl, bearerToken, "terminal.restart", terminalPayload(threadId, terminalId) { put("cwd", cwd); put("cols", 80); put("rows", 24) },
+        )
+
+    override suspend fun closeTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String) {
+        rpcCall<JsonElement>(baseUrl, bearerToken, "terminal.close", terminalPayload(threadId, terminalId))
+    }
 
     override suspend fun loadWorkspaceImage(
         baseUrl: String,
@@ -315,6 +349,16 @@ class KtorT3Client(
         if (afterSequence != null) put("afterSequence", afterSequence)
         put("requestCompletionMarker", requestCompletionMarker)
         if (threadId != null) put("threadId", threadId)
+    }
+
+    private fun terminalPayload(
+        threadId: String,
+        terminalId: String,
+        content: kotlinx.serialization.json.JsonObjectBuilder.() -> Unit = {},
+    ) = buildJsonObject {
+        put("threadId", threadId)
+        put("terminalId", terminalId)
+        content()
     }
 
     private fun webSocketUrl(baseUrl: String, ticket: String): String {

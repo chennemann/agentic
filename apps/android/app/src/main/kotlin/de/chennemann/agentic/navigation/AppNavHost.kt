@@ -19,6 +19,8 @@ import de.chennemann.agentic.ui.onboarding.OnboardingUiEvent
 import de.chennemann.agentic.ui.onboarding.T3OnboardingScreen
 import de.chennemann.agentic.ui.files.WorkspaceFilesScreen
 import de.chennemann.agentic.ui.files.WorkspaceFilesViewModel
+import de.chennemann.agentic.ui.terminal.TerminalScreen
+import de.chennemann.agentic.ui.terminal.TerminalViewModel
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.context.GlobalContext
 
@@ -71,6 +73,7 @@ fun AppNavHost() {
                             }
                         },
                         onOpenFiles = { threadId -> stack.add(WorkspaceFilesRoute(threadId)) },
+                        onOpenTerminal = { threadId -> stack.add(TerminalRoute(threadId)) },
                     )
                 }
 
@@ -84,6 +87,22 @@ fun AppNavHost() {
                         onRefresh = viewModel::refresh,
                         onOpenFile = viewModel::open,
                         onClosePreview = viewModel::closePreview,
+                    )
+                }
+
+                is TerminalRoute -> NavEntry(route) {
+                    val viewModel: TerminalViewModel = koinViewModel()
+                    val state by viewModel.state.collectAsStateWithLifecycle()
+                    LaunchedEffect(route.threadId) { viewModel.load(route.threadId) }
+                    TerminalScreen(
+                        state = state,
+                        onBack = { stack.removeLastOrNull() },
+                        onCreate = viewModel::create,
+                        onSelect = viewModel::select,
+                        onSend = viewModel::send,
+                        onClear = viewModel::clear,
+                        onRestart = viewModel::restart,
+                        onClose = viewModel::close,
                     )
                 }
 

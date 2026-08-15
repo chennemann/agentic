@@ -18,6 +18,7 @@ data class ChatUiState(
     val isThreadArchived: Boolean = false,
     val canDeleteThread: Boolean = false,
     val canBrowseFiles: Boolean = false,
+    val canUseTerminal: Boolean = false,
     val renameDialog: RenameThreadUi? = null,
     val environmentRemoval: EnvironmentRemovalUi? = null,
     val projectCreation: ProjectCreationUi? = null,

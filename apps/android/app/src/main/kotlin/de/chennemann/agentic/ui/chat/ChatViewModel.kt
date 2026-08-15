@@ -1489,6 +1489,9 @@ class ChatViewModel(
             canBrowseFiles = orchestration.threadId != null &&
                 orchestration.config.value?.environment?.capabilities?.workspaceFiles == true &&
                 orchestration.config.value.environment.environmentId == environment.active?.id,
+            canUseTerminal = orchestration.threadId != null &&
+                orchestration.config.value?.environment?.capabilities?.executionSessions == true &&
+                orchestration.config.value.environment.environmentId == environment.active?.id,
             renameDialog = if (local.renameVisible) {
                 RenameThreadUi(local.renameDraft, local.renameSaving)
             } else {
