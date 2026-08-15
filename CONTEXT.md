@@ -29,3 +29,16 @@ _Avoid_: Gap item, screen inventory, reference-client feature bundle
 The filesystem root selected for a thread: its resolved worktree when present, otherwise its
 project workspace root. Workspace-file operations remain within this root.
 _Avoid_: Environment filesystem, project directory when a thread worktree is active
+
+**Execution session**:
+A server-owned interactive terminal session associated with a thread and launched in its active
+thread workspace. It streams output, accepts terminal input and resize events, has an observable
+lifecycle and exit state, and may be started directly or from a server-advertised project script.
+The workspace association selects launch context; it does not imply filesystem sandboxing beyond
+the environment server's operating-system permissions.
+_Avoid_: One-shot command, client-owned terminal, script-specific execution
+
+**Server-advertised project script**:
+A named command descriptor supplied by the environment for a project. Running one opens or
+restarts an execution session and sends the advertised command as its initial terminal input.
+_Avoid_: Opaque server job, client-defined script, separate script execution service
