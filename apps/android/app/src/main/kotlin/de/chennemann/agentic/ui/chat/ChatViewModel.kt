@@ -1486,6 +1486,9 @@ class ChatViewModel(
             canDeleteThread = detail != null &&
                 orchestration.config.value?.environment?.capabilities?.threadDeletion == true &&
                 orchestration.config.value.environment.environmentId == environment.active?.id,
+            canBrowseFiles = orchestration.threadId != null &&
+                orchestration.config.value?.environment?.capabilities?.workspaceFiles == true &&
+                orchestration.config.value.environment.environmentId == environment.active?.id,
             renameDialog = if (local.renameVisible) {
                 RenameThreadUi(local.renameDraft, local.renameSaving)
             } else {

@@ -69,6 +69,7 @@ class KtorT3Client(
     T3RpcClient,
     ProjectDestinationRpcClient,
     ThreadWorkspaceRpcClient,
+    WorkspaceFilesRpcClient,
     AttachmentAssetClient {
     private val connectionMutex = Mutex()
     private val connections = mutableMapOf<ConnectionKey, EffectRpcConnection>()
@@ -143,6 +144,17 @@ class KtorT3Client(
             put("includeMatchingRemoteRefs", true)
             put("limit", 100)
         },
+    )
+
+    override suspend fun listEntries(
+        baseUrl: String,
+        bearerToken: String,
+        cwd: String,
+    ): de.chennemann.agentic.t3.contract.WorkspaceEntriesResult = rpcCall(
+        baseUrl = baseUrl,
+        bearerToken = bearerToken,
+        tag = "projects.listEntries",
+        payload = buildJsonObject { put("cwd", cwd) },
     )
 
     override suspend fun loadDataUrl(

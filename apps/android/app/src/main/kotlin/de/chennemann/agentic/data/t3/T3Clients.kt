@@ -10,6 +10,7 @@ import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.ServerConfig
 import de.chennemann.agentic.t3.contract.TokenExchangeResponse
 import de.chennemann.agentic.t3.contract.VcsListRefsResult
+import de.chennemann.agentic.t3.contract.WorkspaceEntriesResult
 import kotlinx.coroutines.flow.Flow
 
 const val REQUIRED_T3_SCOPES = "orchestration:read orchestration:operate"
@@ -79,6 +80,10 @@ interface ThreadWorkspaceRpcClient {
         bearerToken: String,
         cwd: String,
     ): VcsListRefsResult
+}
+
+interface WorkspaceFilesRpcClient {
+    suspend fun listEntries(baseUrl: String, bearerToken: String, cwd: String): WorkspaceEntriesResult
 }
 
 interface AttachmentAssetClient {

@@ -43,7 +43,8 @@ data class ExecutionEnvironmentCapabilities(
     val threadSettlement: Boolean = false,
     val threadSnooze: Boolean = false,
     val threadDeletion: Boolean = false,
-    val threadWorktrees: Boolean = false
+    val threadWorktrees: Boolean = false,
+    val workspaceFiles: Boolean = false
 )
 
 @Serializable
@@ -94,6 +95,12 @@ data class FilesystemBrowseEntry(val name: String, val fullPath: String)
 
 @Serializable
 data class FilesystemBrowseResult(val parentPath: String, val entries: List<FilesystemBrowseEntry>)
+
+@Serializable
+data class WorkspaceEntry(val path: String, val kind: String)
+
+@Serializable
+data class WorkspaceEntriesResult(val entries: List<WorkspaceEntry>, val truncated: Boolean)
 
 @Serializable
 data class VcsRef(

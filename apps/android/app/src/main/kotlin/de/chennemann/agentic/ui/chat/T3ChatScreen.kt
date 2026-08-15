@@ -96,6 +96,7 @@ fun T3ChatScreen(
     onEvent: (ChatUiEvent) -> Unit,
     composerDraft: StateFlow<String>? = null,
     modifier: Modifier = Modifier,
+    onOpenFiles: (String) -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -351,6 +352,16 @@ fun T3ChatScreen(
                         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                     ) {
                         Text("Changes (${state.latestTurnChanges.files.size})")
+                    }
+                }
+
+                state.threadId?.takeIf { state.canBrowseFiles }?.let { threadId ->
+                    if (state.latestTurnChanges.files.isEmpty()) {
+                        OutlinedButton(
+                            onClick = { onOpenFiles(threadId) },
+                            modifier = Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = 8.dp).zIndex(1f),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                        ) { Text("Files") }
                     }
                 }
             }

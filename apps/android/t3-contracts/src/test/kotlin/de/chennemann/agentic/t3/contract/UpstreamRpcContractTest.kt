@@ -18,7 +18,7 @@ class UpstreamRpcContractTest {
                 "label": "Development",
                 "platform": { "os": "linux", "arch": "x64" },
                 "serverVersion": "1.0.0",
-                "capabilities": { "connectionProbe": true }
+                "capabilities": { "connectionProbe": true, "workspaceFiles": true }
               },
               "auth": {
                 "policy": "desktop-managed-local",
@@ -43,6 +43,7 @@ class UpstreamRpcContractTest {
         assertEquals("~/Development", config.settings.addProjectBaseDirectory)
         assertTrue(config.shellResumeCompletionMarker)
         assertTrue(config.threadResumeCompletionMarker)
+        assertTrue(config.environment.capabilities.workspaceFiles)
     }
 
     @Test
