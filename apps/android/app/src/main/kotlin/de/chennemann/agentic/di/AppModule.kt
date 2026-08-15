@@ -129,6 +129,12 @@ val appModule = module {
             ioDispatcher = get<DispatcherProvider>().io,
         )
     }
+    single<de.chennemann.agentic.domain.attachments.ImageAttachmentReader> {
+        de.chennemann.agentic.domain.attachments.AndroidImageAttachmentReader(
+            contentResolver = get<android.content.Context>().contentResolver,
+            ioDispatcher = get<DispatcherProvider>().io,
+        )
+    }
     single<NetworkMonitor> { AndroidNetworkMonitor(get()) }
     single {
         KtorT3Client(get(), get(named(AppScopeName)))
@@ -137,6 +143,7 @@ val appModule = module {
     single<EnvironmentAuthClient> { get<KtorT3Client>() }
     single<T3RpcClient> { get<KtorT3Client>() }
     single<ThreadWorkspaceRpcClient> { get<KtorT3Client>() }
+    single<de.chennemann.agentic.data.t3.AttachmentAssetClient> { get<KtorT3Client>() }
     single<ProjectDestinationRpcClient> { get<KtorT3Client>() }
     single<EnvironmentRepository> {
         SqlEnvironmentRepository(
@@ -254,6 +261,9 @@ val appModule = module {
             interfacePreferences = get(),
             cacheAdministration = get(),
             threadWorkspaces = get(),
+            imageAttachments = get(),
+            attachmentAssets = get(),
+            credentials = get(),
         )
     }
 }

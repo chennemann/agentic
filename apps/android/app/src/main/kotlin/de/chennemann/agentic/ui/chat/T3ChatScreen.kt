@@ -1,6 +1,7 @@
 package de.chennemann.agentic.ui.chat
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
@@ -51,6 +52,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -85,6 +87,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import android.graphics.BitmapFactory
+import android.util.Base64
 
 @Composable
 fun T3ChatScreen(
@@ -745,17 +749,18 @@ private fun MessageItem(message: ChatMessageUi) {
                     containerColor = MaterialTheme.colorScheme.primaryContainer,
                 ),
             ) {
-                SelectionContainer {
-                    Text(
-                        text = message.content,
-                        modifier = Modifier.padding(12.dp),
-                    )
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    MessageImages(message.attachments)
+                    if (message.content.isNotBlank()) SelectionContainer {
+                        Text(text = message.content)
+                    }
                 }
             }
         }
 
         ChatMessageAuthorUi.ASSISTANT -> {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                MessageImages(message.attachments)
                 SelectionContainer {
                     val codeScale = LocalCodeScale.current
                     val localDensity = LocalDensity.current
@@ -786,11 +791,42 @@ private fun MessageItem(message: ChatMessageUi) {
         }
 
         ChatMessageAuthorUi.SYSTEM -> {
-            Text(
-                text = message.content,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                MessageImages(message.attachments)
+                Text(
+                    text = message.content,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MessageImages(attachments: List<ChatImageAttachmentUi>) {
+    if (attachments.isEmpty()) return
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        attachments.forEach { attachment ->
+            val bitmap = remember(attachment.previewDataUrl) {
+                attachment.previewDataUrl?.let { dataUrl ->
+                    runCatching {
+                        val bytes = Base64.decode(dataUrl.substringAfter(','), Base64.DEFAULT)
+                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+                    }.getOrNull()
+                }
+            }
+            if (bitmap == null) {
+                Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant) {
+                    Text("Loading ${attachment.name}…", modifier = Modifier.padding(12.dp))
+                }
+            } else {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = attachment.name,
+                    modifier = Modifier.size(140.dp),
+                )
+            }
         }
     }
 }

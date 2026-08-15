@@ -1,12 +1,15 @@
 package de.chennemann.agentic.ui.components
 
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -60,6 +63,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
@@ -74,6 +78,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.chennemann.agentic.icons.Brain
+import de.chennemann.agentic.icons.Add
 import de.chennemann.agentic.icons.Flame
 import de.chennemann.agentic.icons.Icons
 import de.chennemann.agentic.icons.Lock
@@ -101,6 +106,8 @@ import de.chennemann.agentic.ui.chat.RuntimeModeOptionUi
 import de.chennemann.agentic.ui.chat.SessionTerminationUi
 import de.chennemann.agentic.ui.chat.VoiceInputStatusUi
 import kotlin.math.roundToInt
+import android.graphics.BitmapFactory
+import android.util.Base64
 
 private val ComposerBackground = Color.Black
 private val ComposerContent = Color.White
@@ -129,6 +136,9 @@ fun T3MessageComposer(
         onGranted = { onEvent(ChatUiEvent.VoiceInputPressed) },
         onDenied = { onEvent(ChatUiEvent.MicrophonePermissionDenied) },
     )
+    val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
+        if (uris.isNotEmpty()) onEvent(ChatUiEvent.ImagesSelected(uris.map(Any::toString)))
+    }
     val selectedModel = state.providerModels.firstOrNull {
         it.id == state.selectedProviderModelId
     }
@@ -147,7 +157,7 @@ fun T3MessageComposer(
     }
     val visibleProviderOptions = state.providerOptions.filterNot(ProviderOptionUi::isServiceMode)
     val voiceControlVisible = state.voiceInputAvailable &&
-        (state.draft.isBlank() || state.voiceInputStatus != VoiceInputStatusUi.IDLE)
+        (state.draft.isBlank() && state.imageAttachments.isEmpty() || state.voiceInputStatus != VoiceInputStatusUi.IDLE)
 
     VoiceRecordingLifecycleEffect(
         status = state.voiceInputStatus,
@@ -190,6 +200,22 @@ fun T3MessageComposer(
                     .padding(start = 16.dp, top = 18.dp, end = 16.dp, bottom = 2.dp),
             )
 
+            if (state.imageAttachments.isNotEmpty()) {
+                LazyRow(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    items(state.imageAttachments, key = { it.id }) { attachment ->
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            attachment.previewDataUrl?.let { dataUrl -> AttachmentPreview(dataUrl, attachment.name) }
+                            TextButton(onClick = { onEvent(ChatUiEvent.ImageRemoved(attachment.id)) }) {
+                                Text("Remove", style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
+            }
+
             Box(modifier = Modifier.fillMaxWidth()) {
                 TextField(
                     value = state.draft,
@@ -207,7 +233,9 @@ fun T3MessageComposer(
                                 ?: return@onPreviewKeyEvent false
                             val action = HardwareKeyboardBindings.map(
                                 stroke,
-                                canSend = state.enabled && !state.sending && state.draft.isNotBlank(),
+                                canSend = state.enabled &&
+                                    !state.sending &&
+                                    (state.draft.isNotBlank() || state.imageAttachments.isNotEmpty()),
                                 turnRunning = turnRunning,
                             ) ?: return@onPreviewKeyEvent false
                             if (action == KeyboardAction.NEWLINE) return@onPreviewKeyEvent false
@@ -280,7 +308,13 @@ fun T3MessageComposer(
                         .padding(top = 6.dp, end = 12.dp),
                     horizontalArrangement = Arrangement.End,
                 ) {
-                    if (state.draft.isNotBlank() && !state.sending) {
+                    IconButton(
+                        onClick = { imagePicker.launch("image/*") },
+                        enabled = state.enabled && !state.sending && state.imageAttachments.size < 8,
+                    ) {
+                        Icon(Icons.Add, contentDescription = "Attach images")
+                    }
+                    if ((state.draft.isNotBlank() || state.imageAttachments.isNotEmpty()) && !state.sending) {
                         TextButton(onClick = { onEvent(ChatUiEvent.DraftDiscardRequested) }) {
                             Text("Discard")
                         }
@@ -334,7 +368,7 @@ fun T3MessageComposer(
                                 if (voiceControlVisible) {
                                     state.voiceInputStatus != VoiceInputStatusUi.TRANSCRIBING
                                 } else {
-                                    state.draft.isNotBlank()
+                                    state.draft.isNotBlank() || state.imageAttachments.isNotEmpty()
                                 },
                             modifier = Modifier.size(48.dp),
                             colors = IconButtonDefaults.iconButtonColors(
@@ -455,6 +489,23 @@ fun T3MessageComposer(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AttachmentPreview(dataUrl: String, name: String) {
+    val bitmap = remember(dataUrl) {
+        runCatching {
+            val bytes = Base64.decode(dataUrl.substringAfter(','), Base64.DEFAULT)
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
+        }.getOrNull()
+    }
+    if (bitmap != null) {
+        Image(
+            bitmap = bitmap,
+            contentDescription = name,
+            modifier = Modifier.size(88.dp),
+        )
     }
 }
 

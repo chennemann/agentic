@@ -81,6 +81,10 @@ interface ThreadWorkspaceRpcClient {
     ): VcsListRefsResult
 }
 
+interface AttachmentAssetClient {
+    suspend fun loadDataUrl(baseUrl: String, bearerToken: String, attachmentId: String, mimeType: String): String
+}
+
 sealed class T3TransportException(
     message: String,
 ) : Exception(message) {

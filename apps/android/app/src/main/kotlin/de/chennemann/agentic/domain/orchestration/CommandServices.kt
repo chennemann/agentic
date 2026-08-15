@@ -8,6 +8,7 @@ import de.chennemann.agentic.t3.contract.NewThreadBootstrap
 import de.chennemann.agentic.t3.contract.PrepareWorktreeBootstrap
 import de.chennemann.agentic.t3.contract.StartTurnBootstrap
 import de.chennemann.agentic.t3.contract.TurnMessageInput
+import de.chennemann.agentic.t3.contract.UploadChatAttachment
 import de.chennemann.agentic.t3.contract.SourceProposedPlan
 import java.time.Instant
 import java.util.UUID
@@ -111,6 +112,7 @@ interface ChatActions {
         modelSelection: ModelSelection,
         runtimeMode: String,
         workspace: NewThreadWorkspace = NewThreadWorkspace.InPlace(),
+        attachments: List<UploadChatAttachment> = emptyList(),
     ): StartTurnResult
 
     suspend fun interrupt(
@@ -223,6 +225,7 @@ class ChatService(
         modelSelection: ModelSelection,
         runtimeMode: String,
         workspace: NewThreadWorkspace,
+        attachments: List<UploadChatAttachment>,
     ): StartTurnResult {
         val now = Instant.now().toString()
         val targetThreadId = threadId ?: uuid()
@@ -256,6 +259,7 @@ class ChatService(
             message = TurnMessageInput(
                 messageId = uuid(),
                 text = prompt,
+                attachments = attachments,
             ),
             modelSelection = modelSelection,
             interactionMode = "default",

@@ -4,6 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import de.chennemann.agentic.domain.connection.ConnectionState
 import de.chennemann.agentic.domain.connection.ConnectionController
+import de.chennemann.agentic.domain.attachments.ImageAttachmentReader
+import de.chennemann.agentic.domain.attachments.MaxImageAttachmentCount
+import de.chennemann.agentic.data.t3.AttachmentAssetClient
+import de.chennemann.agentic.data.auth.CredentialStore
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
 import de.chennemann.agentic.domain.environment.EnvironmentRemover
 import de.chennemann.agentic.domain.environment.EnvironmentSelector
@@ -96,6 +100,9 @@ class ChatViewModel(
     private val interfacePreferences: InterfacePreferencesRepository? = null,
     private val cacheAdministration: CacheAdministration? = null,
     private val threadWorkspaces: ThreadWorkspaceBrowser? = null,
+    private val imageAttachments: ImageAttachmentReader? = null,
+    private val attachmentAssets: AttachmentAssetClient? = null,
+    private val credentials: CredentialStore? = null,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
     private val mutableDraft = MutableStateFlow("")
@@ -185,7 +192,24 @@ class ChatViewModel(
             }
         }
         viewModelScope.launch {
-            currentDraftKey.collectLatest { key -> selectDraft(key, composerDrafts) }
+            currentDraftKey.collectLatest { key ->
+                update { copy(draftImages = emptyList()) }
+                selectDraft(key, composerDrafts)
+            }
+        }
+        if (attachmentAssets != null && credentials != null) viewModelScope.launch {
+            repository.focusedThread.collectLatest { state ->
+                val environment = environments.activeEnvironment.value ?: return@collectLatest
+                val token = credentials.read(environment.id) ?: return@collectLatest
+                state.value?.thread?.messages.orEmpty().flatMap { it.attachments }.forEach { attachment ->
+                    if (attachment.id in local.value.attachmentDataUrls) return@forEach
+                    runCatching {
+                        attachmentAssets.loadDataUrl(environment.baseUrl, token, attachment.id, attachment.mimeType)
+                    }.onSuccess { dataUrl ->
+                        update { copy(attachmentDataUrls = attachmentDataUrls + (attachment.id to dataUrl)) }
+                    }
+                }
+            }
         }
         viewModelScope.launch {
             repository.focusedThread.collect { state ->
@@ -376,9 +400,13 @@ class ChatViewModel(
                 displayedDraftKey,
                 "",
                 persistImmediately = true,
-            )
+            ).also { update { copy(draftImages = emptyList()) } }
             is ChatUiEvent.ProposedPlanContinueRequested -> continueProposedPlan(event.planId)
             ChatUiEvent.MessageSubmitted -> submitMessage()
+            is ChatUiEvent.ImagesSelected -> addImages(event.uris)
+            is ChatUiEvent.ImageRemoved -> update {
+                copy(draftImages = draftImages.filterNot { it.dataUrl.hashCode().toString() == event.id })
+            }
             ChatUiEvent.VoiceInputPressed -> handleVoiceInput()
             ChatUiEvent.VoiceInputCancelled -> cancelVoiceInput()
             ChatUiEvent.MicrophonePermissionDenied -> update {
@@ -785,7 +813,8 @@ class ChatViewModel(
         if (local.value.sending) return
         val draftKey = displayedDraftKey
         val prompt = mutableDraft.value.trim()
-        if (prompt.isEmpty()) return
+        val attachments = local.value.draftImages
+        if (prompt.isEmpty() && attachments.isEmpty()) return
         val shell = repository.shell.value.value
             ?: return submissionUnavailable("Projects are not available yet.")
         val projectId = repository.selectedProjectId.value
@@ -811,10 +840,27 @@ class ChatViewModel(
                     .firstOrNull { it.id == local.value.selectedWorkspaceId }
                     ?.workspace
                     ?: NewThreadWorkspace.InPlace(),
+                attachments = attachments,
             )
             setDraft(draftKey, "", persistImmediately = true)
-            update { copy(sending = false, commandError = null) }
+            update { copy(sending = false, commandError = null, draftImages = emptyList()) }
             if (threadId == null) threads.selectThread(result.threadId)
+        }
+    }
+
+    private fun addImages(uris: List<String>) {
+        val reader = imageAttachments ?: return submissionUnavailable("Image attachments are unavailable.")
+        val remaining = MaxImageAttachmentCount - local.value.draftImages.size
+        if (remaining <= 0) return submissionUnavailable("You can attach up to 8 images.")
+        viewModelScope.launch {
+            try {
+                val images = uris.take(remaining).map { reader.read(it) }
+                update { copy(draftImages = draftImages + images, commandError = null) }
+            } catch (cause: CancellationException) {
+                throw cause
+            } catch (cause: Exception) {
+                update { copy(commandError = cause.message ?: "The selected image could not be attached.") }
+            }
         }
     }
 
@@ -1367,6 +1413,15 @@ class ChatViewModel(
                 sending = local.sending,
                 errorMessage = local.commandError,
                 enabled = environment.active != null && shell != null && project != null,
+                imageAttachments = local.draftImages.map {
+                    ChatImageAttachmentUi(
+                        id = it.dataUrl.hashCode().toString(),
+                        name = it.name,
+                        mimeType = it.mimeType,
+                        sizeBytes = it.sizeBytes,
+                        previewDataUrl = it.dataUrl,
+                    )
+                },
             ),
             environmentPicker = EnvironmentPickerUiState(
                 environments = environment.all.map {
@@ -1532,6 +1587,15 @@ class ChatViewModel(
                         },
                         content = it.text,
                         isStreaming = it.streaming,
+                        attachments = it.attachments.map { attachment ->
+                            ChatImageAttachmentUi(
+                                id = attachment.id,
+                                name = attachment.name,
+                                mimeType = attachment.mimeType,
+                                sizeBytes = attachment.sizeBytes,
+                                previewDataUrl = local.attachmentDataUrls[attachment.id],
+                            )
+                        },
                     ),
                 ),
                 turnId = it.turnId,
@@ -1784,6 +1848,8 @@ class ChatViewModel(
         val workspaceChoicesLoading: Boolean = false,
         val sending: Boolean = false,
         val commandError: String? = null,
+        val draftImages: List<de.chennemann.agentic.t3.contract.UploadChatAttachment> = emptyList(),
+        val attachmentDataUrls: Map<String, String> = emptyMap(),
         val renameVisible: Boolean = false,
         val renameDraft: String = "",
         val renameSaving: Boolean = false,

@@ -307,7 +307,7 @@ private data class MessageEventPayload(
     val streaming: Boolean = false,
     val createdAt: String,
     val updatedAt: String,
-    val attachments: List<kotlinx.serialization.json.JsonElement> = emptyList(),
+    val attachments: List<de.chennemann.agentic.t3.contract.ChatAttachment> = emptyList(),
 ) {
     fun toMessage(): OrchestrationMessage = OrchestrationMessage(
         id = messageId,

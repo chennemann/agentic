@@ -1,6 +1,7 @@
 package de.chennemann.agentic.ui.chat
 
 import de.chennemann.agentic.domain.connection.ConnectionController
+import de.chennemann.agentic.domain.attachments.ImageAttachmentReader
 import de.chennemann.agentic.domain.connection.ConnectionState
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
 import de.chennemann.agentic.domain.environment.EnvironmentCacheActions
@@ -1231,6 +1232,41 @@ class ChatViewModelIntentTest {
     }
 
     @Test
+    fun `selected image is previewed submitted and retained when reading another image fails`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val chat = NoOpChatActions()
+        val image = de.chennemann.agentic.t3.contract.UploadChatAttachment(
+            name = "one.png",
+            mimeType = "image/png",
+            sizeBytes = 3,
+            dataUrl = "data:image/png;base64,AQID",
+        )
+        val reader = ImageAttachmentReader { uri ->
+            if (uri == "bad") error("Unreadable image") else image
+        }
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository), chat = chat, mappingDispatcher = dispatcher,
+            imageAttachments = reader,
+        )
+        advanceUntilIdle()
+
+        viewModel.onEvent(ChatUiEvent.ImagesSelected(listOf("good")))
+        advanceUntilIdle()
+        assertEquals("one.png", viewModel.state.value.composer.imageAttachments.single().name)
+        viewModel.onEvent(ChatUiEvent.ImagesSelected(listOf("bad")))
+        advanceUntilIdle()
+        assertEquals("Unreadable image", viewModel.state.value.composer.errorMessage)
+        assertEquals(1, viewModel.state.value.composer.imageAttachments.size)
+
+        viewModel.onEvent(ChatUiEvent.MessageSubmitted)
+        advanceUntilIdle()
+        assertEquals(listOf(image), chat.startTurnCalls.single().attachments)
+        assertTrue(viewModel.state.value.composer.imageAttachments.isEmpty())
+    }
+
+    @Test
     fun `provider option selection is sent while unknown inherited options are preserved`() = runTest(dispatcher) {
         val selection = ModelSelection(
             instanceId = "provider",
@@ -2205,6 +2241,7 @@ private class NoOpChatActions(
         modelSelection: ModelSelection,
         runtimeMode: String,
         workspace: NewThreadWorkspace,
+        attachments: List<de.chennemann.agentic.t3.contract.UploadChatAttachment>,
     ): StartTurnResult {
         startTurnFailure?.let { throw it }
         startTurnCalls += StartTurnCall(
@@ -2213,6 +2250,7 @@ private class NoOpChatActions(
             prompt,
             modelSelection,
             runtimeMode,
+            attachments,
         )
         return StartTurnResult(DispatchResult(1), threadId ?: "new-thread")
     }
@@ -2266,6 +2304,7 @@ private data class StartTurnCall(
     val prompt: String,
     val modelSelection: ModelSelection,
     val runtimeMode: String,
+    val attachments: List<de.chennemann.agentic.t3.contract.UploadChatAttachment>,
 )
 
 private class FakeViewModelEnvironmentRepository : EnvironmentRepository {

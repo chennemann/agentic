@@ -68,7 +68,8 @@ class KtorT3Client(
     EnvironmentAuthClient,
     T3RpcClient,
     ProjectDestinationRpcClient,
-    ThreadWorkspaceRpcClient {
+    ThreadWorkspaceRpcClient,
+    AttachmentAssetClient {
     private val connectionMutex = Mutex()
     private val connections = mutableMapOf<ConnectionKey, EffectRpcConnection>()
 
@@ -143,6 +144,27 @@ class KtorT3Client(
             put("limit", 100)
         },
     )
+
+    override suspend fun loadDataUrl(
+        baseUrl: String,
+        bearerToken: String,
+        attachmentId: String,
+        mimeType: String,
+    ): String {
+        val asset: de.chennemann.agentic.t3.contract.AssetCreateUrlResult = rpcCall(
+            baseUrl,
+            bearerToken,
+            "assets.createUrl",
+            buildJsonObject {
+                put("resource", buildJsonObject {
+                    put("_tag", "attachment")
+                    put("attachmentId", attachmentId)
+                })
+            },
+        )
+        val bytes = httpClient.get(url(baseUrl, asset.relativeUrl)).body<ByteArray>()
+        return "data:$mimeType;base64,${android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)}"
+    }
 
     override fun shellStream(
         baseUrl: String,

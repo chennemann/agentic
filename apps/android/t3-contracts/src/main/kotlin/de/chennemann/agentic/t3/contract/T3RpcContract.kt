@@ -282,7 +282,25 @@ data class OrchestrationMessage(
     val streaming: Boolean = false,
     val createdAt: String,
     val updatedAt: String,
-    val attachments: List<JsonElement> = emptyList()
+    val attachments: List<ChatAttachment> = emptyList()
+)
+
+@Serializable
+data class ChatAttachment(
+    @EncodeDefault val type: String = "image",
+    val id: String,
+    val name: String,
+    val mimeType: String,
+    val sizeBytes: Long
+)
+
+@Serializable
+data class UploadChatAttachment(
+    @EncodeDefault val type: String = "image",
+    val name: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val dataUrl: String
 )
 
 @Serializable
@@ -344,13 +362,16 @@ sealed interface OrchestrationThreadStreamItem {
 data class DispatchResult(val sequence: Long)
 
 @Serializable
+data class AssetCreateUrlResult(val relativeUrl: String, val expiresAt: Long)
+
+@Serializable
 data class TurnMessageInput(
     val messageId: String,
     @EncodeDefault
     val role: String = "user",
     val text: String,
     @EncodeDefault
-    val attachments: List<JsonElement> = emptyList()
+    val attachments: List<UploadChatAttachment> = emptyList()
 )
 
 @Serializable

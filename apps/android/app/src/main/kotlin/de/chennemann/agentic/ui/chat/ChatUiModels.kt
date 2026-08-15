@@ -162,6 +162,15 @@ data class ChatMessageUi(
     val content: String,
     val isStreaming: Boolean = false,
     val supportingText: String? = null,
+    val attachments: List<ChatImageAttachmentUi> = emptyList(),
+)
+
+data class ChatImageAttachmentUi(
+    val id: String,
+    val name: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val previewDataUrl: String? = null,
 )
 
 enum class ChatMessageAuthorUi {
@@ -341,6 +350,7 @@ data class ComposerUiState(
     val enabled: Boolean = true,
     val voiceInputAvailable: Boolean = false,
     val voiceInputStatus: VoiceInputStatusUi = VoiceInputStatusUi.IDLE,
+    val imageAttachments: List<ChatImageAttachmentUi> = emptyList(),
 )
 
 enum class VoiceInputStatusUi {
@@ -484,6 +494,10 @@ sealed interface ChatUiEvent {
     data class ProposedPlanContinueRequested(val planId: String) : ChatUiEvent
 
     data object MessageSubmitted : ChatUiEvent
+
+    data class ImagesSelected(val uris: List<String>) : ChatUiEvent
+
+    data class ImageRemoved(val id: String) : ChatUiEvent
 
     data object VoiceInputPressed : ChatUiEvent
 

@@ -12,6 +12,7 @@ import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.T3CommandJson
+import de.chennemann.agentic.t3.contract.UploadChatAttachment
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.runTest
@@ -38,6 +39,32 @@ class CommandServicesTest {
     private val environments = FakeEnvironmentRepository(environment)
     private val commands = RecordingCommandDispatcher()
     private val service = ChatService(commands)
+
+    @Test
+    fun `image attachments remain inline on the durable start-turn command`() = runTest {
+        val image = UploadChatAttachment(
+            name = "diagram.png",
+            mimeType = "image/png",
+            sizeBytes = 3,
+            dataUrl = "data:image/png;base64,AQID",
+        )
+
+        service.startTurn(
+            threadId = "thread",
+            projectId = "project",
+            prompt = "Review this",
+            modelSelection = ModelSelection("instance", "model"),
+            runtimeMode = "full-access",
+            attachments = listOf(image),
+        )
+
+        val command = commands.recorded.single() as ClientOrchestrationCommand.StartTurn
+        assertEquals(listOf(image), command.message.attachments)
+        val encoded = T3CommandJson.encodeToJsonElement(ClientOrchestrationCommand.serializer(), command).jsonObject
+        assertEquals("data:image/png;base64,AQID", encoded["message"]?.jsonObject?.get("attachments")
+            ?.let { it as kotlinx.serialization.json.JsonArray }?.single()?.jsonObject?.get("dataUrl")
+            ?.toString()?.trim('"'))
+    }
 
     @Test
     fun `new turn atomically bootstraps the thread with unique client ids`() = runTest {
