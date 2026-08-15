@@ -77,6 +77,7 @@ class ConnectionSupervisor(
 
     override fun wake() {
         if (mutableState.value != ConnectionState.Live) {
+            mutableState.value = ConnectionState.Connecting
             restartGeneration.update { it + 1 }
         }
     }

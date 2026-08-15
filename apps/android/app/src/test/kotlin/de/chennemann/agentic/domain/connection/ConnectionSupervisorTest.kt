@@ -193,6 +193,32 @@ class ConnectionSupervisorTest {
     }
 
     @Test
+    fun `manual retry immediately leaves backoff and starts fresh`() = runTest {
+        val transport = SupervisorTransport(failFirstDescriptor = true)
+        val supervisor = ConnectionSupervisor(
+            environments = SupervisorEnvironmentRepository(savedEnvironment("one")),
+            orchestration = SupervisorOrchestrationRepository(),
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            rpc = transport,
+            network = OnlineMonitor,
+            pendingCommands = NoOpPendingCommandReplayer,
+            scope = backgroundScope,
+        )
+        runCurrent()
+
+        assertTrue(supervisor.state.value is ConnectionState.Backoff)
+        assertEquals(1, transport.descriptorRequests)
+
+        supervisor.wake()
+
+        assertEquals(ConnectionState.Connecting, supervisor.state.value)
+        runCurrent()
+        assertEquals(2, transport.descriptorRequests)
+        assertEquals(ConnectionState.Live, supervisor.state.value)
+    }
+
+    @Test
     fun `network restoration cancels old streams and reconnects immediately`() = runTest {
         val environment = savedEnvironment("one")
         val network = MutableOnlineMonitor(true)
@@ -501,6 +527,7 @@ private class SupervisorEnvironmentRepository(
 
 private class SupervisorTransport(
     private val blockFirstDescriptor: Boolean = false,
+    private val failFirstDescriptor: Boolean = false,
     private val completeFirstShellStream: Boolean = false,
     private val failFirstShellStream: Boolean = false,
     private val completeFirstThreadStream: Boolean = false,
@@ -524,6 +551,9 @@ private class SupervisorTransport(
             } finally {
                 cancelledDescriptorRequests++
             }
+        }
+        if (failFirstDescriptor && descriptorRequests == 1) {
+            error("Environment unavailable")
         }
         return descriptor(baseUrl.substringAfter("https://").substringBefore('.'))
     }
