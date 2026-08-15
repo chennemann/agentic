@@ -18,6 +18,7 @@ import de.chennemann.agentic.data.t3.AndroidClientMetadata
 import de.chennemann.agentic.data.t3.EnvironmentAuthClient
 import de.chennemann.agentic.data.t3.EnvironmentMetadataClient
 import de.chennemann.agentic.data.t3.KtorT3Client
+import de.chennemann.agentic.data.t3.ProjectDestinationRpcClient
 import de.chennemann.agentic.data.t3.T3RpcClient
 import de.chennemann.agentic.data.voice.AndroidAudioRecorder
 import de.chennemann.agentic.data.voice.KeystoreGroqApiKeyStore
@@ -48,6 +49,8 @@ import de.chennemann.agentic.domain.orchestration.DurableCommandDispatcher
 import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.domain.orchestration.PendingCommandReplayer
 import de.chennemann.agentic.domain.orchestration.ProjectActions
+import de.chennemann.agentic.domain.orchestration.ProjectDestinationBrowser
+import de.chennemann.agentic.domain.orchestration.ProjectDestinationService
 import de.chennemann.agentic.domain.orchestration.ProjectService
 import de.chennemann.agentic.ui.chat.workflow.CacheAdministration
 import de.chennemann.agentic.ui.chat.workflow.DefaultCacheAdministration
@@ -130,6 +133,7 @@ val appModule = module {
     single<EnvironmentMetadataClient> { get<KtorT3Client>() }
     single<EnvironmentAuthClient> { get<KtorT3Client>() }
     single<T3RpcClient> { get<KtorT3Client>() }
+    single<ProjectDestinationRpcClient> { get<KtorT3Client>() }
     single<EnvironmentRepository> {
         SqlEnvironmentRepository(
             database = get(),
@@ -199,7 +203,9 @@ val appModule = module {
     single<ChatActions> { get<ChatService>() }
     single { ProjectService(get(), get()) }
     single<ProjectActions> { get<ProjectService>() }
-    factory<ProjectWorkflow> { DefaultProjectWorkflow(get(), get(), get()) }
+    single { ProjectDestinationService(get(), get(), get()) }
+    single<ProjectDestinationBrowser> { get<ProjectDestinationService>() }
+    factory<ProjectWorkflow> { DefaultProjectWorkflow(get(), get(), get(), get()) }
     factory<SharedTextWorkflow> {
         DefaultSharedTextWorkflow(get(), get(), get(), get(), get(), get())
     }

@@ -16,6 +16,9 @@ import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.domain.orchestration.ProjectionSource
 import de.chennemann.agentic.domain.orchestration.ProjectionState
 import de.chennemann.agentic.domain.orchestration.ProjectActions
+import de.chennemann.agentic.domain.orchestration.ProjectDestination
+import de.chennemann.agentic.domain.orchestration.ProjectDestinationBrowser
+import de.chennemann.agentic.domain.orchestration.ProjectDestinationListing
 import de.chennemann.agentic.domain.orchestration.Reduction
 import de.chennemann.agentic.domain.orchestration.StartTurnResult
 import de.chennemann.agentic.domain.orchestration.ThreadActions
@@ -41,6 +44,7 @@ import de.chennemann.agentic.domain.voice.VoiceInputService
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.DispatchResult
 import de.chennemann.agentic.t3.contract.ServerConfig
+import de.chennemann.agentic.t3.contract.ServerSettings
 import de.chennemann.agentic.t3.contract.EnvironmentPlatform
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentCapabilities
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
@@ -88,6 +92,45 @@ import org.junit.jupiter.api.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModelIntentTest {
+    @Test
+    fun `project destination browsing maps choices and preserves path on guarded failure`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        repository.clientConfig.value = repository.clientConfig.value.copy(
+            value = repository.clientConfig.value.value?.copy(
+                settings = ServerSettings(addProjectBaseDirectory = " /srv/projects "),
+            ),
+        )
+        val browser = RecordingProjectDestinationBrowser()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+            projectWorkflow = DefaultProjectWorkflow(
+                repository,
+                RecordingProjectActions(),
+                RecordingThreadActions(repository),
+                browser,
+            ),
+        )
+
+        viewModel.onEvent(ChatUiEvent.ProjectCreationRequested)
+        advanceUntilIdle()
+        assertEquals("/srv/projects/", browser.requests.single())
+        assertEquals(listOf(ProjectDestinationUi("alpha", "/srv/alpha")), viewModel.state.value.projectCreation?.destinations)
+
+        browser.failure = IllegalStateException("Permission denied")
+        viewModel.onEvent(ChatUiEvent.ProjectCreationDestinationOpened("/srv/alpha"))
+        advanceUntilIdle()
+
+        assertEquals("/srv/projects/", viewModel.state.value.projectCreation?.source)
+        assertEquals("Permission denied", viewModel.state.value.projectCreation?.errorMessage)
+        assertEquals(listOf("/srv/projects/", "/srv/alpha"), browser.requests)
+    }
+
     @Test
     fun `new view model resets workflow forms while durable shared text restores`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model"))
@@ -2318,6 +2361,21 @@ private class RecordingProjectActions : ProjectActions {
     override suspend fun remove(projectId: String): String {
         removed += projectId
         return "project-2"
+    }
+}
+
+private class RecordingProjectDestinationBrowser : ProjectDestinationBrowser {
+    val requests = mutableListOf<String>()
+    var failure: Exception? = null
+
+    override suspend fun browse(partialPath: String, enterDirectory: Boolean): ProjectDestinationListing {
+        requests += partialPath
+        failure?.let { throw it }
+        return ProjectDestinationListing(
+            query = partialPath,
+            parentPath = "/srv",
+            destinations = listOf(ProjectDestination("alpha", "/srv/alpha")),
+        )
     }
 }
 

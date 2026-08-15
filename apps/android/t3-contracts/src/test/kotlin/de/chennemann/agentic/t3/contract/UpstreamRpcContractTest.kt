@@ -28,6 +28,7 @@ class UpstreamRpcContractTest {
               },
               "cwd": "/workspace",
               "keybindings": {},
+              "settings": { "addProjectBaseDirectory": "~/Development" },
               "providers": [
                 { "instanceId": "codex", "displayName": "Codex", "models": [] }
               ],
@@ -39,6 +40,7 @@ class UpstreamRpcContractTest {
 
         assertEquals("environment-1", config.environment.environmentId)
         assertEquals("codex", config.providers.single().instanceId)
+        assertEquals("~/Development", config.settings.addProjectBaseDirectory)
         assertTrue(config.shellResumeCompletionMarker)
         assertTrue(config.threadResumeCompletionMarker)
     }

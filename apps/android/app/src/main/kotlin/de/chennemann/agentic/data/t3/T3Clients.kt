@@ -4,6 +4,7 @@ import de.chennemann.agentic.t3.contract.AuthSession
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.DispatchResult
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
+import de.chennemann.agentic.t3.contract.FilesystemBrowseResult
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.ServerConfig
@@ -61,6 +62,14 @@ interface T3RpcClient {
         afterSequence: Long?,
         requestCompletionMarker: Boolean,
     ): Flow<OrchestrationThreadStreamItem>
+}
+
+interface ProjectDestinationRpcClient {
+    suspend fun browseFilesystem(
+        baseUrl: String,
+        bearerToken: String,
+        partialPath: String,
+    ): FilesystemBrowseResult
 }
 
 sealed class T3TransportException(

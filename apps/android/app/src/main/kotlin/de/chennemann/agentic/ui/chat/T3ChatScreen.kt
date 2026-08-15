@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
@@ -25,6 +26,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
@@ -458,6 +460,44 @@ fun T3ChatScreen(
                         label = { Text("Server path or repository URL") },
                         singleLine = true,
                     )
+                    OutlinedButton(
+                        onClick = { onEvent(ChatUiEvent.ProjectCreationBrowseRequested) },
+                        enabled = creation.source.isNotBlank() && !creation.creating && !creation.browsing,
+                    ) {
+                        Text("Browse folders")
+                    }
+                    if (creation.browsing) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    }
+                    if (creation.browsePath != null && !creation.browsing) {
+                        LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 220.dp)) {
+                            creation.parentPath?.let {
+                                item("project-parent") {
+                                    TextButton(
+                                        onClick = { onEvent(ChatUiEvent.ProjectCreationParentOpened) },
+                                        modifier = Modifier.fillMaxWidth(),
+                                    ) {
+                                        Text("..", modifier = Modifier.fillMaxWidth())
+                                    }
+                                }
+                            }
+                            items(creation.destinations, key = { it.fullPath }) { destination ->
+                                TextButton(
+                                    onClick = {
+                                        onEvent(ChatUiEvent.ProjectCreationDestinationOpened(destination.fullPath))
+                                    },
+                                    modifier = Modifier.fillMaxWidth(),
+                                ) {
+                                    Text(
+                                        text = destination.name,
+                                        modifier = Modifier.fillMaxWidth(),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                            }
+                        }
+                    }
                     creation.errorMessage?.let {
                         Text(it, color = MaterialTheme.colorScheme.error)
                     }

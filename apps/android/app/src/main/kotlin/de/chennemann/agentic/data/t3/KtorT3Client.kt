@@ -4,6 +4,7 @@ import de.chennemann.agentic.t3.contract.AuthSession
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.DispatchResult
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
+import de.chennemann.agentic.t3.contract.FilesystemBrowseResult
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.ServerConfig
@@ -64,7 +65,8 @@ class KtorT3Client(
     private val scope: CoroutineScope,
 ) : EnvironmentMetadataClient,
     EnvironmentAuthClient,
-    T3RpcClient {
+    T3RpcClient,
+    ProjectDestinationRpcClient {
     private val connectionMutex = Mutex()
     private val connections = mutableMapOf<ConnectionKey, EffectRpcConnection>()
 
@@ -112,6 +114,17 @@ class KtorT3Client(
         bearerToken = bearerToken,
         tag = "orchestration.dispatchCommand",
         payload = T3CommandJson.encodeToJsonElement(ClientOrchestrationCommand.serializer(), command),
+    )
+
+    override suspend fun browseFilesystem(
+        baseUrl: String,
+        bearerToken: String,
+        partialPath: String,
+    ): FilesystemBrowseResult = rpcCall(
+        baseUrl = baseUrl,
+        bearerToken = bearerToken,
+        tag = "filesystem.browse",
+        payload = buildJsonObject { put("partialPath", partialPath) },
     )
 
     override fun shellStream(

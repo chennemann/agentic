@@ -80,9 +80,19 @@ data class ServerConfig(
     val environment: ExecutionEnvironmentDescriptor,
     val auth: ServerAuthDescriptor,
     val providers: List<ProviderInstance>,
+    val settings: ServerSettings = ServerSettings(),
     val shellResumeCompletionMarker: Boolean = false,
     val threadResumeCompletionMarker: Boolean = false
 )
+
+@Serializable
+data class ServerSettings(val addProjectBaseDirectory: String = "")
+
+@Serializable
+data class FilesystemBrowseEntry(val name: String, val fullPath: String)
+
+@Serializable
+data class FilesystemBrowseResult(val parentPath: String, val entries: List<FilesystemBrowseEntry>)
 
 @Serializable
 data class ProviderInstance(

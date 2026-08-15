@@ -90,6 +90,15 @@ data class ProjectCreationUi(
     val source: String = "",
     val creating: Boolean = false,
     val errorMessage: String? = null,
+    val browsePath: String? = null,
+    val parentPath: String? = null,
+    val destinations: List<ProjectDestinationUi> = emptyList(),
+    val browsing: Boolean = false,
+)
+
+data class ProjectDestinationUi(
+    val name: String,
+    val fullPath: String,
 )
 
 data class ProjectRenameUi(
@@ -538,6 +547,12 @@ sealed interface ChatUiEvent {
     data object ProjectCreationRequested : ChatUiEvent
 
     data class ProjectCreationSourceChanged(val value: String) : ChatUiEvent
+
+    data object ProjectCreationBrowseRequested : ChatUiEvent
+
+    data class ProjectCreationDestinationOpened(val path: String) : ChatUiEvent
+
+    data object ProjectCreationParentOpened : ChatUiEvent
 
     data object ProjectCreationConfirmed : ChatUiEvent
 

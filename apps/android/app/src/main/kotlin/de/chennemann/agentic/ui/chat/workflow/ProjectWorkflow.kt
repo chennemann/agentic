@@ -2,6 +2,8 @@ package de.chennemann.agentic.ui.chat.workflow
 
 import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.domain.orchestration.ProjectActions
+import de.chennemann.agentic.domain.orchestration.ProjectDestination
+import de.chennemann.agentic.domain.orchestration.ProjectDestinationBrowser
 import de.chennemann.agentic.domain.orchestration.ThreadActions
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -13,6 +15,10 @@ data class ProjectWorkflowState(
     val creationSource: String = "",
     val creationSaving: Boolean = false,
     val creationError: String? = null,
+    val creationBrowsePath: String? = null,
+    val creationParentPath: String? = null,
+    val creationDestinations: List<ProjectDestination> = emptyList(),
+    val creationBrowsing: Boolean = false,
     val renameId: String? = null,
     val renamePreviousTitle: String = "",
     val renameTitle: String = "",
@@ -28,6 +34,9 @@ data class ProjectWorkflowState(
 sealed interface ProjectWorkflowIntent {
     data object RequestCreation : ProjectWorkflowIntent
     data class ChangeCreationSource(val value: String) : ProjectWorkflowIntent
+    data object BrowseCreationSource : ProjectWorkflowIntent
+    data class OpenCreationDestination(val path: String) : ProjectWorkflowIntent
+    data object OpenCreationParent : ProjectWorkflowIntent
     data object DismissCreation : ProjectWorkflowIntent
     data object ConfirmCreation : ProjectWorkflowIntent
     data class RequestRename(val projectId: String) : ProjectWorkflowIntent
@@ -48,16 +57,36 @@ class DefaultProjectWorkflow(
     private val repository: OrchestrationRepository,
     private val projects: ProjectActions,
     private val threads: ThreadActions,
+    private val destinations: ProjectDestinationBrowser? = null,
 ) : ProjectWorkflow {
     private val mutableState = MutableStateFlow(ProjectWorkflowState())
     override val state = mutableState.asStateFlow()
 
     override suspend fun accept(intent: ProjectWorkflowIntent) {
         when (intent) {
-            ProjectWorkflowIntent.RequestCreation -> update { copy(creationVisible = true, creationError = null) }
+            ProjectWorkflowIntent.RequestCreation -> {
+                update {
+                    copy(
+                        creationVisible = true,
+                        creationSource = creationSource.ifBlank { initialBrowsePath() },
+                        creationError = null,
+                    )
+                }
+                if (destinations != null) browse(state.value.creationSource, enterDirectory = false)
+            }
             is ProjectWorkflowIntent.ChangeCreationSource -> update { copy(creationSource = intent.value, creationError = null) }
+            ProjectWorkflowIntent.BrowseCreationSource -> browse(state.value.creationSource, enterDirectory = false)
+            is ProjectWorkflowIntent.OpenCreationDestination -> browse(intent.path, enterDirectory = true)
+            ProjectWorkflowIntent.OpenCreationParent -> state.value.creationParentPath?.let { browse(it, enterDirectory = true) }
             ProjectWorkflowIntent.DismissCreation -> updateUnless(state.value.creationSaving) {
-                copy(creationVisible = false, creationSource = "", creationError = null)
+                copy(
+                    creationVisible = false,
+                    creationSource = "",
+                    creationError = null,
+                    creationBrowsePath = null,
+                    creationParentPath = null,
+                    creationDestinations = emptyList(),
+                )
             }
             ProjectWorkflowIntent.ConfirmCreation -> runSaving(
                 start = { copy(creationSaving = true, creationError = null) },
@@ -69,6 +98,9 @@ class DefaultProjectWorkflow(
                         creationSource = "",
                         creationSaving = false,
                         selectedProjectId = id,
+                        creationBrowsePath = null,
+                        creationParentPath = null,
+                        creationDestinations = emptyList(),
                     )
                 },
                 failure = { copy(creationSaving = false, creationError = it.message ?: "Project creation failed.") },
@@ -109,6 +141,38 @@ class DefaultProjectWorkflow(
                     failure = { copy(removalSaving = false, removalError = it.message ?: "Project removal failed.") },
                 )
             }
+        }
+    }
+
+    private fun initialBrowsePath(): String {
+        val config = repository.clientConfig.value.value
+        val configured = config?.settings?.addProjectBaseDirectory.orEmpty().trim()
+        if (configured.isEmpty()) return "~/"
+        val separator = if (config?.environment?.platform?.os.equals("windows", true)) '\\' else '/'
+        return configured.trimEnd('/', '\\') + separator
+    }
+
+    private suspend fun browse(
+        path: String,
+        enterDirectory: Boolean,
+    ) {
+        if (path.isBlank() || state.value.creationBrowsing || state.value.creationSaving) return
+        update { copy(creationBrowsing = true, creationError = null) }
+        try {
+            val listing = requireNotNull(destinations).browse(path, enterDirectory)
+            update {
+                copy(
+                    creationSource = listing.query,
+                    creationBrowsePath = listing.query,
+                    creationParentPath = listing.parentPath,
+                    creationDestinations = listing.destinations,
+                    creationBrowsing = false,
+                )
+            }
+        } catch (cause: CancellationException) {
+            throw cause
+        } catch (cause: Exception) {
+            update { copy(creationBrowsing = false, creationError = cause.message ?: "Folder browsing failed.") }
         }
     }
 

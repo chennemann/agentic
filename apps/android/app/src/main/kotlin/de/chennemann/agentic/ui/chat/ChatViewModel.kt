@@ -311,7 +311,15 @@ class ChatViewModel(
                 errorMessage = local.groqSettingsError,
             ),
             projectCreation = if (project.creationVisible) {
-                ProjectCreationUi(project.creationSource, project.creationSaving, project.creationError)
+                ProjectCreationUi(
+                    source = project.creationSource,
+                    creating = project.creationSaving,
+                    errorMessage = project.creationError,
+                    browsePath = project.creationBrowsePath,
+                    parentPath = project.creationParentPath,
+                    destinations = project.creationDestinations.map { ProjectDestinationUi(it.name, it.fullPath) },
+                    browsing = project.creationBrowsing,
+                )
             } else null,
             projectRename = project.renameId?.let {
                 ProjectRenameUi(it, project.renamePreviousTitle, project.renameTitle, project.renameSaving, project.renameError)
@@ -502,6 +510,10 @@ class ChatViewModel(
             }
             ChatUiEvent.ProjectCreationRequested -> acceptProject(ProjectWorkflowIntent.RequestCreation)
             is ChatUiEvent.ProjectCreationSourceChanged -> acceptProject(ProjectWorkflowIntent.ChangeCreationSource(event.value))
+            ChatUiEvent.ProjectCreationBrowseRequested -> acceptProject(ProjectWorkflowIntent.BrowseCreationSource)
+            is ChatUiEvent.ProjectCreationDestinationOpened ->
+                acceptProject(ProjectWorkflowIntent.OpenCreationDestination(event.path))
+            ChatUiEvent.ProjectCreationParentOpened -> acceptProject(ProjectWorkflowIntent.OpenCreationParent)
             ChatUiEvent.ProjectCreationDismissed -> acceptProject(ProjectWorkflowIntent.DismissCreation)
             ChatUiEvent.ProjectCreationConfirmed -> acceptProject(ProjectWorkflowIntent.ConfirmCreation)
             is ChatUiEvent.ProjectRenameRequested -> acceptProject(ProjectWorkflowIntent.RequestRename(event.projectId))
