@@ -103,6 +103,14 @@ data class WorkspaceEntry(val path: String, val kind: String)
 data class WorkspaceEntriesResult(val entries: List<WorkspaceEntry>, val truncated: Boolean)
 
 @Serializable
+data class WorkspaceFileResult(
+    val relativePath: String,
+    val contents: String,
+    val byteLength: Long,
+    val truncated: Boolean
+)
+
+@Serializable
 data class VcsRef(
     val name: String,
     val isRemote: Boolean = false,

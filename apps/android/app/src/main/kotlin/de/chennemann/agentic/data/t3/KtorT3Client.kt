@@ -157,6 +157,46 @@ class KtorT3Client(
         payload = buildJsonObject { put("cwd", cwd) },
     )
 
+    override suspend fun readFile(
+        baseUrl: String,
+        bearerToken: String,
+        cwd: String,
+        relativePath: String,
+    ): de.chennemann.agentic.t3.contract.WorkspaceFileResult = rpcCall(
+        baseUrl = baseUrl,
+        bearerToken = bearerToken,
+        tag = "projects.readFile",
+        payload = buildJsonObject {
+            put("cwd", cwd)
+            put("relativePath", relativePath)
+        },
+    )
+
+    override suspend fun loadWorkspaceImage(
+        baseUrl: String,
+        bearerToken: String,
+        threadId: String,
+        absolutePath: String,
+        mimeType: String,
+    ): String {
+        val asset: de.chennemann.agentic.t3.contract.AssetCreateUrlResult = rpcCall(
+            baseUrl,
+            bearerToken,
+            "assets.createUrl",
+            buildJsonObject {
+                put("resource", buildJsonObject {
+                    put("_tag", "workspace-file")
+                    put("threadId", threadId)
+                    put("path", absolutePath)
+                })
+            },
+        )
+        val response = httpClient.get(url(baseUrl, asset.relativeUrl)) { bearerAuth(bearerToken) }
+        response.checked()
+        val bytes = response.body<ByteArray>()
+        return "data:$mimeType;base64,${android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)}"
+    }
+
     override suspend fun loadDataUrl(
         baseUrl: String,
         bearerToken: String,

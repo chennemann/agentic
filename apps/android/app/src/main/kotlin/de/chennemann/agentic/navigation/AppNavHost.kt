@@ -82,6 +82,8 @@ fun AppNavHost() {
                         state = state,
                         onBack = { stack.removeLastOrNull() },
                         onRefresh = viewModel::refresh,
+                        onOpenFile = viewModel::open,
+                        onClosePreview = viewModel::closePreview,
                     )
                 }
 

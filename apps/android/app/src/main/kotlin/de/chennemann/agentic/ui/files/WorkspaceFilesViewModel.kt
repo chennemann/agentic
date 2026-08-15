@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import de.chennemann.agentic.domain.orchestration.WorkspaceFileListing
 import de.chennemann.agentic.domain.orchestration.WorkspaceFilesBrowser
+import de.chennemann.agentic.domain.orchestration.WorkspaceFilePreview
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,6 +14,10 @@ data class WorkspaceFilesUiState(
     val listing: WorkspaceFileListing? = null,
     val loading: Boolean = false,
     val errorMessage: String? = null,
+    val selectedPath: String? = null,
+    val preview: WorkspaceFilePreview? = null,
+    val previewLoading: Boolean = false,
+    val previewErrorMessage: String? = null,
 )
 
 class WorkspaceFilesViewModel(private val files: WorkspaceFilesBrowser) : ViewModel() {
@@ -39,5 +44,36 @@ class WorkspaceFilesViewModel(private val files: WorkspaceFilesBrowser) : ViewMo
                     )
                 }
         }
+    }
+
+    fun open(path: String) {
+        val currentThreadId = threadId ?: return
+        viewModelScope.launch {
+            mutableState.value = mutableState.value.copy(
+                selectedPath = path,
+                previewLoading = true,
+                previewErrorMessage = null,
+                preview = mutableState.value.preview?.takeIf { it.path == path },
+            )
+            runCatching { files.preview(currentThreadId, path) }
+                .onSuccess {
+                    mutableState.value = mutableState.value.copy(preview = it, previewLoading = false)
+                }
+                .onFailure {
+                    mutableState.value = mutableState.value.copy(
+                        previewLoading = false,
+                        previewErrorMessage = it.message ?: "This file could not be previewed.",
+                    )
+                }
+        }
+    }
+
+    fun closePreview() {
+        mutableState.value = mutableState.value.copy(
+            selectedPath = null,
+            preview = null,
+            previewLoading = false,
+            previewErrorMessage = null,
+        )
     }
 }

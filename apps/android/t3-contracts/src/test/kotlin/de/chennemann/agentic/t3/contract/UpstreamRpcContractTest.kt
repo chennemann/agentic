@@ -9,6 +9,17 @@ import org.junit.jupiter.api.Test
 
 class UpstreamRpcContractTest {
     @Test
+    fun `workspace file result preserves partial read metadata`() {
+        val result = T3Json.decodeFromString<WorkspaceFileResult>(
+            """{"relativePath":"README.md","contents":"hello","byteLength":1048580,"truncated":true}"""
+        )
+
+        assertEquals("README.md", result.relativePath)
+        assertEquals(1_048_580, result.byteLength)
+        assertTrue(result.truncated)
+    }
+
+    @Test
     fun `server config decodes from the upstream RPC result`() {
         val config = T3Json.decodeFromString<ServerConfig>(
             """

@@ -2,6 +2,7 @@ package de.chennemann.agentic.ui.files
 
 import de.chennemann.agentic.domain.orchestration.WorkspaceFileEntry
 import de.chennemann.agentic.domain.orchestration.WorkspaceFileListing
+import de.chennemann.agentic.domain.orchestration.WorkspaceFilePreview
 import de.chennemann.agentic.domain.orchestration.WorkspaceFilesBrowser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -53,13 +54,60 @@ class WorkspaceFilesViewModelTest {
         assertEquals("Index timed out", viewModel.state.value.errorMessage)
         assertFalse(viewModel.state.value.loading)
     }
+
+    @Test
+    fun `open maps a truncated text preview without transport state`() = runTest(dispatcher) {
+        val preview = WorkspaceFilePreview.Text("README.md", "# Hello", 2_000_000, true, true)
+        val browser = FakeWorkspaceFilesBrowser(Result.success(listing()), Result.success(preview))
+        val viewModel = WorkspaceFilesViewModel(browser)
+        viewModel.load("thread-1")
+        advanceUntilIdle()
+
+        viewModel.open("README.md")
+        advanceUntilIdle()
+
+        assertEquals(preview, viewModel.state.value.preview)
+        assertEquals("README.md", viewModel.state.value.selectedPath)
+        assertFalse(viewModel.state.value.previewLoading)
+        assertEquals(null, viewModel.state.value.previewErrorMessage)
+        assertEquals("README.md", browser.previewPath)
+    }
+
+    @Test
+    fun `failed reload preserves the last successful preview`() = runTest(dispatcher) {
+        val preview = WorkspaceFilePreview.Text("README.md", "hello", 5, false, true)
+        val browser = FakeWorkspaceFilesBrowser(Result.success(listing()), Result.success(preview))
+        val viewModel = WorkspaceFilesViewModel(browser)
+        viewModel.load("thread-1")
+        advanceUntilIdle()
+        viewModel.open("README.md")
+        advanceUntilIdle()
+
+        browser.previewResult = Result.failure(IllegalStateException("Read timed out"))
+        viewModel.open("README.md")
+        advanceUntilIdle()
+
+        assertEquals(preview, viewModel.state.value.preview)
+        assertEquals("Read timed out", viewModel.state.value.previewErrorMessage)
+        assertFalse(viewModel.state.value.previewLoading)
+    }
 }
 
-private class FakeWorkspaceFilesBrowser(var result: Result<WorkspaceFileListing>) : WorkspaceFilesBrowser {
+private class FakeWorkspaceFilesBrowser(
+    var result: Result<WorkspaceFileListing>,
+    var previewResult: Result<WorkspaceFilePreview> = Result.failure(IllegalStateException("No preview configured")),
+) : WorkspaceFilesBrowser {
     var threadId: String? = null
+    var previewPath: String? = null
     override suspend fun list(threadId: String): WorkspaceFileListing {
         this.threadId = threadId
         return result.getOrThrow()
+    }
+
+    override suspend fun preview(threadId: String, relativePath: String): WorkspaceFilePreview {
+        this.threadId = threadId
+        previewPath = relativePath
+        return previewResult.getOrThrow()
     }
 }
 

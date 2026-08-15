@@ -11,6 +11,7 @@ import de.chennemann.agentic.t3.contract.ServerConfig
 import de.chennemann.agentic.t3.contract.TokenExchangeResponse
 import de.chennemann.agentic.t3.contract.VcsListRefsResult
 import de.chennemann.agentic.t3.contract.WorkspaceEntriesResult
+import de.chennemann.agentic.t3.contract.WorkspaceFileResult
 import kotlinx.coroutines.flow.Flow
 
 const val REQUIRED_T3_SCOPES = "orchestration:read orchestration:operate"
@@ -84,6 +85,14 @@ interface ThreadWorkspaceRpcClient {
 
 interface WorkspaceFilesRpcClient {
     suspend fun listEntries(baseUrl: String, bearerToken: String, cwd: String): WorkspaceEntriesResult
+    suspend fun readFile(baseUrl: String, bearerToken: String, cwd: String, relativePath: String): WorkspaceFileResult
+    suspend fun loadWorkspaceImage(
+        baseUrl: String,
+        bearerToken: String,
+        threadId: String,
+        absolutePath: String,
+        mimeType: String,
+    ): String
 }
 
 interface AttachmentAssetClient {
