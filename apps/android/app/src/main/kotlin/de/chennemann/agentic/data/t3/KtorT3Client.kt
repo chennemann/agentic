@@ -121,6 +121,37 @@ class KtorT3Client(
         payload = T3CommandJson.encodeToJsonElement(ClientOrchestrationCommand.serializer(), command),
     )
 
+    override suspend fun reportClientActivity(
+        baseUrl: String,
+        bearerToken: String,
+        report: ClientActivityReport,
+    ) {
+        rpcCall<JsonElement>(
+            baseUrl = baseUrl,
+            bearerToken = bearerToken,
+            tag = "server.reportClientActivity",
+            payload = buildJsonObject {
+                put("environmentId", report.environmentId)
+                put("clientId", report.clientId)
+                put("clientKind", "mobile")
+                put("visible", report.visible)
+                put("focused", report.visible)
+                put("recentlyInteracted", report.visible)
+                put("appState", report.appState)
+                put("scopes", buildJsonArray {
+                    report.threadIds.sorted().forEach { threadId ->
+                        add(buildJsonObject {
+                            put("type", "thread")
+                            put("threadId", threadId)
+                        })
+                    }
+                })
+                put("ttlMs", 45_000)
+                put("observedAt", report.observedAt)
+            },
+        )
+    }
+
     override suspend fun browseFilesystem(
         baseUrl: String,
         bearerToken: String,

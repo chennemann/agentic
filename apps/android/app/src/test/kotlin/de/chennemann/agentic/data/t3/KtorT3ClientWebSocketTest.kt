@@ -19,6 +19,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Response
@@ -96,6 +97,20 @@ class KtorT3ClientWebSocketTest {
                 ),
             )
         }
+        withTimeout(5_000) {
+            client.reportClientActivity(
+                baseUrl = server.url("/").toString(),
+                bearerToken = "access-token",
+                report = ClientActivityReport(
+                    environmentId = "environment-1",
+                    clientId = "mobile-installation-1",
+                    visible = false,
+                    appState = "background",
+                    threadIds = setOf("thread-2", "thread-1"),
+                    observedAt = "2026-08-16T12:00:00Z",
+                ),
+            )
+        }
         val terminal = withTimeout(5_000) {
             client.openTerminal(
                 baseUrl = server.url("/").toString(),
@@ -128,17 +143,27 @@ class KtorT3ClientWebSocketTest {
         assertEquals("/api/auth/websocket-ticket", ticketRequest?.path)
         assertEquals("Bearer access-token", ticketRequest?.getHeader("authorization"))
         assertEquals("/ws?wsTicket=ticket-value", webSocketRequest?.path)
-        val rpcRequests = List(4) { requests.poll(1, TimeUnit.SECONDS) }
+        val rpcRequests = List(5) { requests.poll(1, TimeUnit.SECONDS) }
         assertEquals(
             listOf(
                 "server.getConfig",
                 "orchestration.dispatchCommand",
+                "server.reportClientActivity",
                 "terminal.open",
                 "orchestration.subscribeShell",
             ),
             rpcRequests.map { it?.get("tag")?.jsonPrimitive?.content },
         )
-        val terminalPayload = rpcRequests[2]?.get("payload")?.jsonObject
+        val activityPayload = rpcRequests[2]?.get("payload")?.jsonObject
+        assertEquals("mobile", activityPayload?.get("clientKind")?.jsonPrimitive?.content)
+        assertEquals(false, activityPayload?.get("visible")?.jsonPrimitive?.content?.toBoolean())
+        assertEquals(
+            listOf("thread-1", "thread-2"),
+            activityPayload?.get("scopes")?.jsonArray?.map {
+                it.jsonObject.getValue("threadId").jsonPrimitive.content
+            },
+        )
+        val terminalPayload = rpcRequests[3]?.get("payload")?.jsonObject
         assertEquals("/workspace/worktree", terminalPayload?.get("cwd")?.jsonPrimitive?.content)
         assertEquals(
             "/workspace",
@@ -184,6 +209,10 @@ class KtorT3ClientWebSocketTest {
 
             "orchestration.dispatchCommand" -> webSocket.send(
                 """{"_tag":"Exit","requestId":"$requestId","exit":{"_tag":"Success","value":{"sequence":8}}}""",
+            )
+
+            "server.reportClientActivity" -> webSocket.send(
+                """{"_tag":"Exit","requestId":"$requestId","exit":{"_tag":"Success","value":null}}""",
             )
 
             "orchestration.subscribeShell" -> webSocket.send(

@@ -27,6 +27,7 @@ import de.chennemann.agentic.navigation.AppNavHost
 import de.chennemann.agentic.ui.theme.MobileTheme
 import de.chennemann.agentic.ui.theme.LocalCodeScale
 import org.koin.android.ext.android.inject
+import de.chennemann.agentic.domain.connection.AppVisibility
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.getValue
@@ -37,6 +38,12 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.foundation.isSystemInDarkTheme
 
 class MainActivity : ComponentActivity() {
+    private val appVisibility: AppVisibility by inject()
+
+    override fun onStop() {
+        appVisibility.setVisible(false)
+        super.onStop()
+    }
     private val connectionSupervisor: ConnectionSupervisor by inject()
     private val sharedTextImports: SharedTextImportRepository by inject()
     private val shortcutRoutes: ShortcutRouteInbox by inject()
@@ -114,6 +121,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        appVisibility.setVisible(true)
         connectionSupervisor.wake()
     }
 }

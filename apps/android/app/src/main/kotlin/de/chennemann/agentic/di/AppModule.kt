@@ -2,6 +2,7 @@ package de.chennemann.agentic.di
 
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import de.chennemann.agentic.data.AndroidNetworkMonitor
+import de.chennemann.agentic.data.AndroidClientInstallationId
 import de.chennemann.agentic.data.auth.CredentialStore
 import de.chennemann.agentic.data.auth.KeystoreCredentialStore
 import de.chennemann.agentic.data.cache.SqlComposerDraftRepository
@@ -35,6 +36,9 @@ import de.chennemann.agentic.data.voice.KeystoreGroqApiKeyStore
 import de.chennemann.agentic.data.voice.KtorGroqTranscriptionClient
 import de.chennemann.agentic.db.AgenticDb
 import de.chennemann.agentic.domain.connection.ConnectionSupervisor
+import de.chennemann.agentic.domain.connection.AppVisibility
+import de.chennemann.agentic.domain.connection.BackgroundAwarenessService
+import de.chennemann.agentic.domain.connection.ClientInstallationId
 import de.chennemann.agentic.domain.connection.ConnectionController
 import de.chennemann.agentic.domain.connection.NetworkMonitor
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
@@ -147,6 +151,7 @@ val appModule = module {
         )
     }
     single<NetworkMonitor> { AndroidNetworkMonitor(get()) }
+    single<ClientInstallationId> { AndroidClientInstallationId(get()) }
     single {
         KtorT3Client(get(), get(named(AppScopeName)))
     }
@@ -258,6 +263,10 @@ val appModule = module {
         )
     }
     single<ConnectionController> { get<ConnectionSupervisor>() }
+    single(createdAtStart = true) {
+        BackgroundAwarenessService(get(), get(), get(), get(), get(), get(named(AppScopeName)))
+    }
+    single<AppVisibility> { get<BackgroundAwarenessService>() }
     viewModel { OnboardingViewModel(get(), get(), get()) }
     viewModel { WorkspaceFilesViewModel(get()) }
     viewModel { TerminalViewModel(get()) }

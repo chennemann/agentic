@@ -45,7 +45,8 @@ data class ExecutionEnvironmentCapabilities(
     val threadDeletion: Boolean = false,
     val threadWorktrees: Boolean = false,
     val workspaceFiles: Boolean = false,
-    val executionSessions: Boolean = false
+    val executionSessions: Boolean = false,
+    val backgroundActivity: Boolean = false
 )
 
 @Serializable

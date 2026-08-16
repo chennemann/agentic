@@ -25,6 +25,15 @@ data class AndroidClientMetadata(
     val deviceType: String = "mobile",
 )
 
+data class ClientActivityReport(
+    val environmentId: String,
+    val clientId: String,
+    val visible: Boolean,
+    val appState: String,
+    val threadIds: Set<String>,
+    val observedAt: String,
+)
+
 interface EnvironmentMetadataClient {
     suspend fun environmentDescriptor(baseUrl: String): ExecutionEnvironmentDescriptor
 }
@@ -53,6 +62,12 @@ interface T3RpcClient {
         bearerToken: String,
         command: ClientOrchestrationCommand,
     ): DispatchResult
+
+    suspend fun reportClientActivity(
+        baseUrl: String,
+        bearerToken: String,
+        report: ClientActivityReport,
+    ): Unit = throw UnsupportedOperationException("Client activity reporting is not supported.")
 
     fun shellStream(
         baseUrl: String,
