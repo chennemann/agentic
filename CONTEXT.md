@@ -14,6 +14,13 @@ _Avoid_: Environment provisioning, server setup
 Installing, starting, hosting, or exposing a T3 environment server.
 _Avoid_: Environment registration, pairing
 
+**Environment connection presentation**:
+The contextual, user-visible state of a registered environment: its connection phase, an optional
+safe display error, and an optional opaque trace ID. The phase determines whether connection is
+available, offline, connecting, reconnecting, connected, or blocked by an error; retry behavior is
+not inferred from error text.
+_Avoid_: Diagnostics snapshot, observability dashboard, raw server error
+
 **Server accommodation requirement**:
 A client-observable capability that the portable T3 contract does not currently expose and that
 must be communicated to the T3 Code project without prescribing its server implementation.
