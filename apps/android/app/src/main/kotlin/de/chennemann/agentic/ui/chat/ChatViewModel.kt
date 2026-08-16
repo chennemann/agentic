@@ -1490,13 +1490,15 @@ class ChatViewModel(
                 orchestration.config.value?.environment?.capabilities?.workspaceFiles == true &&
                 orchestration.config.value.environment.environmentId == environment.active?.id,
             canUseTerminal = orchestration.threadId != null &&
-                orchestration.config.value?.environment?.capabilities?.executionSessions == true &&
+                project != null &&
+                orchestration.config.value?.environment?.environmentId != null &&
                 orchestration.config.value.environment.environmentId == environment.active?.id,
             projectScripts = if (
                 orchestration.threadId != null &&
-                orchestration.config.value?.environment?.capabilities?.executionSessions == true
+                project != null &&
+                orchestration.config.value?.environment?.environmentId == environment.active?.id
             ) {
-                project?.scripts.orEmpty().map {
+                project.scripts.map {
                     ProjectScriptUi(it.id, it.name, it.command, it.runOnWorktreeCreate)
                 }
             } else {

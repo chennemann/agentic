@@ -52,7 +52,6 @@ class TerminalSessionService(
         val environment = requireNotNull(environments.activeEnvironment.value) { "Select an environment first." }
         val config = repository.clientConfig.value.value
         require(config?.environment?.environmentId == environment.id) { "The environment is not ready yet." }
-        require(config.environment.capabilities.executionSessions) { "Terminal sessions are not supported by this server." }
         val shell = requireNotNull(repository.shell.value.value) { "The workspace is unavailable." }
         val thread = requireNotNull(shell.threads.firstOrNull { it.id == threadId }) { "The thread is no longer available." }
         val project = requireNotNull(shell.projects.firstOrNull { it.id == thread.projectId }) { "The project is no longer available." }

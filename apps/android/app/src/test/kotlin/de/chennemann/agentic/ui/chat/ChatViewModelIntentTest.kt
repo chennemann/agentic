@@ -64,6 +64,8 @@ import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.ProviderInstance
 import de.chennemann.agentic.t3.contract.ProviderModel
 import de.chennemann.agentic.t3.contract.ProviderOptionSelection
+import de.chennemann.agentic.t3.contract.ProjectScript
+import de.chennemann.agentic.t3.contract.ProjectScriptIcon
 import de.chennemann.agentic.t3.contract.ProposedPlan
 import de.chennemann.agentic.t3.contract.T3Json
 import de.chennemann.agentic.t3.contract.ServerAuthDescriptor
@@ -94,6 +96,41 @@ import org.junit.jupiter.api.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModelIntentTest {
+    @Test
+    fun `terminal follows React Native workspace availability without capability advertisement`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val shell = requireNotNull(repository.shell.value.value)
+        repository.shell.value = repository.shell.value.copy(
+            value = shell.copy(
+                projects = shell.projects.map { project ->
+                    if (project.id == "project-1") {
+                        project.copy(
+                            scripts = listOf(
+                                ProjectScript("dev", "Dev", "pnpm dev", ProjectScriptIcon.DEBUG, false),
+                            ),
+                        )
+                    } else {
+                        project
+                    }
+                },
+            ),
+        )
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+        )
+
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.canUseTerminal)
+        assertEquals(listOf("dev"), viewModel.state.value.projectScripts.map { it.id })
+    }
+
     @Test
     fun `project destination browsing maps choices and preserves path on guarded failure`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model"))
