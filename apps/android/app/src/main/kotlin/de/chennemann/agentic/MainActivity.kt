@@ -109,6 +109,7 @@ class MainActivity : ComponentActivity() {
     private fun receiveShortcut(intent: Intent?) {
         if (intent?.action != Intent.ACTION_VIEW) return
         shortcutRoutes.receive(ShortcutRouteCodec.parse(intent.dataString))
+        connectionSupervisor.wake()
     }
 
     override fun onStart() {

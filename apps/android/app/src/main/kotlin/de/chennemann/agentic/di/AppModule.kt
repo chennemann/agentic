@@ -11,6 +11,7 @@ import de.chennemann.agentic.data.cache.SqlInterfacePreferencesRepository
 import de.chennemann.agentic.data.cache.SqlEnvironmentCacheInspector
 import de.chennemann.agentic.data.shortcuts.AndroidDynamicShortcutPublisher
 import de.chennemann.agentic.data.shortcuts.AndroidShortcutRouteInbox
+import de.chennemann.agentic.data.notifications.AndroidThreadNotificationPublisher
 import de.chennemann.agentic.data.cache.SqlEnvironmentRepository
 import de.chennemann.agentic.data.cache.SqlModelFavoriteRepository
 import de.chennemann.agentic.data.cache.SqlOrchestrationRepository
@@ -54,6 +55,8 @@ import de.chennemann.agentic.domain.shortcuts.DynamicShortcutPublisher
 import de.chennemann.agentic.domain.shortcuts.ShortcutRouteInbox
 import de.chennemann.agentic.domain.shortcuts.DefaultShortcutCoordinator
 import de.chennemann.agentic.domain.shortcuts.ShortcutCoordinator
+import de.chennemann.agentic.domain.notifications.ThreadNotificationDelivery
+import de.chennemann.agentic.domain.notifications.ThreadNotificationPublisher
 import de.chennemann.agentic.domain.orchestration.DurableCommandDispatcher
 import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.domain.orchestration.PendingCommandReplayer
@@ -187,6 +190,8 @@ val appModule = module {
     single<EnvironmentCacheActions> { EnvironmentCacheService(get(), get(), get(), get()) }
     single<DynamicShortcutPublisher> { AndroidDynamicShortcutPublisher(get()) }
     single<ShortcutRouteInbox> { AndroidShortcutRouteInbox() }
+    single<ThreadNotificationPublisher> { AndroidThreadNotificationPublisher(get()) }
+    single { ThreadNotificationDelivery(get()) }
     single<ShortcutCoordinator>(createdAtStart = true) {
         DefaultShortcutCoordinator(get(), get(), get(), get(), get(), get(), get(named(AppScopeName)))
     }
