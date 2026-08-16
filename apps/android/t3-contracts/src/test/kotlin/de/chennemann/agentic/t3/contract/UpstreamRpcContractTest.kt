@@ -9,6 +9,18 @@ import org.junit.jupiter.api.Test
 
 class UpstreamRpcContractTest {
     @Test
+    fun `project scripts decode as executable provider-neutral metadata`() {
+        val project = T3Json.decodeFromString<OrchestrationProject>(
+            """{"id":"project-1","title":"Agentic","workspaceRoot":"/workspace","defaultModelSelection":null,"createdAt":"now","updatedAt":"now","scripts":[{"id":"dev","name":"Dev","command":"pnpm dev","icon":"debug","runOnWorktreeCreate":false,"futureHint":"ignored"}]}"""
+        )
+
+        assertEquals(
+            ProjectScript("dev", "Dev", "pnpm dev", ProjectScriptIcon.DEBUG, false),
+            project.scripts.single()
+        )
+    }
+
+    @Test
     fun `terminal attach snapshot tolerates additive provider-neutral fields`() {
         val event = T3Json.decodeFromString<TerminalAttachEvent>(
             """{"type":"snapshot","future":"ignored","snapshot":{"threadId":"thread-1","terminalId":"term-1","cwd":"/workspace","worktreePath":null,"status":"running","pid":42,"history":"ready","exitCode":null,"exitSignal":null,"label":"shell","updatedAt":"now","futureState":true}}"""

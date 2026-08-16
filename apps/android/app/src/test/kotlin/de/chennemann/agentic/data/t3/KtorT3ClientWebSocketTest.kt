@@ -96,6 +96,20 @@ class KtorT3ClientWebSocketTest {
                 ),
             )
         }
+        val terminal = withTimeout(5_000) {
+            client.openTerminal(
+                baseUrl = server.url("/").toString(),
+                bearerToken = "access-token",
+                threadId = "thread-1",
+                terminalId = "term-2",
+                cwd = "/workspace/worktree",
+                worktreePath = "/workspace/worktree",
+                env = mapOf(
+                    "T3CODE_PROJECT_ROOT" to "/workspace",
+                    "T3CODE_WORKTREE_PATH" to "/workspace/worktree",
+                ),
+            )
+        }
         val item = withTimeout(5_000) {
             client.shellStream(
                 baseUrl = server.url("/").toString(),
@@ -108,18 +122,27 @@ class KtorT3ClientWebSocketTest {
         assertEquals("environment-1", config.environment.environmentId)
         assertEquals(8, dispatch.sequence)
         assertEquals(OrchestrationShellStreamItem.Synchronized, item)
+        assertEquals("term-2", terminal.terminalId)
         val ticketRequest = server.takeRequest(1, TimeUnit.SECONDS)
         val webSocketRequest = server.takeRequest(1, TimeUnit.SECONDS)
         assertEquals("/api/auth/websocket-ticket", ticketRequest?.path)
         assertEquals("Bearer access-token", ticketRequest?.getHeader("authorization"))
         assertEquals("/ws?wsTicket=ticket-value", webSocketRequest?.path)
+        val rpcRequests = List(4) { requests.poll(1, TimeUnit.SECONDS) }
         assertEquals(
             listOf(
                 "server.getConfig",
                 "orchestration.dispatchCommand",
+                "terminal.open",
                 "orchestration.subscribeShell",
             ),
-            List(3) { requests.poll(1, TimeUnit.SECONDS)?.get("tag")?.jsonPrimitive?.content },
+            rpcRequests.map { it?.get("tag")?.jsonPrimitive?.content },
+        )
+        val terminalPayload = rpcRequests[2]?.get("payload")?.jsonObject
+        assertEquals("/workspace/worktree", terminalPayload?.get("cwd")?.jsonPrimitive?.content)
+        assertEquals(
+            "/workspace",
+            terminalPayload?.get("env")?.jsonObject?.get("T3CODE_PROJECT_ROOT")?.jsonPrimitive?.content,
         )
         assertTrue(acknowledged.await(1, TimeUnit.SECONDS))
         assertTrue(interrupted.await(1, TimeUnit.SECONDS))
@@ -165,6 +188,10 @@ class KtorT3ClientWebSocketTest {
 
             "orchestration.subscribeShell" -> webSocket.send(
                 """{"_tag":"Chunk","requestId":"$requestId","values":[{"kind":"synchronized"}]}""",
+            )
+
+            "terminal.open" -> webSocket.send(
+                """{"_tag":"Exit","requestId":"$requestId","exit":{"_tag":"Success","value":{"threadId":"thread-1","terminalId":"term-2","cwd":"/workspace/worktree","worktreePath":"/workspace/worktree","status":"running","pid":42,"history":"","exitCode":null,"exitSignal":null,"label":"Dev","updatedAt":"now"}}}""",
             )
         }
     }

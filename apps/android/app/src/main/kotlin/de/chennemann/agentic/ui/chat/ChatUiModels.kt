@@ -19,6 +19,7 @@ data class ChatUiState(
     val canDeleteThread: Boolean = false,
     val canBrowseFiles: Boolean = false,
     val canUseTerminal: Boolean = false,
+    val projectScripts: List<ProjectScriptUi> = emptyList(),
     val renameDialog: RenameThreadUi? = null,
     val environmentRemoval: EnvironmentRemovalUi? = null,
     val projectCreation: ProjectCreationUi? = null,
@@ -35,6 +36,13 @@ data class ChatUiState(
     val durableWork: List<DurableWorkUi> = emptyList(),
     val groqSettings: GroqSettingsUiState = GroqSettingsUiState(),
     val latestTurnChanges: LatestTurnChangesUiState = LatestTurnChangesUiState(),
+)
+
+data class ProjectScriptUi(
+    val id: String,
+    val name: String,
+    val command: String,
+    val setup: Boolean,
 )
 
 data class ThreadSnoozeUi(

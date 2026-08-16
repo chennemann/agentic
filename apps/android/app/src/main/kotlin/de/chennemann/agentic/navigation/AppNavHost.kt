@@ -21,6 +21,8 @@ import de.chennemann.agentic.ui.files.WorkspaceFilesScreen
 import de.chennemann.agentic.ui.files.WorkspaceFilesViewModel
 import de.chennemann.agentic.ui.terminal.TerminalScreen
 import de.chennemann.agentic.ui.terminal.TerminalViewModel
+import de.chennemann.agentic.t3.contract.ProjectScript
+import de.chennemann.agentic.t3.contract.ProjectScriptIcon
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.context.GlobalContext
 
@@ -74,6 +76,20 @@ fun AppNavHost() {
                         },
                         onOpenFiles = { threadId -> stack.add(WorkspaceFilesRoute(threadId)) },
                         onOpenTerminal = { threadId -> stack.add(TerminalRoute(threadId)) },
+                        onRunProjectScript = { threadId, script ->
+                            stack.add(
+                                TerminalRoute(
+                                    threadId,
+                                    ProjectScript(
+                                        id = script.id,
+                                        name = script.name,
+                                        command = script.command,
+                                        icon = ProjectScriptIcon.PLAY,
+                                        runOnWorktreeCreate = script.setup,
+                                    ),
+                                ),
+                            )
+                        },
                     )
                 }
 
@@ -93,7 +109,7 @@ fun AppNavHost() {
                 is TerminalRoute -> NavEntry(route) {
                     val viewModel: TerminalViewModel = koinViewModel()
                     val state by viewModel.state.collectAsStateWithLifecycle()
-                    LaunchedEffect(route.threadId) { viewModel.load(route.threadId) }
+                    LaunchedEffect(route) { viewModel.load(route.threadId, route.script) }
                     TerminalScreen(
                         state = state,
                         onBack = { stack.removeLastOrNull() },

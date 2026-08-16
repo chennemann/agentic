@@ -266,6 +266,38 @@ data class ProviderOptionSelection(val id: String, val value: JsonPrimitive)
 data class ModelSelection(val instanceId: String, val model: String, val options: List<ProviderOptionSelection>? = null)
 
 @Serializable
+enum class ProjectScriptIcon {
+    @SerialName("play")
+    PLAY,
+
+    @SerialName("test")
+    TEST,
+
+    @SerialName("lint")
+    LINT,
+
+    @SerialName("configure")
+    CONFIGURE,
+
+    @SerialName("build")
+    BUILD,
+
+    @SerialName("debug")
+    DEBUG
+}
+
+@Serializable
+data class ProjectScript(
+    val id: String,
+    val name: String,
+    val command: String,
+    val icon: ProjectScriptIcon,
+    val runOnWorktreeCreate: Boolean,
+    val previewUrl: String? = null,
+    val autoOpenPreview: Boolean? = null
+)
+
+@Serializable
 data class OrchestrationProject(
     val id: String,
     val title: String,
@@ -273,7 +305,7 @@ data class OrchestrationProject(
     val defaultModelSelection: ModelSelection? = null,
     val createdAt: String,
     val updatedAt: String,
-    val scripts: List<JsonElement> = emptyList()
+    val scripts: List<ProjectScript> = emptyList()
 )
 
 @Serializable

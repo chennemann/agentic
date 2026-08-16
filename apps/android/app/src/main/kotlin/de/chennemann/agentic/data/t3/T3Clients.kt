@@ -101,10 +101,10 @@ interface WorkspaceFilesRpcClient {
 interface TerminalRpcClient {
     fun terminalMetadata(baseUrl: String, bearerToken: String): Flow<TerminalMetadataEvent>
     fun attachTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String): Flow<TerminalAttachEvent>
-    suspend fun openTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cwd: String): TerminalSessionSnapshot
+    suspend fun openTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cwd: String, worktreePath: String?, env: Map<String, String>): TerminalSessionSnapshot
     suspend fun writeTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, data: String)
     suspend fun clearTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String)
-    suspend fun restartTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cwd: String): TerminalSessionSnapshot
+    suspend fun restartTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cwd: String, worktreePath: String?, env: Map<String, String>): TerminalSessionSnapshot
     suspend fun closeTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String)
 }
 

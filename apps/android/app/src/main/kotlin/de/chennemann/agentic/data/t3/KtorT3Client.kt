@@ -184,9 +184,13 @@ class KtorT3Client(
             buildJsonObject { put("threadId", threadId); put("terminalId", terminalId) },
         )
 
-    override suspend fun openTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cwd: String) =
+    override suspend fun openTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cwd: String, worktreePath: String?, env: Map<String, String>) =
         rpcCall<de.chennemann.agentic.t3.contract.TerminalSessionSnapshot>(
-            baseUrl, bearerToken, "terminal.open", terminalPayload(threadId, terminalId) { put("cwd", cwd) },
+            baseUrl, bearerToken, "terminal.open", terminalPayload(threadId, terminalId) {
+                put("cwd", cwd)
+                worktreePath?.let { put("worktreePath", it) }
+                put("env", buildJsonObject { env.forEach { (key, value) -> put(key, value) } })
+            },
         )
 
     override suspend fun writeTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, data: String) {
@@ -197,9 +201,15 @@ class KtorT3Client(
         rpcCall<JsonElement>(baseUrl, bearerToken, "terminal.clear", terminalPayload(threadId, terminalId))
     }
 
-    override suspend fun restartTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cwd: String) =
+    override suspend fun restartTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cwd: String, worktreePath: String?, env: Map<String, String>) =
         rpcCall<de.chennemann.agentic.t3.contract.TerminalSessionSnapshot>(
-            baseUrl, bearerToken, "terminal.restart", terminalPayload(threadId, terminalId) { put("cwd", cwd); put("cols", 80); put("rows", 24) },
+            baseUrl, bearerToken, "terminal.restart", terminalPayload(threadId, terminalId) {
+                put("cwd", cwd)
+                worktreePath?.let { put("worktreePath", it) }
+                put("cols", 80)
+                put("rows", 24)
+                put("env", buildJsonObject { env.forEach { (key, value) -> put(key, value) } })
+            },
         )
 
     override suspend fun closeTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String) {

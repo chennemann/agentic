@@ -2,6 +2,7 @@ package de.chennemann.agentic.navigation
 
 import androidx.navigation3.runtime.NavKey
 import kotlinx.serialization.Serializable
+import de.chennemann.agentic.t3.contract.ProjectScript
 
 @Serializable
 sealed interface AppRoute : NavKey
@@ -16,4 +17,4 @@ data object ChatRoute : AppRoute
 data class WorkspaceFilesRoute(val threadId: String) : AppRoute
 
 @Serializable
-data class TerminalRoute(val threadId: String) : AppRoute
+data class TerminalRoute(val threadId: String, val script: ProjectScript? = null) : AppRoute

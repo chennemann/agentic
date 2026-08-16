@@ -31,6 +31,8 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -98,6 +100,7 @@ fun T3ChatScreen(
     modifier: Modifier = Modifier,
     onOpenFiles: (String) -> Unit = {},
     onOpenTerminal: (String) -> Unit = {},
+    onRunProjectScript: (String, ProjectScriptUi) -> Unit = { _, _ -> },
 ) {
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
@@ -110,6 +113,7 @@ fun T3ChatScreen(
     var historyDragActive by remember(state.threadId) { mutableStateOf(false) }
     var composerHeightPx by remember { mutableIntStateOf(0) }
     var consumedImeHeightPx by remember(state.threadId) { mutableIntStateOf(0) }
+    var terminalMenuExpanded by remember(state.threadId) { mutableStateOf(false) }
     val density = LocalDensity.current
     val imeInsets = WindowInsets.ime
     val imeHeightPx = imeInsets.getBottom(density)
@@ -366,11 +370,49 @@ fun T3ChatScreen(
                     }
                 }
                 state.threadId?.takeIf { state.canUseTerminal }?.let { threadId ->
-                    OutlinedButton(
-                        onClick = { onOpenTerminal(threadId) },
-                        modifier = Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 8.dp).zIndex(1f),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                    ) { Text("Terminal") }
+                    Box(modifier = Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 8.dp).zIndex(1f)) {
+                        OutlinedButton(
+                            onClick = {
+                                if (state.projectScripts.isEmpty()) {
+                                    onOpenTerminal(threadId)
+                                } else {
+                                    terminalMenuExpanded = true
+                                }
+                            },
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                        ) { Text("Terminal") }
+                        DropdownMenu(
+                            expanded = terminalMenuExpanded,
+                            onDismissRequest = { terminalMenuExpanded = false },
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Open terminal") },
+                                onClick = {
+                                    terminalMenuExpanded = false
+                                    onOpenTerminal(threadId)
+                                },
+                            )
+                            state.projectScripts.forEach { script ->
+                                DropdownMenuItem(
+                                    text = {
+                                        Column {
+                                            Text(if (script.setup) "${script.name} (setup)" else script.name)
+                                            Text(
+                                                script.command,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                style = MaterialTheme.typography.bodySmall,
+                                            )
+                                        }
+                                    },
+                                    onClick = {
+                                        terminalMenuExpanded = false
+                                        onRunProjectScript(threadId, script)
+                                    },
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -1492,6 +1492,16 @@ class ChatViewModel(
             canUseTerminal = orchestration.threadId != null &&
                 orchestration.config.value?.environment?.capabilities?.executionSessions == true &&
                 orchestration.config.value.environment.environmentId == environment.active?.id,
+            projectScripts = if (
+                orchestration.threadId != null &&
+                orchestration.config.value?.environment?.capabilities?.executionSessions == true
+            ) {
+                project?.scripts.orEmpty().map {
+                    ProjectScriptUi(it.id, it.name, it.command, it.runOnWorktreeCreate)
+                }
+            } else {
+                emptyList()
+            },
             renameDialog = if (local.renameVisible) {
                 RenameThreadUi(local.renameDraft, local.renameSaving)
             } else {

@@ -10,6 +10,7 @@ import de.chennemann.agentic.t3.contract.TerminalAttachEvent
 import de.chennemann.agentic.t3.contract.TerminalMetadataEvent
 import de.chennemann.agentic.t3.contract.TerminalSessionSnapshot
 import de.chennemann.agentic.t3.contract.TerminalSummary
+import de.chennemann.agentic.t3.contract.ProjectScript
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -29,9 +30,14 @@ class TerminalViewModel(private val sessions: TerminalSessions) : ViewModel() {
     private var context: TerminalContext? = null
     private var inventoryJob: Job? = null
     private var attachJob: Job? = null
+    private var pendingScript: ProjectScript? = null
 
-    fun load(threadId: String) {
-        if (context?.threadId == threadId) return
+    fun load(threadId: String, script: ProjectScript? = null) {
+        pendingScript = script
+        if (context?.threadId == threadId) {
+            launchPendingScript()
+            return
+        }
         inventoryJob?.cancel()
         inventoryJob = viewModelScope.launch {
             runCatching { sessions.context(threadId) }
@@ -61,7 +67,11 @@ class TerminalViewModel(private val sessions: TerminalSessions) : ViewModel() {
                 val selected = mutableState.value.selectedId?.takeIf(current::containsKey) ?: preferredTerminal(terminals)
                 val selectionChanged = selected != mutableState.value.selectedId
                 mutableState.value = mutableState.value.copy(terminals = terminals, selectedId = selected, status = "ready")
-                if (selected != null && (attachJob == null || selectionChanged)) select(selected)
+                if (pendingScript != null) {
+                    launchPendingScript()
+                } else if (selected != null && (attachJob == null || selectionChanged)) {
+                    select(selected)
+                }
             }
         }.onFailure(::fail)
     }
@@ -77,7 +87,12 @@ class TerminalViewModel(private val sessions: TerminalSessions) : ViewModel() {
     fun select(terminalId: String, initial: TerminalSessionSnapshot? = null) {
         val loaded = context ?: return
         attachJob?.cancel()
-        mutableState.value = mutableState.value.copy(selectedId = terminalId, output = initial?.history.orEmpty(), errorMessage = null)
+        mutableState.value = mutableState.value.copy(
+            selectedId = terminalId,
+            output = initial?.history.orEmpty(),
+            status = initial?.status ?: mutableState.value.status,
+            errorMessage = null,
+        )
         attachJob = viewModelScope.launch {
             runCatching {
                 sessions.attach(loaded, terminalId).collect(::applyEvent)
@@ -95,6 +110,17 @@ class TerminalViewModel(private val sessions: TerminalSessions) : ViewModel() {
     fun clear() = mutate { loaded, id -> sessions.clear(loaded, id) }
     fun restart() = mutate { loaded, id -> applySnapshot(sessions.restart(loaded, id)) }
     fun close() = mutate { loaded, id -> sessions.close(loaded, id) }
+
+    private fun launchPendingScript() {
+        val loaded = context ?: return
+        val script = pendingScript ?: return
+        pendingScript = null
+        viewModelScope.launch {
+            runCatching { sessions.launchScript(loaded, mutableState.value.terminals, script) }
+                .onSuccess { (terminalId, snapshot) -> select(terminalId, snapshot) }
+                .onFailure(::fail)
+        }
+    }
 
     private fun mutate(block: suspend (TerminalContext, String) -> Unit) {
         val loaded = context ?: return
