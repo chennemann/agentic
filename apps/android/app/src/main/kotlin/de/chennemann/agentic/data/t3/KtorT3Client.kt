@@ -574,24 +574,9 @@ private class EffectRpcConnection(
         val exit = message["exit"]?.jsonObject ?: throw T3TransportException.InvalidResponse()
         return when (exit.tag()) {
             "Success" -> exit["value"] ?: JsonNull
-            "Failure" -> throw rpcFailure(exit["cause"] as? JsonArray)
+            "Failure" -> throw decodeRpcFailure(exit["cause"] as? JsonArray)
             else -> throw T3TransportException.InvalidResponse()
         }
-    }
-
-    private fun rpcFailure(cause: JsonArray?): T3TransportException {
-        val error = cause
-            ?.firstOrNull { it.jsonObject["_tag"]?.jsonPrimitive?.contentOrNull == "Fail" }
-            ?.jsonObject
-            ?.get("error")
-            ?.jsonObject
-        if (error?.get("_tag")?.jsonPrimitive?.contentOrNull == "EnvironmentAuthorizationError") {
-            return T3TransportException.Authentication(403)
-        }
-        val message = error?.get("message")?.jsonPrimitive?.contentOrNull
-            ?.let(::redactTransportText)
-            ?: "T3 RPC request failed."
-        return T3TransportException.Rpc(message)
     }
 
     private fun JsonObject.tag(): String? = get("_tag")?.jsonPrimitive?.contentOrNull
@@ -604,4 +589,21 @@ private class EffectRpcConnection(
     private companion object {
         const val HeartbeatMillis = 10_000L
     }
+}
+
+internal fun decodeRpcFailure(cause: JsonArray?): T3TransportException {
+    val error = cause
+        ?.firstOrNull { it.jsonObject["_tag"]?.jsonPrimitive?.contentOrNull == "Fail" }
+        ?.jsonObject
+        ?.get("error")
+        ?.jsonObject
+    if (error?.get("_tag")?.jsonPrimitive?.contentOrNull == "EnvironmentAuthorizationError") {
+        val requiredScope = error["requiredScope"]?.jsonPrimitive?.contentOrNull
+            ?: return T3TransportException.Rpc("T3 authorization failed.")
+        return T3TransportException.Authorization(requiredScope)
+    }
+    val message = error?.get("message")?.jsonPrimitive?.contentOrNull
+        ?.let(::redactTransportText)
+        ?: "T3 RPC request failed."
+    return T3TransportException.Rpc(message)
 }

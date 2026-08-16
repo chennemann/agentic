@@ -119,6 +119,16 @@ sealed class T3TransportException(
         val statusCode: Int,
     ) : T3TransportException("T3 authentication is required.")
 
+    class Authorization(
+        val requiredScope: String,
+    ) : T3TransportException(
+        if (requiredScope == "terminal:operate") {
+            "Terminal access requires pairing this environment again."
+        } else {
+            "T3 authorization is missing the required scope: $requiredScope."
+        },
+    )
+
     class Http(
         val statusCode: Int,
     ) : T3TransportException("T3 request failed with HTTP $statusCode.")
