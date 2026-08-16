@@ -96,7 +96,7 @@ class UpstreamRpcContractTest {
     @Test
     fun `subscription chunks decode upstream stream items`() {
         val item = T3Json.decodeFromString<OrchestrationShellStreamItem>(
-            """{"kind":"synchronized"}"""
+            """{"kind":"synchronized","futureField":{"nested":true}}"""
         )
 
         assertEquals(OrchestrationShellStreamItem.Synchronized, item)

@@ -214,6 +214,13 @@ class ConnectionSupervisor(
                 throw cause
             } catch (cause: T3TransportException.Authentication) {
                 throw cause
+            } catch (cause: T3TransportException.UnsupportedStreamItem) {
+                forceSnapshot = true
+                retryDelay = InitialRetryMillis
+                consecutiveFailures = 0
+                exposeStreamCompatibilityFailure(cause)
+                delay(retryDelay)
+                continue
             } catch (cause: Exception) {
                 if (!network.online.value) awaitCancellation()
                 consecutiveFailures++
@@ -274,6 +281,12 @@ class ConnectionSupervisor(
                 sequence = null
                 retryDelay = InitialRetryMillis
                 continue
+            } catch (cause: T3TransportException.UnsupportedStreamItem) {
+                sequence = null
+                retryDelay = InitialRetryMillis
+                exposeStreamCompatibilityFailure(cause)
+                delay(retryDelay)
+                continue
             } catch (_: Exception) {
                 if (!network.online.value) return
                 delay(retryDelay)
@@ -286,6 +299,13 @@ class ConnectionSupervisor(
         mutableState.value = ConnectionState.Live
         environments.markConnected(environment.id, System.currentTimeMillis())
         replayPendingCommands(environment)
+    }
+
+    private fun exposeStreamCompatibilityFailure(cause: T3TransportException.UnsupportedStreamItem) {
+        mutableState.value = ConnectionState.Backoff(
+            retryInMillis = InitialRetryMillis,
+            message = cause.message ?: "T3 returned an unsupported stream item.",
+        )
     }
 
     private class SequenceGap : Exception("Projection sequence gap detected.")

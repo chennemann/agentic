@@ -150,6 +150,10 @@ sealed class T3TransportException(
 
     class InvalidResponse : T3TransportException("T3 returned an invalid RPC response.")
 
+    class UnsupportedStreamItem(
+        val kind: String,
+    ) : T3TransportException("T3 returned an unsupported stream item kind: $kind.")
+
     class Rpc(
         message: String,
         val traceId: String? = null,

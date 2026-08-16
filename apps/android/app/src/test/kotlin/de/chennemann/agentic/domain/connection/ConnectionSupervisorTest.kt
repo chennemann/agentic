@@ -336,6 +336,39 @@ class ConnectionSupervisorTest {
     }
 
     @Test
+    fun `unknown shell item preserves cache and retries from a snapshot`() = runTest {
+        val transport = SupervisorTransport(unknownFirstShellStream = true)
+        val orchestration = SupervisorOrchestrationRepository().apply {
+            shell.value = ProjectionState(
+                value = OrchestrationShellSnapshot(emptyList(), emptyList(), 12, "cached"),
+                sequence = 12,
+                source = ProjectionSource.CACHE,
+            )
+        }
+        val supervisor = ConnectionSupervisor(
+            environments = SupervisorEnvironmentRepository(savedEnvironment("one")),
+            orchestration = orchestration,
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            rpc = transport,
+            network = OnlineMonitor,
+            pendingCommands = NoOpPendingCommandReplayer,
+            scope = backgroundScope,
+        )
+        runCurrent()
+
+        assertTrue(supervisor.state.value is ConnectionState.Backoff)
+        assertEquals(12, orchestration.shell.value.sequence)
+        assertEquals(listOf(12L), transport.shellAfterSequences)
+
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertEquals(listOf(12L, null), transport.shellAfterSequences)
+        assertEquals(ConnectionState.Live, supervisor.state.value)
+    }
+
+    @Test
     fun `completed focused thread stream resumes without dropping shell connection`() = runTest {
         val transport = SupervisorTransport(completeFirstThreadStream = true)
         val orchestration = SupervisorOrchestrationRepository()
@@ -384,6 +417,33 @@ class ConnectionSupervisorTest {
         assertEquals(1, transport.descriptorRequests)
         assertEquals(1, transport.threadRequests.size)
         assertEquals(2, transport.threadStreamRequests)
+        assertEquals(ConnectionState.Live, supervisor.state.value)
+    }
+
+    @Test
+    fun `unknown thread item is visible and retries from a snapshot`() = runTest {
+        val transport = SupervisorTransport(unknownFirstThreadStream = true)
+        val orchestration = SupervisorOrchestrationRepository()
+        val supervisor = ConnectionSupervisor(
+            environments = SupervisorEnvironmentRepository(savedEnvironment("one")),
+            orchestration = orchestration,
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            rpc = transport,
+            network = OnlineMonitor,
+            pendingCommands = NoOpPendingCommandReplayer,
+            scope = backgroundScope,
+        )
+        runCurrent()
+        orchestration.focusedThreadId.value = "thread-one"
+        runCurrent()
+
+        assertTrue(supervisor.state.value is ConnectionState.Backoff)
+
+        advanceTimeBy(1_000)
+        runCurrent()
+
+        assertEquals(listOf(null, null), transport.threadAfterSequences)
         assertEquals(ConnectionState.Live, supervisor.state.value)
     }
 
@@ -553,8 +613,10 @@ private class SupervisorTransport(
     private val failFirstDescriptor: Boolean = false,
     private val completeFirstShellStream: Boolean = false,
     private val failFirstShellStream: Boolean = false,
+    private val unknownFirstShellStream: Boolean = false,
     private val completeFirstThreadStream: Boolean = false,
     private val failFirstThreadStream: Boolean = false,
+    private val unknownFirstThreadStream: Boolean = false,
     private val shellThreads: List<OrchestrationThreadShell> = emptyList(),
 ) : EnvironmentMetadataClient,
     T3RpcClient {
@@ -565,6 +627,8 @@ private class SupervisorTransport(
     var shellStreamRequests = 0
     var threadStreamRequests = 0
     var cancelledStreams = 0
+    val shellAfterSequences = mutableListOf<Long?>()
+    val threadAfterSequences = mutableListOf<Long?>()
 
     override suspend fun environmentDescriptor(baseUrl: String): ExecutionEnvironmentDescriptor {
         descriptorRequests++
@@ -610,11 +674,16 @@ private class SupervisorTransport(
         requestCompletionMarker: Boolean,
     ): Flow<OrchestrationShellStreamItem> {
         shellStreamRequests++
+        shellAfterSequences += afterSequence
         shellBaseUrls += baseUrl
         val snapshot = OrchestrationShellStreamItem.Snapshot(
             OrchestrationShellSnapshot(emptyList(), shellThreads, 0, "2026-01-01T00:00:00Z"),
         )
         return when {
+            unknownFirstShellStream && shellStreamRequests == 1 -> flow {
+                throw T3TransportException.UnsupportedStreamItem("future-shell-kind")
+            }
+
             completeFirstShellStream && shellStreamRequests == 1 ->
                 flowOf(snapshot, OrchestrationShellStreamItem.Synchronized)
 
@@ -636,9 +705,14 @@ private class SupervisorTransport(
         requestCompletionMarker: Boolean,
     ): Flow<OrchestrationThreadStreamItem> {
         threadStreamRequests++
+        threadAfterSequences += afterSequence
         if (afterSequence == null) threadRequests += threadId
         val snapshot = OrchestrationThreadStreamItem.Snapshot(threadSnapshot(threadId))
         return when {
+            unknownFirstThreadStream && threadStreamRequests == 1 -> flow {
+                throw T3TransportException.UnsupportedStreamItem("future-thread-kind")
+            }
+
             completeFirstThreadStream && threadStreamRequests == 1 ->
                 flowOf(snapshot, OrchestrationThreadStreamItem.Synchronized)
 

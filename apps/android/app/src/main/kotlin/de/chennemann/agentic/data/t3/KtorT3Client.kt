@@ -303,6 +303,7 @@ class KtorT3Client(
         bearerToken = bearerToken,
         tag = "orchestration.subscribeShell",
         payload = subscriptionPayload(afterSequence, requestCompletionMarker),
+        supportedKinds = ShellStreamKinds,
     )
 
     override fun threadStream(
@@ -316,6 +317,7 @@ class KtorT3Client(
         bearerToken = bearerToken,
         tag = "orchestration.subscribeThread",
         payload = subscriptionPayload(afterSequence, requestCompletionMarker, threadId),
+        supportedKinds = ThreadStreamKinds,
     )
 
     private suspend inline fun <reified T> rpcCall(
@@ -332,9 +334,11 @@ class KtorT3Client(
         bearerToken: String,
         tag: String,
         payload: JsonElement,
+        supportedKinds: Set<String>? = null,
     ): Flow<T> = flow {
         transport {
             connection(baseUrl, bearerToken).stream(tag, payload).collect {
+                supportedKinds?.let { kinds -> requireSupportedStreamKind(it, kinds) }
                 emit(T3Json.decodeFromJsonElement(it))
             }
         }
@@ -445,6 +449,25 @@ class KtorT3Client(
         val baseUrl: String,
         val bearerToken: String,
     )
+
+    private companion object {
+        val ShellStreamKinds = setOf(
+            "snapshot",
+            "project-upserted",
+            "project-removed",
+            "thread-upserted",
+            "thread-removed",
+            "synchronized",
+        )
+        val ThreadStreamKinds = setOf("snapshot", "event", "synchronized")
+    }
+}
+
+internal fun requireSupportedStreamKind(item: JsonElement, supportedKinds: Set<String>) {
+    val kind = item.jsonObject["kind"]?.jsonPrimitive?.content
+    if (kind != null && kind !in supportedKinds) {
+        throw T3TransportException.UnsupportedStreamItem(kind)
+    }
 }
 
 private class EffectRpcConnection(
