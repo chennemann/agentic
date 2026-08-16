@@ -298,26 +298,77 @@ fun T3ChatScreen(
                     }
                 }
 
-                OutlinedButton(
-                    onClick = {
-                        onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.NAVIGATION))
-                    },
+                Row(
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .padding(start = 8.dp, top = 8.dp)
                         .zIndex(1f),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = MaterialTheme.colorScheme.primary,
-                    ),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
-                    contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Icon(
-                        imageVector = Icons.Tune,
-                        contentDescription = "Open navigation and settings",
-                        modifier = Modifier.size(20.dp),
-                    )
+                    OutlinedButton(
+                        onClick = {
+                            onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.NAVIGATION))
+                        },
+                        modifier = Modifier.testTag(NavigationControlTestTag),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            containerColor = MaterialTheme.colorScheme.surface,
+                            contentColor = MaterialTheme.colorScheme.primary,
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 8.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Tune,
+                            contentDescription = "Open navigation and settings",
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+
+                    state.threadId?.takeIf { state.canUseTerminal }?.let { threadId ->
+                        Box(modifier = Modifier.testTag(TerminalControlTestTag)) {
+                            OutlinedButton(
+                                onClick = {
+                                    if (state.projectScripts.isEmpty()) {
+                                        onOpenTerminal(threadId)
+                                    } else {
+                                        terminalMenuExpanded = true
+                                    }
+                                },
+                                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            ) { Text("Terminal") }
+                            DropdownMenu(
+                                expanded = terminalMenuExpanded,
+                                onDismissRequest = { terminalMenuExpanded = false },
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Open terminal") },
+                                    onClick = {
+                                        terminalMenuExpanded = false
+                                        onOpenTerminal(threadId)
+                                    },
+                                )
+                                state.projectScripts.forEach { script ->
+                                    DropdownMenuItem(
+                                        text = {
+                                            Column {
+                                                Text(if (script.setup) "${script.name} (setup)" else script.name)
+                                                Text(
+                                                    script.command,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            terminalMenuExpanded = false
+                                            onRunProjectScript(threadId, script)
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                    }
                 }
 
                 state.projectLabel
@@ -367,51 +418,6 @@ fun T3ChatScreen(
                             modifier = Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = 8.dp).zIndex(1f),
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                         ) { Text("Files") }
-                    }
-                }
-                state.threadId?.takeIf { state.canUseTerminal }?.let { threadId ->
-                    Box(modifier = Modifier.align(Alignment.TopStart).padding(start = 8.dp, top = 8.dp).zIndex(1f)) {
-                        OutlinedButton(
-                            onClick = {
-                                if (state.projectScripts.isEmpty()) {
-                                    onOpenTerminal(threadId)
-                                } else {
-                                    terminalMenuExpanded = true
-                                }
-                            },
-                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                        ) { Text("Terminal") }
-                        DropdownMenu(
-                            expanded = terminalMenuExpanded,
-                            onDismissRequest = { terminalMenuExpanded = false },
-                        ) {
-                            DropdownMenuItem(
-                                text = { Text("Open terminal") },
-                                onClick = {
-                                    terminalMenuExpanded = false
-                                    onOpenTerminal(threadId)
-                                },
-                            )
-                            state.projectScripts.forEach { script ->
-                                DropdownMenuItem(
-                                    text = {
-                                        Column {
-                                            Text(if (script.setup) "${script.name} (setup)" else script.name)
-                                            Text(
-                                                script.command,
-                                                maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis,
-                                                style = MaterialTheme.typography.bodySmall,
-                                            )
-                                        }
-                                    },
-                                    onClick = {
-                                        terminalMenuExpanded = false
-                                        onRunProjectScript(threadId, script)
-                                    },
-                                )
-                            }
-                        }
                     }
                 }
             }
@@ -1067,3 +1073,5 @@ private const val LayoutSettleDelayMillis = 16L
 
 internal const val ChatTimelineTestTag = "chat-timeline"
 internal const val FollowLatestTestTag = "follow-latest"
+internal const val NavigationControlTestTag = "navigation-control"
+internal const val TerminalControlTestTag = "terminal-control"

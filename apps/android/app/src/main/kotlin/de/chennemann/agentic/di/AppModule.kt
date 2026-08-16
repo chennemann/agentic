@@ -20,6 +20,7 @@ import de.chennemann.agentic.data.t3.EnvironmentMetadataClient
 import de.chennemann.agentic.data.t3.KtorT3Client
 import de.chennemann.agentic.data.t3.ProjectDestinationRpcClient
 import de.chennemann.agentic.data.t3.T3RpcClient
+import de.chennemann.agentic.data.t3.TerminalRpcClient
 import de.chennemann.agentic.data.t3.ThreadWorkspaceRpcClient
 import de.chennemann.agentic.data.t3.WorkspaceFilesRpcClient
 import de.chennemann.agentic.domain.orchestration.WorkspaceFilesBrowser
@@ -149,6 +150,7 @@ val appModule = module {
     single<EnvironmentMetadataClient> { get<KtorT3Client>() }
     single<EnvironmentAuthClient> { get<KtorT3Client>() }
     single<T3RpcClient> { get<KtorT3Client>() }
+    single<TerminalRpcClient> { get<KtorT3Client>() }
     single<ThreadWorkspaceRpcClient> { get<KtorT3Client>() }
     single<WorkspaceFilesRpcClient> { get<KtorT3Client>() }
     single<de.chennemann.agentic.data.t3.AttachmentAssetClient> { get<KtorT3Client>() }
