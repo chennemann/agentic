@@ -16,18 +16,22 @@ sealed interface ConnectionState {
     data class Backoff(
         val retryInMillis: Long,
         val message: String,
+        val traceId: String? = null,
     ) : ConnectionState
 
     data class BlockedAuthentication(
         val message: String,
+        val traceId: String? = null,
     ) : ConnectionState
 
     data class UnsupportedProtocol(
         val message: String,
+        val traceId: String? = null,
     ) : ConnectionState
 
     data class Error(
         val message: String,
+        val traceId: String? = null,
     ) : ConnectionState
 }
 
@@ -39,6 +43,8 @@ interface ConnectionController {
     val state: StateFlow<ConnectionState>
 
     fun wake()
+
+    fun reconnect() = wake()
 
     fun retryPendingCommands()
 }

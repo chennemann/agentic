@@ -82,6 +82,17 @@ class ConnectionSupervisor(
         }
     }
 
+    override fun reconnect() {
+        mutableState.value = when (val current = mutableState.value) {
+            is ConnectionState.Backoff -> current.copy(retryInMillis = 0)
+            is ConnectionState.BlockedAuthentication -> ConnectionState.Backoff(0, current.message, current.traceId)
+            is ConnectionState.UnsupportedProtocol -> ConnectionState.Backoff(0, current.message, current.traceId)
+            is ConnectionState.Error -> ConnectionState.Backoff(0, current.message, current.traceId)
+            else -> ConnectionState.Connecting
+        }
+        restartGeneration.update { it + 1 }
+    }
+
     override fun retryPendingCommands() {
         val environment = environments.activeEnvironment.value ?: return
         if (!replayingPendingCommands.compareAndSet(false, true)) return
@@ -114,6 +125,7 @@ class ConnectionSupervisor(
                 mutableState.value = ConnectionState.Backoff(
                     retryInMillis = retryDelay,
                     message = cause.message ?: "Connection interrupted.",
+                    traceId = cause.traceId(),
                 )
                 delay(retryDelay)
                 retryDelay = (retryDelay * 2).coerceAtMost(MaxRetryMillis)
@@ -122,7 +134,9 @@ class ConnectionSupervisor(
     }
 
     private suspend fun connect(environment: SavedEnvironment) = coroutineScope {
-        mutableState.value = ConnectionState.Connecting
+        if (mutableState.value !is ConnectionState.Backoff) {
+            mutableState.value = ConnectionState.Connecting
+        }
         val token = credentials.read(environment.id)
             ?: throw T3TransportException.Authentication(401)
         val descriptor = metadata.environmentDescriptor(environment.baseUrl)
@@ -207,6 +221,7 @@ class ConnectionSupervisor(
                     mutableState.value = ConnectionState.Backoff(
                         retryInMillis = retryDelay,
                         message = cause.message ?: "Connection interrupted.",
+                        traceId = cause.traceId(),
                     )
                 }
                 delay(retryDelay)
@@ -276,6 +291,8 @@ class ConnectionSupervisor(
     private class SequenceGap : Exception("Projection sequence gap detected.")
 
     private class EnvironmentMismatch : Exception("The T3 environment identity changed.")
+
+    private fun Throwable.traceId(): String? = (this as? T3TransportException.Rpc)?.traceId
 
     private data class ConnectionTarget(
         val environment: SavedEnvironment?,

@@ -152,6 +152,7 @@ sealed class T3TransportException(
 
     class Rpc(
         message: String,
+        val traceId: String? = null,
     ) : T3TransportException(message)
 
     class Network : T3TransportException("The T3 environment could not be reached.")

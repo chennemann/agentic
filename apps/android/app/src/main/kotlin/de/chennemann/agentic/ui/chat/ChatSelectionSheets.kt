@@ -289,6 +289,21 @@ fun ChatSelectionSheets(
                             trailingText = environment.connection.label(),
                             onClick = { onEvent(ChatUiEvent.EnvironmentSelected(environment.id)) },
                         )
+                        environment.diagnosticText?.let {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.bodySmall,
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                            )
+                        }
+                        if (environment.canReconnect) {
+                            TextButton(
+                                onClick = { onEvent(ChatUiEvent.ConnectionRetryRequested) },
+                                modifier = Modifier.align(Alignment.End),
+                            ) {
+                                Text("Reconnect ${environment.label}")
+                            }
+                        }
                         TextButton(
                             onClick = { onEvent(ChatUiEvent.EnvironmentRemovalRequested(environment.id)) },
                             modifier = Modifier.align(Alignment.End),

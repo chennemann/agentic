@@ -33,4 +33,18 @@ class T3RpcFailureTest {
             authorization.message,
         )
     }
+
+    @Test
+    fun `safe rpc failure preserves its opaque trace id`() {
+        val cause = Json.parseToJsonElement(
+            """
+            [{"_tag":"Fail","error":{"message":"Provider unavailable.","traceId":"trace-42"}}]
+            """.trimIndent(),
+        ).jsonArray
+
+        val failure = assertInstanceOf(T3TransportException.Rpc::class.java, decodeRpcFailure(cause))
+
+        assertEquals("Provider unavailable.", failure.message)
+        assertEquals("trace-42", failure.traceId)
+    }
 }

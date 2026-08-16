@@ -333,6 +333,8 @@ data class EnvironmentPickerItemUi(
     val label: String,
     val supportingText: String? = null,
     val connection: EnvironmentConnectionIndicatorUi = EnvironmentConnectionIndicatorUi.OFFLINE,
+    val diagnosticText: String? = null,
+    val canReconnect: Boolean = false,
 )
 
 enum class EnvironmentConnectionIndicatorUi {
@@ -457,19 +459,23 @@ sealed interface ChatConnectionUi {
 
     data class Reconnecting(
         val message: String = "Connection lost. Reconnecting…",
+        val traceId: String? = null,
     ) : ChatConnectionUi
 
     data class Blocked(
         val message: String,
+        val traceId: String? = null,
     ) : ChatConnectionUi
 
     data class Unsupported(
         val message: String,
+        val traceId: String? = null,
     ) : ChatConnectionUi
 
     data class Failed(
         val message: String,
         val canRetry: Boolean = true,
+        val traceId: String? = null,
     ) : ChatConnectionUi
 }
 

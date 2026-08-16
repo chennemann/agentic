@@ -219,6 +219,29 @@ class ConnectionSupervisorTest {
     }
 
     @Test
+    fun `explicit reconnect preserves the latest failure while retrying`() = runTest {
+        val transport = SupervisorTransport(failFirstDescriptor = true)
+        val supervisor = ConnectionSupervisor(
+            environments = SupervisorEnvironmentRepository(savedEnvironment("one")),
+            orchestration = SupervisorOrchestrationRepository(),
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            rpc = transport,
+            network = OnlineMonitor,
+            pendingCommands = NoOpPendingCommandReplayer,
+            scope = backgroundScope,
+        )
+        runCurrent()
+        val failure = supervisor.state.value as ConnectionState.Backoff
+
+        supervisor.reconnect()
+
+        assertEquals(failure.message, (supervisor.state.value as ConnectionState.Backoff).message)
+        runCurrent()
+        assertEquals(ConnectionState.Live, supervisor.state.value)
+    }
+
+    @Test
     fun `network restoration cancels old streams and reconnects immediately`() = runTest {
         val environment = savedEnvironment("one")
         val network = MutableOnlineMonitor(true)

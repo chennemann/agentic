@@ -1,6 +1,7 @@
 package de.chennemann.agentic.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -56,16 +57,22 @@ fun ConnectionStatusBanner(
                     strokeWidth = 2.dp,
                 )
             }
-            Text(
-                text = connection.message(),
+            Column(
                 modifier = Modifier.weight(1f),
-                style = MaterialTheme.typography.bodySmall,
-                color = if (error) {
-                    MaterialTheme.colorScheme.onErrorContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
+            ) {
+                Text(
+                    text = connection.message(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (error) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                connection.traceId()?.let {
+                    Text(
+                        text = "Trace ID: $it",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (error) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             if (retry) {
                 Button(onClick = onRetry) {
                     Text("Retry")
@@ -84,4 +91,12 @@ private fun ChatConnectionUi.message(): String = when (this) {
     is ChatConnectionUi.Blocked -> message
     is ChatConnectionUi.Unsupported -> message
     is ChatConnectionUi.Failed -> message
+}
+
+private fun ChatConnectionUi.traceId(): String? = when (this) {
+    is ChatConnectionUi.Reconnecting -> traceId
+    is ChatConnectionUi.Blocked -> traceId
+    is ChatConnectionUi.Unsupported -> traceId
+    is ChatConnectionUi.Failed -> traceId
+    else -> null
 }

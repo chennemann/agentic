@@ -672,7 +672,7 @@ class ChatViewModel(
             is ChatUiEvent.ActivityRetryRequested,
             -> Unit
 
-            ChatUiEvent.ConnectionRetryRequested -> connection.wake()
+            ChatUiEvent.ConnectionRetryRequested -> connection.reconnect()
         }
     }
 
@@ -1434,6 +1434,18 @@ class ChatViewModel(
                         } else {
                             EnvironmentConnectionIndicatorUi.OFFLINE
                         },
+                        diagnosticText = if (it.active) {
+                            buildList {
+                                add("Environment ID: ${it.id}")
+                                orchestration.config.value?.environment?.serverVersion?.let { version ->
+                                    add("Server version: $version")
+                                }
+                                environment.connection.diagnosticText()?.let(::add)
+                            }.joinToString("\n")
+                        } else {
+                            "Environment ID: ${it.id}"
+                        },
+                        canReconnect = it.active,
                     )
                 },
                 selectedEnvironmentId = environment.active?.id,
@@ -2378,10 +2390,22 @@ private fun ConnectionState.toUi(): ChatConnectionUi = when (this) {
     ConnectionState.Connecting -> ChatConnectionUi.Connecting()
     ConnectionState.Synchronizing -> ChatConnectionUi.Synchronizing()
     ConnectionState.Live -> ChatConnectionUi.Live
-    is ConnectionState.Backoff -> ChatConnectionUi.Reconnecting(message)
-    is ConnectionState.BlockedAuthentication -> ChatConnectionUi.Blocked(message)
-    is ConnectionState.UnsupportedProtocol -> ChatConnectionUi.Unsupported(message)
-    is ConnectionState.Error -> ChatConnectionUi.Failed(message)
+    is ConnectionState.Backoff -> ChatConnectionUi.Reconnecting(message, traceId)
+    is ConnectionState.BlockedAuthentication -> ChatConnectionUi.Blocked(message, traceId)
+    is ConnectionState.UnsupportedProtocol -> ChatConnectionUi.Unsupported(message, traceId)
+    is ConnectionState.Error -> ChatConnectionUi.Failed(message, traceId = traceId)
+}
+
+private fun ConnectionState.diagnosticText(): String? = when (this) {
+    ConnectionState.NoEnvironment -> "Unavailable"
+    ConnectionState.Cached -> "Offline — cached data remains available"
+    ConnectionState.Connecting -> "Connecting"
+    ConnectionState.Synchronizing -> "Connected — synchronizing"
+    ConnectionState.Live -> "Connected"
+    is ConnectionState.Backoff -> listOfNotNull("Reconnecting — $message", traceId?.let { "Trace ID: $it" }).joinToString("\n")
+    is ConnectionState.BlockedAuthentication -> listOfNotNull(message, traceId?.let { "Trace ID: $it" }).joinToString("\n")
+    is ConnectionState.UnsupportedProtocol -> listOfNotNull(message, traceId?.let { "Trace ID: $it" }).joinToString("\n")
+    is ConnectionState.Error -> listOfNotNull(message, traceId?.let { "Trace ID: $it" }).joinToString("\n")
 }
 
 private fun ConnectionState.toIndicator(): EnvironmentConnectionIndicatorUi = when (this) {

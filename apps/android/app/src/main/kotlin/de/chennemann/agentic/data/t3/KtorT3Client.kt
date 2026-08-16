@@ -636,5 +636,9 @@ internal fun decodeRpcFailure(cause: JsonArray?): T3TransportException {
     val message = error?.get("message")?.jsonPrimitive?.contentOrNull
         ?.let(::redactTransportText)
         ?: "T3 RPC request failed."
-    return T3TransportException.Rpc(message)
+    val traceId = (error?.get("traceId") ?: error?.get("trace_id"))
+        ?.jsonPrimitive
+        ?.contentOrNull
+        ?.let(::redactTransportText)
+    return T3TransportException.Rpc(message, traceId)
 }
