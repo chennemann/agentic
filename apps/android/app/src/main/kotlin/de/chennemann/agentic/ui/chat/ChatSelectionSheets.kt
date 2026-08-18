@@ -43,6 +43,7 @@ import de.chennemann.agentic.domain.preferences.ThemePreference
 fun ChatSelectionSheets(
     state: ChatUiState,
     onEvent: (ChatUiEvent) -> Unit,
+    onOpenUpdater: () -> Unit = {},
 ) {
     when (state.activePicker) {
         ChatPickerUi.NAVIGATION -> {
@@ -77,6 +78,7 @@ fun ChatSelectionSheets(
                         TextButton(onClick = { onEvent(ChatUiEvent.CacheInspectionRequested(environmentId)) }) { Text("Storage and cache") }
                     }
                 }
+                StorUpdaterSettingsEntry(onClick = onOpenUpdater)
                 if (state.durableWork.isNotEmpty()) {
                     item("durable-work") {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {

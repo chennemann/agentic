@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
@@ -8,6 +10,12 @@ plugins {
 
 val appVersionName = (findProperty("appVersionName") as String?) ?: "0.0.0"
 val appVersionCode = ((findProperty("appVersionCode") as String?)?.toIntOrNull() ?: 1).coerceAtLeast(1)
+val localProperties = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.isFile }?.inputStream()?.use(::load)
+}
+val storReadToken = providers.environmentVariable("STOR_READ_TOKEN").orNull
+    ?: localProperties.getProperty("STOR_READ_TOKEN").orEmpty()
+val escapedStorReadToken = storReadToken.replace("\\", "\\\\").replace("\"", "\\\"")
 val signingKeystorePath = System.getenv("ANDROID_SIGNING_KEYSTORE_PATH")
 val signingKeystorePassword = System.getenv("ANDROID_SIGNING_KEYSTORE_PASSWORD")
 val signingKeyAlias = System.getenv("ANDROID_SIGNING_KEY_ALIAS")
@@ -47,8 +55,13 @@ android {
             initWith(getByName("debug"))
             applicationIdSuffix = ".uitest"
             matchingFallbacks += listOf("debug")
+            buildConfigField("String", "STOR_READ_TOKEN", "\"$escapedStorReadToken\"")
+        }
+        debug {
+            buildConfigField("String", "STOR_READ_TOKEN", "\"$escapedStorReadToken\"")
         }
         release {
+            buildConfigField("String", "STOR_READ_TOKEN", "\"\"")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -68,6 +81,7 @@ android {
         compose = true
         buildConfig = true
     }
+    sourceSets.getByName("uitest").kotlin.srcDir("src/debug/kotlin")
 }
 
 kotlin {
@@ -119,6 +133,8 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    debugImplementation("dev.stor:kmp-sdk:0.2.0")
+    "uitestImplementation"("dev.stor:kmp-sdk:0.2.0")
 }
 
 ktlint {

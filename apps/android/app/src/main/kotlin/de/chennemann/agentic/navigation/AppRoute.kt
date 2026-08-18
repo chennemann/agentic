@@ -14,6 +14,9 @@ data object OnboardingRoute : AppRoute
 data object ChatRoute : AppRoute
 
 @Serializable
+data object StorUpdaterRoute : AppRoute
+
+@Serializable
 data class WorkspaceFilesRoute(val threadId: String) : AppRoute
 
 @Serializable

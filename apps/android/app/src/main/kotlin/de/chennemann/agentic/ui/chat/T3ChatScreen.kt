@@ -99,6 +99,7 @@ fun T3ChatScreen(
     composerDraft: StateFlow<String>? = null,
     modifier: Modifier = Modifier,
     onOpenFiles: (String) -> Unit = {},
+    onOpenUpdater: () -> Unit = {},
     onOpenTerminal: (String) -> Unit = {},
     onRunProjectScript: (String, ProjectScriptUi) -> Unit = { _, _ -> },
 ) {
@@ -449,6 +450,7 @@ fun T3ChatScreen(
     ChatSelectionSheets(
         state = state,
         onEvent = onEvent,
+        onOpenUpdater = onOpenUpdater,
     )
 
     state.renameDialog?.let { rename ->

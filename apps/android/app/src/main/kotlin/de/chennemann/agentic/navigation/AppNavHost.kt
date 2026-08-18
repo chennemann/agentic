@@ -21,6 +21,7 @@ import de.chennemann.agentic.ui.files.WorkspaceFilesScreen
 import de.chennemann.agentic.ui.files.WorkspaceFilesViewModel
 import de.chennemann.agentic.ui.terminal.TerminalScreen
 import de.chennemann.agentic.ui.terminal.TerminalViewModel
+import de.chennemann.agentic.ui.updater.StorUpdaterScreen
 import de.chennemann.agentic.t3.contract.ProjectScript
 import de.chennemann.agentic.t3.contract.ProjectScriptIcon
 import org.koin.androidx.compose.koinViewModel
@@ -75,6 +76,7 @@ fun AppNavHost() {
                             }
                         },
                         onOpenFiles = { threadId -> stack.add(WorkspaceFilesRoute(threadId)) },
+                        onOpenUpdater = { stack.add(StorUpdaterRoute) },
                         onOpenTerminal = { threadId -> stack.add(TerminalRoute(threadId)) },
                         onRunProjectScript = { threadId, script ->
                             stack.add(
@@ -104,6 +106,10 @@ fun AppNavHost() {
                         onOpenFile = viewModel::open,
                         onClosePreview = viewModel::closePreview,
                     )
+                }
+
+                StorUpdaterRoute -> NavEntry(route) {
+                    StorUpdaterScreen(onBack = { stack.removeLastOrNull() })
                 }
 
                 is TerminalRoute -> NavEntry(route) {
