@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write
+  packages: read
 
 concurrency:
   group: build-and-release-main
@@ -15,6 +16,8 @@ concurrency:
 jobs:
   build-and-release:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
 
     steps:
       - name: Checkout repository

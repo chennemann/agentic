@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  packages: read
 
 concurrency:
   group: ci-verify-${{ github.ref }}
@@ -16,6 +17,8 @@ concurrency:
 jobs:
   verify:
     runs-on: ubuntu-latest
+    env:
+      GITHUB_TOKEN: ${{ github.token }}
 
     steps:
       - name: Checkout repository
