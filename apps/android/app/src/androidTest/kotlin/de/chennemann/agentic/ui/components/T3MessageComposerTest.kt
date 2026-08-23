@@ -12,12 +12,14 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.performClick
 import de.chennemann.agentic.MainActivity
+import de.chennemann.agentic.ui.chat.ChatUiEvent
 import de.chennemann.agentic.ui.chat.ComposerUiState
 import de.chennemann.agentic.ui.chat.ProviderModelOptionUi
 import de.chennemann.agentic.ui.chat.ProviderOptionUi
 import de.chennemann.agentic.ui.chat.ProviderOptionValueUi
 import de.chennemann.agentic.ui.chat.RuntimeModeOptionUi
 import de.chennemann.agentic.ui.theme.MobileTheme
+import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
 
@@ -117,5 +119,27 @@ class T3MessageComposerTest {
 
         compose.onNodeWithContentDescription("Start voice input").assertIsDisplayed()
         compose.onAllNodesWithContentDescription("Send message").assertCountEquals(0)
+    }
+
+    @Test
+    fun running_turn_replaces_send_action_with_stop_action() {
+        var receivedEvent: ChatUiEvent? = null
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                MobileTheme {
+                    T3MessageComposer(
+                        state = ComposerUiState(draft = "Follow up"),
+                        turnRunning = true,
+                        onEvent = { receivedEvent = it },
+                    )
+                }
+            }
+        }
+
+        compose.onAllNodesWithText("Discard").assertCountEquals(0)
+        compose.onAllNodesWithText("Stop").assertCountEquals(0)
+        compose.onAllNodesWithContentDescription("Send message").assertCountEquals(0)
+        compose.onNodeWithContentDescription("Stop turn").performClick()
+        assertEquals(ChatUiEvent.TurnInterruptRequested, receivedEvent)
     }
 }

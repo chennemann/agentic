@@ -434,7 +434,6 @@ fun T3ChatScreen(
                 state = state.composer,
                 draft = composerDraft,
                 turnRunning = state.isTurnRunning,
-                sessionTermination = state.sessionTermination,
                 onEvent = onEvent,
                 modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
                 inputFocusRequested = inputFocusRequested,
@@ -682,7 +681,6 @@ private fun IsolatedDraftComposer(
     state: ComposerUiState,
     draft: StateFlow<String>?,
     turnRunning: Boolean,
-    sessionTermination: SessionTerminationUi,
     onEvent: (ChatUiEvent) -> Unit,
     modifier: Modifier = Modifier,
     inputFocusRequested: Boolean? = null,
@@ -694,7 +692,6 @@ private fun IsolatedDraftComposer(
             turnRunning = turnRunning,
             onEvent = onEvent,
             modifier = modifier,
-            sessionTermination = sessionTermination,
             inputFocusRequested = inputFocusRequested,
             onInputFocusedManually = onInputFocusedManually,
         )
@@ -705,7 +702,6 @@ private fun IsolatedDraftComposer(
             turnRunning = turnRunning,
             onEvent = onEvent,
             modifier = modifier,
-            sessionTermination = sessionTermination,
             inputFocusRequested = inputFocusRequested,
             onInputFocusedManually = onInputFocusedManually,
         )

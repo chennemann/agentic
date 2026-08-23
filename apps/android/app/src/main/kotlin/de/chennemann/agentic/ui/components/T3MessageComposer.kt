@@ -78,11 +78,11 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.chennemann.agentic.icons.Brain
-import de.chennemann.agentic.icons.Add
 import de.chennemann.agentic.icons.Flame
 import de.chennemann.agentic.icons.Icons
 import de.chennemann.agentic.icons.Lock
 import de.chennemann.agentic.icons.Microphone
+import de.chennemann.agentic.icons.Paperclip
 import de.chennemann.agentic.icons.Pencil
 import de.chennemann.agentic.icons.Send
 import de.chennemann.agentic.icons.Sparkles
@@ -103,7 +103,6 @@ import de.chennemann.agentic.ui.chat.ProviderModelOptionUi
 import de.chennemann.agentic.ui.chat.ProviderOptionUi
 import de.chennemann.agentic.ui.chat.ProviderOptionValueUi
 import de.chennemann.agentic.ui.chat.RuntimeModeOptionUi
-import de.chennemann.agentic.ui.chat.SessionTerminationUi
 import de.chennemann.agentic.ui.chat.VoiceInputStatusUi
 import kotlin.math.roundToInt
 import android.graphics.BitmapFactory
@@ -122,7 +121,6 @@ fun T3MessageComposer(
     turnRunning: Boolean,
     onEvent: (ChatUiEvent) -> Unit,
     modifier: Modifier = Modifier,
-    sessionTermination: SessionTerminationUi = SessionTerminationUi(),
     inputFocusRequested: Boolean? = null,
     onInputFocusedManually: () -> Unit = {},
 ) {
@@ -312,117 +310,75 @@ fun T3MessageComposer(
                         onClick = { imagePicker.launch("image/*") },
                         enabled = state.enabled && !state.sending && state.imageAttachments.size < 8,
                     ) {
-                        Icon(Icons.Add, contentDescription = "Attach images")
+                        Icon(Icons.Paperclip, contentDescription = "Attach images")
                     }
-                    if ((state.draft.isNotBlank() || state.imageAttachments.isNotEmpty()) && !state.sending) {
-                        TextButton(onClick = { onEvent(ChatUiEvent.DraftDiscardRequested) }) {
-                            Text("Discard")
-                        }
-                    }
-                    if (
-                        sessionTermination.canTerminate ||
-                        sessionTermination.terminating ||
-                        sessionTermination.errorMessage != null
+                    IconButton(
+                        onClick = {
+                            if (turnRunning) {
+                                onEvent(ChatUiEvent.TurnInterruptRequested)
+                            } else if (!voiceControlVisible) {
+                                onEvent(ChatUiEvent.MessageSubmitted)
+                            } else if (state.voiceInputStatus == VoiceInputStatusUi.RECORDING) {
+                                onEvent(ChatUiEvent.VoiceInputPressed)
+                            } else {
+                                requestMicrophonePermission()
+                            }
+                        },
+                        enabled = state.enabled &&
+                            !state.sending &&
+                            if (turnRunning) {
+                                true
+                            } else if (voiceControlVisible) {
+                                state.voiceInputStatus != VoiceInputStatusUi.TRANSCRIBING
+                            } else {
+                                state.draft.isNotBlank() || state.imageAttachments.isNotEmpty()
+                            },
+                        modifier = Modifier.size(48.dp),
+                        colors = IconButtonDefaults.iconButtonColors(
+                            contentColor = if (state.voiceInputStatus == VoiceInputStatusUi.RECORDING) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.primary
+                            },
+                            disabledContentColor = ComposerDisabled,
+                        ),
                     ) {
-                        OutlinedButton(
-                            onClick = { onEvent(ChatUiEvent.SessionTerminationRequested) },
-                            enabled = sessionTermination.canTerminate && !sessionTermination.terminating,
+                        if (turnRunning) {
+                            Icon(
+                                imageVector = Icons.Stop,
+                                contentDescription = "Stop turn",
+                                modifier = Modifier.size(28.dp),
+                            )
+                        } else if (
+                            state.sending ||
+                            state.voiceInputStatus == VoiceInputStatusUi.TRANSCRIBING
                         ) {
-                            Text(
-                                when {
-                                    sessionTermination.terminating -> "Terminating…"
-                                    sessionTermination.errorMessage != null -> "Retry session stop"
-                                    else -> "Terminate session"
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                            )
+                        } else if (voiceControlVisible) {
+                            Icon(
+                                imageVector = if (state.voiceInputStatus == VoiceInputStatusUi.RECORDING) {
+                                    Icons.Stop
+                                } else {
+                                    Icons.Microphone
                                 },
+                                contentDescription = if (state.voiceInputStatus == VoiceInputStatusUi.RECORDING) {
+                                    "Stop recording and transcribe"
+                                } else {
+                                    "Start voice input"
+                                },
+                                modifier = Modifier.size(28.dp),
+                            )
+                        } else {
+                            Icon(
+                                imageVector = Icons.Send,
+                                contentDescription = "Send message",
+                                modifier = Modifier.size(28.dp),
                             )
                         }
                     }
-                    if (turnRunning) {
-                        OutlinedButton(
-                            onClick = { onEvent(ChatUiEvent.TurnInterruptRequested) },
-                            enabled = state.enabled && !state.sending,
-                            shape = CircleShape,
-                            colors = ButtonDefaults.outlinedButtonColors(
-                                contentColor = MaterialTheme.colorScheme.primary,
-                                disabledContentColor = ComposerDisabled,
-                            ),
-                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
-                        ) {
-                            Text("Stop")
-                        }
-                    } else {
-                        IconButton(
-                            onClick = {
-                                if (!voiceControlVisible) {
-                                    onEvent(ChatUiEvent.MessageSubmitted)
-                                } else if (
-                                    state.voiceInputStatus == VoiceInputStatusUi.RECORDING
-                                ) {
-                                    onEvent(ChatUiEvent.VoiceInputPressed)
-                                } else {
-                                    requestMicrophonePermission()
-                                }
-                            },
-                            enabled = state.enabled &&
-                                !state.sending &&
-                                if (voiceControlVisible) {
-                                    state.voiceInputStatus != VoiceInputStatusUi.TRANSCRIBING
-                                } else {
-                                    state.draft.isNotBlank() || state.imageAttachments.isNotEmpty()
-                                },
-                            modifier = Modifier.size(48.dp),
-                            colors = IconButtonDefaults.iconButtonColors(
-                                contentColor = if (
-                                    state.voiceInputStatus == VoiceInputStatusUi.RECORDING
-                                ) {
-                                    MaterialTheme.colorScheme.error
-                                } else {
-                                    MaterialTheme.colorScheme.primary
-                                },
-                                disabledContentColor = ComposerDisabled,
-                            ),
-                        ) {
-                            if (
-                                state.sending ||
-                                state.voiceInputStatus == VoiceInputStatusUi.TRANSCRIBING
-                            ) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.size(20.dp),
-                                    strokeWidth = 2.dp,
-                                )
-                            } else if (voiceControlVisible) {
-                                Icon(
-                                    imageVector = if (
-                                        state.voiceInputStatus == VoiceInputStatusUi.RECORDING
-                                    ) {
-                                        Icons.Stop
-                                    } else {
-                                        Icons.Microphone
-                                    },
-                                    contentDescription = if (
-                                        state.voiceInputStatus == VoiceInputStatusUi.RECORDING
-                                    ) {
-                                        "Stop recording and transcribe"
-                                    } else {
-                                        "Start voice input"
-                                    },
-                                    modifier = Modifier.size(28.dp),
-                                )
-                            } else {
-                                Icon(
-                                    imageVector = Icons.Send,
-                                    contentDescription = "Send message",
-                                    modifier = Modifier.size(28.dp),
-                                )
-                            }
-                        }
-                    }
-                }
-                sessionTermination.errorMessage?.let {
-                    Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-                }
-                if (sessionTermination.terminal) {
-                    Text("Session stopped", color = ComposerMuted, style = MaterialTheme.typography.bodySmall)
                 }
             }
 
