@@ -26,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyRow
@@ -87,6 +88,7 @@ import de.chennemann.agentic.icons.Pencil
 import de.chennemann.agentic.icons.Send
 import de.chennemann.agentic.icons.Sparkles
 import de.chennemann.agentic.icons.Stop
+import de.chennemann.agentic.icons.TextAlignStart
 import de.chennemann.agentic.icons.Tune
 import de.chennemann.agentic.icons.Unlock
 import de.chennemann.agentic.ui.chat.ChatPickerUi
@@ -418,8 +420,10 @@ fun T3MessageComposer(
                 )
             }
 
-            if (state.quickSwitchProjects.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(8.dp))
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+            ) {
                 LazyRow(
                     modifier = Modifier.fillMaxWidth(),
                     contentPadding = PaddingValues(horizontal = 16.dp),
@@ -442,6 +446,19 @@ fun T3MessageComposer(
                             },
                         )
                     }
+                }
+                IconButton(
+                    onClick = {
+                        onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
+                    },
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .offset(x = (-24).dp, y = (-1.5).dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.TextAlignStart,
+                        contentDescription = "Open project picker",
+                    )
                 }
             }
         }

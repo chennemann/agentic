@@ -11,9 +11,11 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onRoot
 import de.chennemann.agentic.MainActivity
 import de.chennemann.agentic.ui.chat.ChatUiEvent
 import de.chennemann.agentic.ui.chat.ComposerUiState
+import de.chennemann.agentic.ui.chat.ProjectQuickSwitchUi
 import de.chennemann.agentic.ui.chat.ProviderModelOptionUi
 import de.chennemann.agentic.ui.chat.ProviderOptionUi
 import de.chennemann.agentic.ui.chat.ProviderOptionValueUi
@@ -141,5 +143,55 @@ class T3MessageComposerTest {
         compose.onAllNodesWithContentDescription("Send message").assertCountEquals(0)
         compose.onNodeWithContentDescription("Stop turn").performClick()
         assertEquals(ChatUiEvent.TurnInterruptRequested, receivedEvent)
+    }
+
+    @Test
+    fun project_picker_action_is_available_without_quick_switch_projects() {
+        var receivedEvent: ChatUiEvent? = null
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                MobileTheme {
+                    T3MessageComposer(
+                        state = ComposerUiState(quickSwitchProjects = emptyList()),
+                        turnRunning = false,
+                        onEvent = { receivedEvent = it },
+                    )
+                }
+            }
+        }
+
+        compose.onNodeWithContentDescription("Open project picker").performClick()
+        assertEquals(
+            ChatUiEvent.PickerRequested(de.chennemann.agentic.ui.chat.ChatPickerUi.PROJECT_THREAD),
+            receivedEvent,
+        )
+    }
+
+    @Test
+    fun project_picker_action_does_not_shift_or_misalign_project_shortcuts() {
+        val projects = listOf(
+            ProjectQuickSwitchUi("alpha", "A", "Alpha"),
+            ProjectQuickSwitchUi("beta", "B", "Beta"),
+            ProjectQuickSwitchUi("gamma", "G", "Gamma"),
+        )
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                MobileTheme {
+                    T3MessageComposer(
+                        state = ComposerUiState(quickSwitchProjects = projects),
+                        turnRunning = false,
+                        onEvent = {},
+                    )
+                }
+            }
+        }
+
+        val rootBounds = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val first = compose.onNodeWithContentDescription("Project Alpha").fetchSemanticsNode().boundsInRoot
+        val last = compose.onNodeWithContentDescription("Project Gamma").fetchSemanticsNode().boundsInRoot
+        val picker = compose.onNodeWithContentDescription("Open project picker").fetchSemanticsNode().boundsInRoot
+
+        assertEquals(rootBounds.center.x, (first.center.x + last.center.x) / 2f, 1f)
+        assertEquals(first.center.y, picker.center.y, 1f)
     }
 }
