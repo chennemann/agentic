@@ -3,6 +3,7 @@ package de.chennemann.agentic.ui.chat
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -58,6 +59,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalDensity
@@ -115,6 +117,7 @@ fun T3ChatScreen(
     var composerHeightPx by remember { mutableIntStateOf(0) }
     var consumedImeHeightPx by remember(state.threadId) { mutableIntStateOf(0) }
     var terminalMenuExpanded by remember(state.threadId) { mutableStateOf(false) }
+    var projectPickerPrototypeVisible by remember { mutableStateOf(false) }
     val density = LocalDensity.current
     val imeInsets = WindowInsets.ime
     val imeHeightPx = imeInsets.getBottom(density)
@@ -217,6 +220,26 @@ fun T3ChatScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .nestedScroll(historyScrollConnection)
+                        .pointerInput(projectPickerPrototypeVisible) {
+                            var horizontalDistance = 0f
+                            detectHorizontalDragGestures(
+                                onDragStart = { horizontalDistance = 0f },
+                                onDragCancel = { horizontalDistance = 0f },
+                                onDragEnd = {
+                                    if (
+                                        !projectPickerPrototypeVisible &&
+                                        horizontalDistance >= 72.dp.toPx()
+                                    ) {
+                                        projectPickerPrototypeVisible = true
+                                    }
+                                    horizontalDistance = 0f
+                                },
+                                onHorizontalDrag = { change, dragAmount ->
+                                    horizontalDistance += dragAmount
+                                    change.consume()
+                                },
+                            )
+                        }
                         .testTag(ChatTimelineTestTag),
                     contentPadding = PaddingValues(
                         start = 16.dp,
@@ -435,6 +458,9 @@ fun T3ChatScreen(
                 draft = composerDraft,
                 turnRunning = state.isTurnRunning,
                 onEvent = onEvent,
+                onOpenProjectPickerPrototype = {
+                    projectPickerPrototypeVisible = true
+                },
                 modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
                 inputFocusRequested = inputFocusRequested,
                 onInputFocusedManually = {
@@ -445,6 +471,17 @@ fun T3ChatScreen(
             )
         }
     }
+
+    ExperimentalSlideOutProjectPicker(
+        visible = projectPickerPrototypeVisible,
+        projects = state.threadPicker.projects,
+        selectedProjectId = state.threadPicker.selectedProjectId,
+        onDismiss = { projectPickerPrototypeVisible = false },
+        onProjectSelected = { projectId ->
+            projectPickerPrototypeVisible = false
+            onEvent(ChatUiEvent.ProjectQuickSwitchRequested(projectId))
+        },
+    )
 
     ChatSelectionSheets(
         state = state,
@@ -682,6 +719,7 @@ private fun IsolatedDraftComposer(
     draft: StateFlow<String>?,
     turnRunning: Boolean,
     onEvent: (ChatUiEvent) -> Unit,
+    onOpenProjectPickerPrototype: () -> Unit,
     modifier: Modifier = Modifier,
     inputFocusRequested: Boolean? = null,
     onInputFocusedManually: () -> Unit = {},
@@ -691,6 +729,7 @@ private fun IsolatedDraftComposer(
             state = state,
             turnRunning = turnRunning,
             onEvent = onEvent,
+            onOpenProjectPickerPrototype = onOpenProjectPickerPrototype,
             modifier = modifier,
             inputFocusRequested = inputFocusRequested,
             onInputFocusedManually = onInputFocusedManually,
@@ -701,6 +740,7 @@ private fun IsolatedDraftComposer(
             state = state.copy(draft = value),
             turnRunning = turnRunning,
             onEvent = onEvent,
+            onOpenProjectPickerPrototype = onOpenProjectPickerPrototype,
             modifier = modifier,
             inputFocusRequested = inputFocusRequested,
             onInputFocusedManually = onInputFocusedManually,

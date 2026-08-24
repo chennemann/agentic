@@ -7,8 +7,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeRight
 import de.chennemann.agentic.MainActivity
 import de.chennemann.agentic.ui.theme.MobileTheme
 import org.junit.Rule
@@ -42,6 +45,24 @@ class T3ChatScreenChangesTest {
         compose.onNodeWithText("README.md").assertIsDisplayed()
         compose.onNodeWithText("+8").assertIsDisplayed()
         compose.onNodeWithText("−2").assertIsDisplayed()
+    }
+
+    @Test
+    fun swiping_conversation_right_opens_project_picker_prototype() {
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                MobileTheme {
+                    T3ChatScreen(
+                        state = changesState(),
+                        onEvent = {},
+                    )
+                }
+            }
+        }
+
+        compose.onNodeWithTag(ChatTimelineTestTag).performTouchInput { swipeRight() }
+
+        compose.onNodeWithText("Prototype · Compact list").assertIsDisplayed()
     }
 }
 

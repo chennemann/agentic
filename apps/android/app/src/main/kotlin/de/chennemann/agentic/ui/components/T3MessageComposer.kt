@@ -123,6 +123,9 @@ fun T3MessageComposer(
     turnRunning: Boolean,
     onEvent: (ChatUiEvent) -> Unit,
     modifier: Modifier = Modifier,
+    onOpenProjectPickerPrototype: () -> Unit = {
+        onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
+    },
     inputFocusRequested: Boolean? = null,
     onInputFocusedManually: () -> Unit = {},
 ) {
@@ -448,9 +451,7 @@ fun T3MessageComposer(
                     }
                 }
                 IconButton(
-                    onClick = {
-                        onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
-                    },
+                    onClick = onOpenProjectPickerPrototype,
                     modifier = Modifier
                         .align(Alignment.TopStart)
                         .offset(x = (-24).dp, y = (-1.5).dp),
