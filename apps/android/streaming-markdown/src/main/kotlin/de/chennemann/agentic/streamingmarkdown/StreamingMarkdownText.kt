@@ -446,11 +446,13 @@ fun toAnnotatedString(
                     start = start,
                     end = length,
                 )
-                addLink(
-                    url = LinkAnnotation.Url(href),
-                    start = start,
-                    end = length,
-                )
+                if (href.isExternalLinkDestination()) {
+                    addLink(
+                        url = LinkAnnotation.Url(href),
+                        start = start,
+                        end = length,
+                    )
+                }
             }
             return@forEach
         }
@@ -552,19 +554,12 @@ private fun linkify(runs: List<MarkdownRun>): List<MarkdownRun> {
         }
         while (index < run.value.length) {
             if (run.value[index] == '[') {
-                val close = run.value.indexOf(']', index + 1)
-                val open = if (close == -1) -1 else close + 1
-                val start = if (open == -1 || open >= run.value.length || run.value[open] != '(') -1 else open + 1
-                val end = if (start == -1) -1 else run.value.indexOf(')', start)
-                if (close != -1 && start != -1 && end != -1) {
-                    val label = run.value.substring(index + 1, close)
-                    val href = run.value.substring(start, end)
-                    if (label.isNotEmpty() && href.startsWith("http")) {
-                        flush()
-                        append(out, MarkdownKind.LINK, label, href)
-                        index = end + 1
-                        continue
-                    }
+                val parsed = run.value.parseMarkdownLink(index)
+                if (parsed != null) {
+                    flush()
+                    append(out, MarkdownKind.LINK, parsed.label, parsed.href)
+                    index = parsed.endExclusive
+                    continue
                 }
             }
             val http = run.value.startsWith("http://", index) || run.value.startsWith("https://", index)
@@ -586,6 +581,68 @@ private fun linkify(runs: List<MarkdownRun>): List<MarkdownRun> {
     }
     return out
 }
+
+private data class ParsedMarkdownLink(
+    val label: String,
+    val href: String,
+    val endExclusive: Int,
+)
+
+private fun String.parseMarkdownLink(start: Int): ParsedMarkdownLink? {
+    val labelEnd = indexOf(']', start + 1).takeIf { it > start + 1 } ?: return null
+    val destinationStart = labelEnd + 2
+    if (getOrNull(labelEnd + 1) != '(' || destinationStart >= length) return null
+
+    val destination: String
+    val closingParenthesis: Int
+    if (this[destinationStart] == '<') {
+        val destinationEnd = indexOf('>', destinationStart + 1).takeIf { it > destinationStart + 1 } ?: return null
+        closingParenthesis = destinationEnd + 1
+        if (getOrNull(closingParenthesis) != ')') return null
+        destination = substring(destinationStart + 1, destinationEnd)
+    } else {
+        closingParenthesis = findMarkdownLinkClosingParenthesis(destinationStart) ?: return null
+        destination = substring(destinationStart, closingParenthesis)
+    }
+
+    val href = destination.unescapeMarkdownLinkDestination().takeIf(String::isSafeLinkDestination) ?: return null
+    return ParsedMarkdownLink(
+        label = substring(start + 1, labelEnd),
+        href = href,
+        endExclusive = closingParenthesis + 1,
+    )
+}
+
+private fun String.findMarkdownLinkClosingParenthesis(start: Int): Int? {
+    var escaped = false
+    var nested = 0
+    for (index in start until length) {
+        val character = this[index]
+        when {
+            escaped -> escaped = false
+            character == '\\' -> escaped = true
+            character == '(' -> nested += 1
+            character == ')' && nested > 0 -> nested -= 1
+            character == ')' -> return index
+            character.isWhitespace() -> return null
+        }
+    }
+    return null
+}
+
+private fun String.unescapeMarkdownLinkDestination(): String =
+    replace("\\(", "(").replace("\\)", ")").replace("\\\\", "\\")
+
+private fun String.isSafeLinkDestination(): Boolean =
+    isNotBlank() &&
+        !startsWith("javascript:", ignoreCase = true) &&
+        !startsWith("data:", ignoreCase = true)
+
+private fun String.isExternalLinkDestination(): Boolean =
+    startsWith("https://", ignoreCase = true) ||
+        startsWith("http://", ignoreCase = true) ||
+        startsWith("mailto:", ignoreCase = true) ||
+        startsWith("tel:", ignoreCase = true)
 
 class StreamingMarkdownState(private val streaming: Boolean) {
     private val parser = StreamingMarkdownParser()

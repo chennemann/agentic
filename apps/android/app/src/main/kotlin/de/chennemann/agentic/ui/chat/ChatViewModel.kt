@@ -1383,6 +1383,8 @@ class ChatViewModel(
             .orEmpty()
             .filter { it.projectId == pickerProjectId && (local.showArchived || it.archivedAt == null) }
             .sortedByDescending { it.updatedAt }
+        val activeTurnId = detail?.session?.activeTurnId
+        val isTurnRunning = detail?.session?.status in ActiveSessionStatuses && activeTurnId != null
 
         return ChatUiState(
             title = detail?.title ?: shellThread?.title ?: "New thread",
@@ -1506,13 +1508,12 @@ class ChatViewModel(
                 ChatTurnTimingUi(
                     startedAt = turn.startedAt ?: turn.requestedAt,
                     completedAt = turn.completedAt,
-                    running = turn.state in ActiveSessionStatuses,
+                    running = isTurnRunning && activeTurnId == turn.turnId && turn.completedAt == null,
                     interrupted = turn.state == "interrupted",
                 )
             },
             activePicker = local.activePicker,
-            isTurnRunning = detail?.session?.status in ActiveSessionStatuses &&
-                detail?.session?.activeTurnId != null,
+            isTurnRunning = isTurnRunning,
             canRenameThread = detail != null,
             canArchiveThread = detail != null && detail.archivedAt == null,
             isThreadArchived = detail?.archivedAt != null,

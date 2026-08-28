@@ -787,6 +787,51 @@ class ChatViewModelIntentTest {
     }
 
     @Test
+    fun `completed turn timing does not remain running when the session is idle`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val current = requireNotNull(repository.focusedThread.value.value)
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = current.copy(
+                thread = current.thread.copy(
+                    latestTurn = LatestTurn(
+                        turnId = "turn-completed",
+                        state = "running",
+                        requestedAt = "2026-08-29T10:00:00Z",
+                        startedAt = "2026-08-29T10:00:05Z",
+                        completedAt = "2026-08-29T10:01:00Z",
+                    ),
+                    session = ThreadSession(
+                        threadId = "thread-1",
+                        status = "idle",
+                        activeTurnId = null,
+                        updatedAt = "2026-08-29T10:01:00Z",
+                    ),
+                ),
+            ),
+        )
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        assertEquals(false, viewModel.state.value.isTurnRunning)
+        assertEquals(
+            ChatTurnTimingUi(
+                startedAt = "2026-08-29T10:00:05Z",
+                completedAt = "2026-08-29T10:01:00Z",
+                running = false,
+            ),
+            viewModel.state.value.latestTurnTiming,
+        )
+    }
+
+    @Test
     fun `latest proposed plan continues once and exposes failure retry truthfully`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model"))
         val detail = requireNotNull(repository.focusedThread.value.value).thread

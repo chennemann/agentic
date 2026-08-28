@@ -170,6 +170,22 @@ class StreamingMarkdownTextTest {
     }
 
     @Test
+    fun renders_angle_bracket_file_links_without_markdown_delimiters() {
+        val text = toAnnotatedString(
+            runs = listOf(
+                MarkdownRun(
+                    MarkdownKind.TEXT,
+                    "Open [T3ChatScreen.kt](</workspace/My App/T3ChatScreen.kt:324>)",
+                ),
+            ),
+        )
+
+        assertEquals("Open T3ChatScreen.kt", text.text)
+        val annotation = text.getStringAnnotations(tag = "URL", start = 0, end = text.length).single()
+        assertEquals("/workspace/My App/T3ChatScreen.kt:324", annotation.item)
+    }
+
+    @Test
     fun renders_incomplete_streamed_link_as_literal_text() {
         val content = "["
         val runs = StreamingMarkdownState(streaming = true).update(content)
