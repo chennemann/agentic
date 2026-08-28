@@ -1,5 +1,9 @@
 package de.chennemann.agentic.ui.chat
 
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.animateScrollBy
@@ -46,10 +50,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -117,7 +123,46 @@ fun T3ChatScreen(
     var composerHeightPx by remember { mutableIntStateOf(0) }
     var consumedImeHeightPx by remember(state.threadId) { mutableIntStateOf(0) }
     var terminalMenuExpanded by remember(state.threadId) { mutableStateOf(false) }
-    var projectPickerPrototypeVisible by remember { mutableStateOf(false) }
+    var projectPaneOpen by remember { mutableStateOf(false) }
+    var projectPaneDragging by remember { mutableStateOf(false) }
+    val projectPaneDragProgress = remember { mutableFloatStateOf(0f) }
+    val projectPaneDragStartProgress = remember { mutableFloatStateOf(0f) }
+    var screenWidthPx by remember { mutableFloatStateOf(1f) }
+    val projectPaneProgress by animateFloatAsState(
+        targetValue = if (projectPaneDragging) {
+            projectPaneDragProgress.floatValue
+        } else if (projectPaneOpen) {
+            1f
+        } else {
+            0f
+        },
+        animationSpec = if (projectPaneDragging) {
+            snap()
+        } else {
+            spring(stiffness = Spring.StiffnessMediumLow)
+        },
+        label = "project pane",
+    )
+    val currentProjectPaneProgress by rememberUpdatedState(projectPaneProgress)
+    fun beginProjectPaneDrag() {
+        projectPaneDragProgress.floatValue = currentProjectPaneProgress
+        projectPaneDragStartProgress.floatValue = currentProjectPaneProgress
+        projectPaneDragging = true
+    }
+    fun updateProjectPaneDrag(dragAmount: Float) {
+        projectPaneDragProgress.floatValue = draggedProjectPaneProgress(
+            current = projectPaneDragProgress.floatValue,
+            dragAmount = dragAmount,
+            width = screenWidthPx,
+        )
+    }
+    fun settleProjectPaneDrag() {
+        projectPaneOpen = projectPaneShouldOpen(
+            startProgress = projectPaneDragStartProgress.floatValue,
+            endProgress = projectPaneDragProgress.floatValue,
+        )
+        projectPaneDragging = false
+    }
     val density = LocalDensity.current
     val imeInsets = WindowInsets.ime
     val imeHeightPx = imeInsets.getBottom(density)
@@ -189,6 +234,20 @@ fun T3ChatScreen(
         modifier = modifier
             .fillMaxSize()
             .imePadding()
+            .onSizeChanged { screenWidthPx = it.width.toFloat().coerceAtLeast(1f) }
+            .pointerInput(projectPaneOpen) {
+                if (!projectPaneOpen) {
+                    detectHorizontalDragGestures(
+                        onDragStart = { beginProjectPaneDrag() },
+                        onDragCancel = { settleProjectPaneDrag() },
+                        onDragEnd = { settleProjectPaneDrag() },
+                        onHorizontalDrag = { change, dragAmount ->
+                            updateProjectPaneDrag(dragAmount)
+                            change.consume()
+                        },
+                    )
+                }
+            }
             .onKeyEvent { keyEvent ->
                 val stroke = keyEvent.toHardwareKeyStroke(KeyboardFocus.GLOBAL)
                     ?: return@onKeyEvent false
@@ -220,26 +279,6 @@ fun T3ChatScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .nestedScroll(historyScrollConnection)
-                        .pointerInput(projectPickerPrototypeVisible) {
-                            var horizontalDistance = 0f
-                            detectHorizontalDragGestures(
-                                onDragStart = { horizontalDistance = 0f },
-                                onDragCancel = { horizontalDistance = 0f },
-                                onDragEnd = {
-                                    if (
-                                        !projectPickerPrototypeVisible &&
-                                        horizontalDistance >= 72.dp.toPx()
-                                    ) {
-                                        projectPickerPrototypeVisible = true
-                                    }
-                                    horizontalDistance = 0f
-                                },
-                                onHorizontalDrag = { change, dragAmount ->
-                                    horizontalDistance += dragAmount
-                                    change.consume()
-                                },
-                            )
-                        }
                         .testTag(ChatTimelineTestTag),
                     contentPadding = PaddingValues(
                         start = 16.dp,
@@ -459,7 +498,7 @@ fun T3ChatScreen(
                 turnRunning = state.isTurnRunning,
                 onEvent = onEvent,
                 onOpenProjectPickerPrototype = {
-                    projectPickerPrototypeVisible = true
+                    projectPaneOpen = true
                 },
                 modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
                 inputFocusRequested = inputFocusRequested,
@@ -470,26 +509,51 @@ fun T3ChatScreen(
                 },
             )
         }
+        if (projectPaneProgress > 0f || projectPaneOpen || projectPaneDragging) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .zIndex(5f)
+                    .pointerInput(projectPaneOpen) {
+                        if (projectPaneOpen) {
+                            detectHorizontalDragGestures(
+                                onDragStart = { beginProjectPaneDrag() },
+                                onDragCancel = { settleProjectPaneDrag() },
+                                onDragEnd = { settleProjectPaneDrag() },
+                                onHorizontalDrag = { change, dragAmount ->
+                                    updateProjectPaneDrag(dragAmount)
+                                    change.consume()
+                                },
+                            )
+                        }
+                    },
+            ) {
+                ExperimentalSlideOutProjectPicker(
+                    progress = projectPaneProgress,
+                    state = state.threadPicker,
+                    onDismiss = { projectPaneOpen = false },
+                    onProjectExpanded = { projectId ->
+                        onEvent(ChatUiEvent.ProjectPaneExpanded(projectId))
+                    },
+                    onThreadSelected = { threadId ->
+                        projectPaneOpen = false
+                        onEvent(ChatUiEvent.ThreadSelected(threadId))
+                    },
+                    onNewThread = {
+                        projectPaneOpen = false
+                        onEvent(ChatUiEvent.NewThreadRequested)
+                    },
+                    onAddProject = { source ->
+                        projectPaneOpen = false
+                        onEvent(ChatUiEvent.ProjectCreationRequested)
+                        onEvent(ChatUiEvent.ProjectCreationSourceChanged(source))
+                    },
+                    onSettleThread = { threadId -> onEvent(ChatUiEvent.ThreadSettleRequested(threadId)) },
+                    onUnsettleThread = { threadId -> onEvent(ChatUiEvent.ThreadUnsettleRequested(threadId)) },
+                )
+            }
+        }
     }
-
-    ExperimentalSlideOutProjectPicker(
-        visible = projectPickerPrototypeVisible,
-        state = state.threadPicker,
-        onDismiss = { projectPickerPrototypeVisible = false },
-        onProjectExpanded = { projectId ->
-            onEvent(ChatUiEvent.ProjectPaneExpanded(projectId))
-        },
-        onThreadSelected = { threadId ->
-            projectPickerPrototypeVisible = false
-            onEvent(ChatUiEvent.ThreadSelected(threadId))
-        },
-        onNewThread = {
-            projectPickerPrototypeVisible = false
-            onEvent(ChatUiEvent.NewThreadRequested)
-        },
-        onSettleThread = { threadId -> onEvent(ChatUiEvent.ThreadSettleRequested(threadId)) },
-        onUnsettleThread = { threadId -> onEvent(ChatUiEvent.ThreadUnsettleRequested(threadId)) },
-    )
 
     ChatSelectionSheets(
         state = state,
@@ -1113,9 +1177,25 @@ private fun previewChatState(): ChatUiState = ChatUiState(
     canArchiveThread = true,
 )
 
+internal fun draggedProjectPaneProgress(
+    current: Float,
+    dragAmount: Float,
+    width: Float,
+): Float = (current + dragAmount / width.coerceAtLeast(1f)).coerceIn(0f, 1f)
+
+internal fun projectPaneShouldOpen(
+    startProgress: Float,
+    endProgress: Float,
+): Boolean = when {
+    endProgress - startProgress >= ProjectPaneDirectionThreshold -> true
+    startProgress - endProgress >= ProjectPaneDirectionThreshold -> false
+    else -> endProgress >= 0.5f
+}
+
 private const val EndTolerancePx = 8
 private const val MaxEndVisibilityPasses = 8
 private const val LayoutSettleDelayMillis = 16L
+private const val ProjectPaneDirectionThreshold = 0.1f
 
 internal const val ChatTimelineTestTag = "chat-timeline"
 internal const val FollowLatestTestTag = "follow-latest"

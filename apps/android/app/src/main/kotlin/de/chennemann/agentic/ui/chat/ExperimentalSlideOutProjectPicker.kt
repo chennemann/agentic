@@ -1,19 +1,12 @@
 package de.chennemann.agentic.ui.chat
 
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -21,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -32,12 +26,12 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.chennemann.agentic.icons.Add
@@ -50,89 +44,92 @@ import de.chennemann.agentic.icons.Star
 import de.chennemann.agentic.icons.StarOutline
 
 /**
- * PROTOTYPE: three slide-out project-picker layouts hosted on the real chat screen.
- * Favorites and expanded-project state deliberately remain in memory.
+ * Experimental full-screen project pane based on the selected favorites-focused prototype.
+ * Favorites and filter state remain in memory until the interaction model is finalized.
  */
 @Composable
 fun ExperimentalSlideOutProjectPicker(
-    visible: Boolean,
+    progress: Float,
     state: ThreadPickerUiState,
     onDismiss: () -> Unit,
     onProjectExpanded: (String) -> Unit,
     onThreadSelected: (String) -> Unit,
     onNewThread: () -> Unit,
+    onAddProject: (String) -> Unit,
     onSettleThread: (String) -> Unit,
     onUnsettleThread: (String) -> Unit,
 ) {
-    var variant by remember { mutableStateOf(ProjectPickerPrototypeVariant.ACCORDION) }
     var expandedProjectId by rememberSaveable { mutableStateOf<String?>(null) }
     var favorites by rememberSaveable { mutableStateOf(setOf<String>()) }
+    var showAllProjects by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     val search = query.trim()
     val projects = state.projects
         .filter { project ->
-            search.isEmpty() || project.label.contains(search, true) ||
-                project.supportingText.orEmpty().contains(search, true) ||
-                (project.id == expandedProjectId && state.allThreads().any { it.matches(search) })
+            val matchesSearch = project.matches(search)
+            when {
+                search.isNotEmpty() -> matchesSearch
+                showAllProjects -> true
+                else -> project.unsettledThreadCount > 0
+            }
         }
         .sortedWith(
-            compareByDescending<ProjectPickerItemUi> { it.id in favorites }
+            compareBy<ProjectPickerItemUi> { it.id in favorites }
                 .thenBy(String.CASE_INSENSITIVE_ORDER) { it.label },
         )
 
-    BackHandler(enabled = visible, onBack = onDismiss)
-    AnimatedVisibility(visible = visible, enter = fadeIn(), exit = fadeOut()) {
-        Box(
-            Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.56f)).clickable(onClick = onDismiss),
-        )
-    }
-    AnimatedVisibility(
-        visible = visible,
-        enter = slideInHorizontally(initialOffsetX = { -it }),
-        exit = slideOutHorizontally(targetOffsetX = { -it }),
+    BackHandler(enabled = progress > 0f, onBack = onDismiss)
+    Surface(
+        modifier = Modifier
+            .fillMaxSize()
+            .graphicsLayer { translationX = -(1f - progress) * size.width },
+        color = MaterialTheme.colorScheme.surface,
+        shadowElevation = 16.dp,
     ) {
-        Surface(
-            modifier = Modifier.fillMaxWidth(0.88f).fillMaxHeight(),
-            color = MaterialTheme.colorScheme.surface,
-            shadowElevation = 16.dp,
-        ) {
-            Column(Modifier.statusBarsPadding().navigationBarsPadding().padding(top = 12.dp)) {
-                Header(variant, onDismiss)
-                ProjectList(
-                    modifier = Modifier.weight(1f),
-                    projects = projects,
-                    state = state,
-                    variant = variant,
-                    expandedProjectId = expandedProjectId,
-                    favorites = favorites,
-                    search = search,
-                    onToggleExpanded = { projectId ->
-                        expandedProjectId = if (expandedProjectId == projectId) null else projectId
-                        if (expandedProjectId != null) onProjectExpanded(projectId)
+        Column(Modifier.statusBarsPadding().navigationBarsPadding().padding(top = 12.dp)) {
+            ProjectPaneHeader(onDismiss)
+            ProjectList(
+                modifier = Modifier.weight(1f),
+                projects = projects,
+                state = state,
+                expandedProjectId = expandedProjectId,
+                favorites = favorites,
+                search = search,
+                onToggleExpanded = { projectId ->
+                    expandedProjectId = if (expandedProjectId == projectId) null else projectId
+                    if (expandedProjectId != null) onProjectExpanded(projectId)
+                },
+                onToggleFavorite = { projectId ->
+                    favorites = if (projectId in favorites) favorites - projectId else favorites + projectId
+                },
+                onThreadSelected = onThreadSelected,
+                onNewThread = onNewThread,
+                onAddProject = onAddProject,
+                onSettleThread = onSettleThread,
+                onUnsettleThread = onUnsettleThread,
+            )
+            Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)) {
+                FilterChip(
+                    selected = showAllProjects,
+                    onClick = { showAllProjects = !showAllProjects },
+                    label = {
+                        Text(if (showAllProjects) "Showing all projects" else "Show projects without open threads")
                     },
-                    onToggleFavorite = { projectId ->
-                        favorites = if (projectId in favorites) favorites - projectId else favorites + projectId
-                    },
-                    onThreadSelected = onThreadSelected,
-                    onNewThread = onNewThread,
-                    onSettleThread = onSettleThread,
-                    onUnsettleThread = onUnsettleThread,
                 )
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp),
+                    modifier = Modifier.fillMaxWidth(),
                     placeholder = { Text("Search projects and threads") },
                     singleLine = true,
                 )
-                VariantSwitcher(variant) { variant = it }
             }
         }
     }
 }
 
 @Composable
-private fun Header(variant: ProjectPickerPrototypeVariant, onDismiss: () -> Unit) {
+private fun ProjectPaneHeader(onDismiss: () -> Unit) {
     Row(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -141,7 +138,7 @@ private fun Header(variant: ProjectPickerPrototypeVariant, onDismiss: () -> Unit
         Column {
             Text("Projects", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "Prototype · ${variant.label}",
+                "Favorites are kept within thumb reach",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelMedium,
             )
@@ -155,7 +152,6 @@ private fun ProjectList(
     modifier: Modifier,
     projects: List<ProjectPickerItemUi>,
     state: ThreadPickerUiState,
-    variant: ProjectPickerPrototypeVariant,
     expandedProjectId: String?,
     favorites: Set<String>,
     search: String,
@@ -163,35 +159,31 @@ private fun ProjectList(
     onToggleFavorite: (String) -> Unit,
     onThreadSelected: (String) -> Unit,
     onNewThread: () -> Unit,
+    onAddProject: (String) -> Unit,
     onSettleThread: (String) -> Unit,
     onUnsettleThread: (String) -> Unit,
 ) {
     LazyColumn(
         modifier = modifier.fillMaxWidth(),
         contentPadding = PaddingValues(12.dp),
-        verticalArrangement = Arrangement.spacedBy(if (variant == ProjectPickerPrototypeVariant.CARDS) 10.dp else 2.dp),
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         if (projects.isEmpty()) {
             item("empty") {
-                Text(
-                    if (search.isEmpty()) "No projects available" else "No matching projects or loaded threads",
-                    modifier = Modifier.padding(16.dp),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                EmptyProjects(search = search, onAddProject = onAddProject)
             }
         }
         items(projects, key = { it.id }) { project ->
             val expanded = project.id == expandedProjectId
             ProjectRow(
                 project = project,
-                variant = variant,
                 expanded = expanded,
                 favorite = project.id in favorites,
                 onToggleExpanded = { onToggleExpanded(project.id) },
                 onToggleFavorite = { onToggleFavorite(project.id) },
             )
             if (expanded) {
-                Threads(
+                ProjectThreads(
                     state = state,
                     search = search,
                     onThreadSelected = onThreadSelected,
@@ -205,22 +197,37 @@ private fun ProjectList(
 }
 
 @Composable
+private fun EmptyProjects(search: String, onAddProject: (String) -> Unit) {
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(16.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Text(
+            if (search.isEmpty()) "No projects have open threads" else "No project matches “$search”",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (search.isNotEmpty()) {
+            TextButton(onClick = { onAddProject(search) }) {
+                Icon(Icons.Add, contentDescription = null)
+                Text("Add project", modifier = Modifier.padding(start = 8.dp))
+            }
+        }
+    }
+}
+
+@Composable
 private fun ProjectRow(
     project: ProjectPickerItemUi,
-    variant: ProjectPickerPrototypeVariant,
     expanded: Boolean,
     favorite: Boolean,
     onToggleExpanded: () -> Unit,
     onToggleFavorite: () -> Unit,
 ) {
-    val color = when (variant) {
-        ProjectPickerPrototypeVariant.ACCORDION -> Color.Transparent
-        ProjectPickerPrototypeVariant.CARDS -> MaterialTheme.colorScheme.surfaceVariant
-        ProjectPickerPrototypeVariant.FAVORITES_FIRST -> {
-            if (favorite) MaterialTheme.colorScheme.primaryContainer else Color.Transparent
-        }
-    }
-    Surface(onClick = onToggleExpanded, color = color, shape = MaterialTheme.shapes.medium) {
+    Surface(
+        onClick = onToggleExpanded,
+        color = if (favorite) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+        shape = MaterialTheme.shapes.medium,
+    ) {
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -231,15 +238,19 @@ private fun ProjectRow(
             )
             Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
                 Text(project.label, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                project.supportingText?.let {
-                    Text(
-                        it,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        style = MaterialTheme.typography.bodySmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                Text(
+                    buildString {
+                        append("${project.unsettledThreadCount} open")
+                        project.supportingText?.let {
+                            append(" · ")
+                            append(it)
+                        }
+                    },
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    style = MaterialTheme.typography.bodySmall,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             IconButton(onClick = onToggleFavorite) {
                 Icon(
@@ -252,7 +263,7 @@ private fun ProjectRow(
 }
 
 @Composable
-private fun Threads(
+private fun ProjectThreads(
     state: ThreadPickerUiState,
     search: String,
     onThreadSelected: (String) -> Unit,
@@ -335,34 +346,9 @@ private fun ThreadRow(
     }
 }
 
-@Composable
-private fun VariantSwitcher(
-    variant: ProjectPickerPrototypeVariant,
-    onVariantChanged: (ProjectPickerPrototypeVariant) -> Unit,
-) {
-    val variants = ProjectPickerPrototypeVariant.entries
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        TextButton(onClick = { onVariantChanged(variants[(variant.ordinal - 1 + variants.size) % variants.size]) }) {
-            Text("←")
-        }
-        Text("${variant.name.first()} · ${variant.label}", style = MaterialTheme.typography.labelLarge)
-        TextButton(onClick = { onVariantChanged(variants[(variant.ordinal + 1) % variants.size]) }) {
-            Text("→")
-        }
-    }
-}
-
-private fun ThreadPickerUiState.allThreads(): List<ThreadPickerItemUi> = threads + settledThreads
+private fun ProjectPickerItemUi.matches(query: String): Boolean =
+    query.isEmpty() || label.contains(query, true) || supportingText.orEmpty().contains(query, true) ||
+        searchableThreadTitles.any { it.contains(query, true) }
 
 private fun ThreadPickerItemUi.matches(query: String): Boolean =
     query.isEmpty() || title.contains(query, true) || supportingText.orEmpty().contains(query, true)
-
-private enum class ProjectPickerPrototypeVariant(val label: String) {
-    ACCORDION("Accordion explorer"),
-    CARDS("Project cards"),
-    FAVORITES_FIRST("Favorites focus"),
-}

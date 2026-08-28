@@ -1463,7 +1463,17 @@ class ChatViewModel(
                         }.thenBy { it.id },
                     )
                     .map {
-                        ProjectPickerItemUi(it.id, it.title, it.workspaceRoot)
+                        ProjectPickerItemUi(
+                            id = it.id,
+                            label = it.title,
+                            supportingText = it.workspaceRoot,
+                            unsettledThreadCount = shell?.threads.orEmpty().count { thread ->
+                                thread.projectId == it.id && !thread.isSettled()
+                            },
+                            searchableThreadTitles = shell?.threads.orEmpty()
+                                .filter { thread -> thread.projectId == it.id }
+                                .map { thread -> thread.title },
+                        )
                     },
                 selectedProjectId = pickerProjectId,
                 threads = pickerThreads.filterNot { it.isSettled() }.map {

@@ -312,6 +312,8 @@ data class ProjectPickerItemUi(
     val id: String,
     val label: String,
     val supportingText: String? = null,
+    val unsettledThreadCount: Int = 0,
+    val searchableThreadTitles: List<String> = emptyList(),
 )
 
 data class ThreadPickerItemUi(

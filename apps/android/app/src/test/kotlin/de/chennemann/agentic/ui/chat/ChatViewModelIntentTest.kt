@@ -1017,6 +1017,11 @@ class ChatViewModelIntentTest {
         advanceUntilIdle()
 
         assertEquals(listOf("project-1", "project-2"), viewModel.state.value.threadPicker.projects.map { it.id })
+        assertEquals(listOf(1, 1), viewModel.state.value.threadPicker.projects.map { it.unsettledThreadCount })
+        assertEquals(
+            listOf("Thread One", "Settled Thread"),
+            viewModel.state.value.threadPicker.projects.first().searchableThreadTitles,
+        )
         assertEquals(listOf("thread-1"), viewModel.state.value.threadPicker.threads.map { it.id })
         assertEquals(listOf("thread-settled"), viewModel.state.value.threadPicker.settledThreads.map { it.id })
         assertEquals(false, viewModel.state.value.threadPicker.showSettled)
