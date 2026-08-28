@@ -37,9 +37,12 @@ import de.chennemann.agentic.ui.theme.MobileTheme
 fun T3OnboardingScreen(
     state: OnboardingUiState,
     onEvent: (OnboardingUiEvent) -> Unit,
+    onChooseClientCertificate: (ClientCertificateUi) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     var qrScannerVisible by remember { mutableStateOf(false) }
+    val hasRequiredPairingCode = state.inputKind != OnboardingInputKindUi.SERVER_URL ||
+        state.pairingCodeInput.isNotBlank()
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -103,6 +106,25 @@ fun T3OnboardingScreen(
                     )
                 },
             )
+            if (state.inputKind == OnboardingInputKindUi.SERVER_URL) {
+                OutlinedTextField(
+                    value = state.pairingCodeInput,
+                    onValueChange = { onEvent(OnboardingUiEvent.PairingCodeChanged(it)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !state.working,
+                    singleLine = true,
+                    label = { Text("Pairing code") },
+                    supportingText = { Text("Enter the code from the original pairing link.") },
+                )
+            }
+            state.clientCertificate?.let { certificate ->
+                ClientCertificateSection(
+                    certificate = certificate,
+                    enabled = !state.working,
+                    onChoose = { onChooseClientCertificate(certificate) },
+                    onClear = { onEvent(OnboardingUiEvent.ClientCertificateCleared) },
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -110,7 +132,7 @@ fun T3OnboardingScreen(
             ) {
                 Button(
                     onClick = { onEvent(OnboardingUiEvent.EndpointSubmitted) },
-                    enabled = state.endpointInput.isNotBlank() && !state.working,
+                    enabled = state.endpointInput.isNotBlank() && hasRequiredPairingCode && !state.working,
                     modifier = Modifier.weight(1f),
                 ) {
                     if (state.working) {
@@ -206,6 +228,44 @@ fun T3OnboardingScreen(
                 onEvent(OnboardingUiEvent.QrCodeScanned(it))
             },
             onDismiss = { qrScannerVisible = false },
+        )
+    }
+}
+
+@Composable
+private fun ClientCertificateSection(
+    certificate: ClientCertificateUi,
+    enabled: Boolean,
+    onChoose: () -> Unit,
+    onClear: () -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            OutlinedButton(
+                onClick = onChoose,
+                enabled = enabled,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(if (certificate.selected) "Change device certificate" else "Use device certificate")
+            }
+            if (certificate.selected) {
+                TextButton(onClick = onClear, enabled = enabled) {
+                    Text("Remove")
+                }
+            }
+        }
+        Text(
+            text = if (certificate.selected) {
+                "A device certificate will be presented only to this server."
+            } else {
+                "If this server requires mTLS, select an installed certificate before continuing."
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }

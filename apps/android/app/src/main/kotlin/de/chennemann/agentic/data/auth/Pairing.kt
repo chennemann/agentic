@@ -29,6 +29,7 @@ object PairingUrlParser {
     fun parse(
         rawValue: String,
         requireCredential: Boolean,
+        pairingCode: String? = null,
     ): PairingTarget {
         val outer = parseUri(rawValue)
         val hostedHost = outer.queryParameters()["host"]?.trim().orEmpty()
@@ -39,10 +40,11 @@ object PairingUrlParser {
 
         val outerParams = outer.queryParameters() + outer.fragmentParameters()
         val backendParams = backend.queryParameters() + backend.fragmentParameters()
-        val credential = (
-            outerParams["token"]
-                ?: backendParams["token"]
-            )?.trim()?.takeIf(String::isNotEmpty)
+        val credential = pairingCode?.trim()?.takeIf(String::isNotEmpty)
+            ?: (
+                outerParams["token"]
+                    ?: backendParams["token"]
+                )?.trim()?.takeIf(String::isNotEmpty)
         if (requireCredential && credential == null) throw PairingException.MissingCredential()
         val expectedEnvironmentId = (
             outerParams["environmentId"]

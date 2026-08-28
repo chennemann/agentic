@@ -23,6 +23,18 @@ class PairingUrlParserTest {
     }
 
     @Test
+    fun `pairing code can be supplied separately from reverse proxy URL`() {
+        val target = PairingUrlParser.parse(
+            "https://proxy.example.test/",
+            requireCredential = true,
+            pairingCode = "  PAIRCODE  ",
+        )
+
+        assertEquals("https://proxy.example.test/", target.baseUrl)
+        assertEquals("PAIRCODE", target.bootstrapCredential)
+    }
+
+    @Test
     fun `environment mismatch is rejected`() {
         val target = PairingUrlParser.parse(
             "https://remote.example.test/pair?environmentId=expected#token=PAIRCODE",

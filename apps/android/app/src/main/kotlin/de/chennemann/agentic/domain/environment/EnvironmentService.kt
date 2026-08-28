@@ -1,6 +1,7 @@
 package de.chennemann.agentic.domain.environment
 
 import de.chennemann.agentic.data.auth.CredentialStore
+import de.chennemann.agentic.data.auth.ClientCertificateStore
 import de.chennemann.agentic.data.auth.PairingException
 import de.chennemann.agentic.data.auth.PairingTarget
 import de.chennemann.agentic.data.auth.PairingUrlParser
@@ -39,8 +40,13 @@ class EnvironmentService(
     suspend fun inspect(
         value: String,
         requireCredential: Boolean,
+        pairingCode: String? = null,
     ): PairingPreview {
-        val target = PairingUrlParser.parse(value, requireCredential)
+        val target = PairingUrlParser.parse(
+            rawValue = value,
+            requireCredential = requireCredential,
+            pairingCode = pairingCode,
+        )
         val descriptor = metadataClient.environmentDescriptor(target.baseUrl)
         PairingUrlParser.validateEnvironment(target, descriptor.environmentId)
         return PairingPreview(target, descriptor)
@@ -78,13 +84,17 @@ class RegisteredEnvironmentRemover(
     private val environments: EnvironmentRepository,
     private val credentials: CredentialStore,
     private val caches: EnvironmentCacheRemover,
+    private val clientCertificates: ClientCertificateStore,
 ) : EnvironmentRemover {
     override suspend fun remove(environmentId: String) {
-        require(environments.environments.value.any { it.id == environmentId }) {
+        val environment = requireNotNull(environments.environments.value.firstOrNull { it.id == environmentId }) {
             "Environment is no longer registered."
         }
         val wasActive = environments.activeEnvironment.value?.id == environmentId
         credentials.remove(environmentId)
+        if (clientCertificates.aliasFor(environment.baseUrl) != null) {
+            clientCertificates.setAlias(environment.baseUrl, null)
+        }
         environments.remove(environmentId)
         caches.clear(environmentId)
         if (wasActive) {

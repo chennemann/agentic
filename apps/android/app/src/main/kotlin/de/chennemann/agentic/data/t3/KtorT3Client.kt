@@ -62,7 +62,7 @@ import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
 
 class KtorT3Client(
-    private val httpClient: HttpClient,
+    private val httpClients: T3HttpClientProvider,
     private val scope: CoroutineScope,
 ) : EnvironmentMetadataClient,
     EnvironmentAuthClient,
@@ -72,6 +72,11 @@ class KtorT3Client(
     WorkspaceFilesRpcClient,
     TerminalRpcClient,
     AttachmentAssetClient {
+    constructor(httpClient: HttpClient, scope: CoroutineScope) : this(
+        T3HttpClientProvider { httpClient },
+        scope,
+    )
+
     private val connectionMutex = Mutex()
     private val connections = mutableMapOf<ConnectionKey, EffectRpcConnection>()
 
@@ -83,7 +88,7 @@ class KtorT3Client(
         bootstrapCredential: String,
         metadata: AndroidClientMetadata,
     ): TokenExchangeResponse = transport {
-        val response = httpClient.submitForm(
+        val response = httpClients.client(baseUrl).submitForm(
             url = url(baseUrl, "/oauth/token"),
             formParameters = Parameters.build {
                 append("grant_type", "urn:ietf:params:oauth:grant-type:token-exchange")
@@ -266,7 +271,7 @@ class KtorT3Client(
                 })
             },
         )
-        val response = httpClient.get(url(baseUrl, asset.relativeUrl)) { bearerAuth(bearerToken) }
+        val response = httpClients.client(baseUrl).get(url(baseUrl, asset.relativeUrl)) { bearerAuth(bearerToken) }
         response.checked()
         val bytes = response.body<ByteArray>()
         return "data:$mimeType;base64,${android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)}"
@@ -289,7 +294,7 @@ class KtorT3Client(
                 })
             },
         )
-        val bytes = httpClient.get(url(baseUrl, asset.relativeUrl)).body<ByteArray>()
+        val bytes = httpClients.client(baseUrl).get(url(baseUrl, asset.relativeUrl)).body<ByteArray>()
         return "data:$mimeType;base64,${android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)}"
     }
 
@@ -351,6 +356,7 @@ class KtorT3Client(
         val key = ConnectionKey(baseUrl.trimEnd('/'), bearerToken)
         connections[key]?.takeIf(EffectRpcConnection::isActive)?.let { return@withLock it }
 
+        val httpClient = httpClients.client(key.baseUrl)
         val ticketResponse = httpClient.post(url(key.baseUrl, "/api/auth/websocket-ticket")) {
             bearerAuth(bearerToken)
             accept(ContentType.Application.Json)
@@ -378,7 +384,7 @@ class KtorT3Client(
         url: String,
         bearerToken: String? = null,
     ): T = transport {
-        val response = httpClient.get(url) {
+        val response = httpClients.client(url).get(url) {
             if (bearerToken != null) bearerAuth(bearerToken)
             accept(ContentType.Application.Json)
         }

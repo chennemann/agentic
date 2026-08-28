@@ -1,6 +1,7 @@
 package de.chennemann.agentic.domain.environment
 
 import de.chennemann.agentic.data.auth.CredentialStore
+import de.chennemann.agentic.data.auth.ClientCertificateStore
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -12,16 +13,33 @@ import org.junit.jupiter.api.Test
 
 class RegisteredEnvironmentRemoverTest {
     @Test
+    fun `removing cleartext environment does not require client certificate configuration`() = runTest {
+        val environments = RemovalEnvironmentRepository(
+            listOf(environment("local", active = true, baseUrl = "http://192.168.1.10:3000/")),
+        )
+        val credentials = RecordingCredentials()
+        val certificates = RecordingClientCertificates(rejectCleartext = true)
+        val remover = RegisteredEnvironmentRemover(environments, credentials, {}, certificates)
+
+        remover.remove("local")
+
+        assertEquals(emptyList<SavedEnvironment>(), environments.environments.value)
+        assertEquals(emptyList<String>(), certificates.removed)
+    }
+
+    @Test
     fun `removing active environment clears only its data and selects another environment`() = runTest {
         val environments = RemovalEnvironmentRepository(listOf(environment("one", active = true), environment("two")))
         val credentials = RecordingCredentials()
+        val certificates = RecordingClientCertificates()
         val cleared = mutableListOf<String>()
-        val remover = RegisteredEnvironmentRemover(environments, credentials, cleared::add)
+        val remover = RegisteredEnvironmentRemover(environments, credentials, cleared::add, certificates)
 
         remover.remove("one")
 
         assertEquals(listOf("one"), credentials.removed)
         assertEquals(listOf("one"), cleared)
+        assertEquals(listOf("https://one.example.test/"), certificates.removed)
         assertEquals(listOf("two"), environments.environments.value.map { it.id })
         assertEquals("two", environments.activeEnvironment.value?.id)
     }
@@ -30,26 +48,47 @@ class RegisteredEnvironmentRemoverTest {
     fun `credential failure leaves registered environment and caches untouched`() = runTest {
         val environments = RemovalEnvironmentRepository(listOf(environment("one", active = true)))
         val credentials = RecordingCredentials(failRemoval = true)
+        val certificates = RecordingClientCertificates()
         val cleared = mutableListOf<String>()
-        val remover = RegisteredEnvironmentRemover(environments, credentials, cleared::add)
+        val remover = RegisteredEnvironmentRemover(environments, credentials, cleared::add, certificates)
 
         assertInstanceOf(IllegalStateException::class.java, runCatching { remover.remove("one") }.exceptionOrNull())
 
         assertEquals(listOf("one"), environments.environments.value.map { it.id })
         assertEquals(emptyList<String>(), cleared)
+        assertEquals(emptyList<String>(), certificates.removed)
     }
 
     @Test
     fun `unknown environment is rejected before deleting any data`() = runTest {
         val environments = RemovalEnvironmentRepository(listOf(environment("one", active = true)))
         val credentials = RecordingCredentials()
+        val certificates = RecordingClientCertificates()
         val cleared = mutableListOf<String>()
-        val remover = RegisteredEnvironmentRemover(environments, credentials, cleared::add)
+        val remover = RegisteredEnvironmentRemover(environments, credentials, cleared::add, certificates)
 
         assertInstanceOf(IllegalArgumentException::class.java, runCatching { remover.remove("missing") }.exceptionOrNull())
 
         assertFalse(credentials.removed.isNotEmpty())
         assertEquals(emptyList<String>(), cleared)
+        assertEquals(emptyList<String>(), certificates.removed)
+    }
+}
+
+private class RecordingClientCertificates(
+    private val rejectCleartext: Boolean = false,
+) : ClientCertificateStore {
+    val removed = mutableListOf<String>()
+
+    override fun aliasFor(baseUrl: String): String? = "configured-alias".takeIf {
+        baseUrl.startsWith("https://")
+    }
+
+    override fun setAlias(baseUrl: String, alias: String?) {
+        if (rejectCleartext && baseUrl.startsWith("http://")) {
+            throw IllegalArgumentException("Client certificates require an HTTPS server URL.")
+        }
+        if (alias == null) removed += baseUrl
     }
 }
 
@@ -81,10 +120,14 @@ private class RemovalEnvironmentRepository(initial: List<SavedEnvironment>) : En
     override suspend fun markConnected(environmentId: String, connectedAt: Long) = Unit
 }
 
-private fun environment(id: String, active: Boolean = false) = SavedEnvironment(
+private fun environment(
+    id: String,
+    active: Boolean = false,
+    baseUrl: String = "https://$id.example.test/",
+) = SavedEnvironment(
     id = id,
     label = "Environment $id",
-    baseUrl = "https://$id.example.test/",
+    baseUrl = baseUrl,
     platformOs = "provider-os-$id",
     platformArch = "provider-arch-$id",
     serverVersion = "provider-version-$id",

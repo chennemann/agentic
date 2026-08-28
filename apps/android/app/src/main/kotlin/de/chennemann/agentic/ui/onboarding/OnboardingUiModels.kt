@@ -2,13 +2,20 @@ package de.chennemann.agentic.ui.onboarding
 
 data class OnboardingUiState(
     val endpointInput: String = "",
+    val pairingCodeInput: String = "",
     val inputKind: OnboardingInputKindUi = OnboardingInputKindUi.PAIRING_LINK,
+    val clientCertificate: ClientCertificateUi? = null,
     val savedEnvironments: List<SavedEnvironmentUi> = emptyList(),
     val environmentPreview: EnvironmentPreviewUi? = null,
     val cleartextConfirmation: CleartextConfirmationUi? = null,
     val removalConfirmation: SavedEnvironmentUi? = null,
     val working: Boolean = false,
     val error: OnboardingErrorUi? = null,
+)
+
+data class ClientCertificateUi(
+    val serverUrl: String,
+    val selected: Boolean,
 )
 
 enum class OnboardingInputKindUi(
@@ -69,6 +76,10 @@ sealed interface OnboardingUiEvent {
         val value: String,
     ) : OnboardingUiEvent
 
+    data class PairingCodeChanged(
+        val value: String,
+    ) : OnboardingUiEvent
+
     data class InputKindSelected(
         val kind: OnboardingInputKindUi,
     ) : OnboardingUiEvent
@@ -76,6 +87,12 @@ sealed interface OnboardingUiEvent {
     data object EndpointSubmitted : OnboardingUiEvent
 
     data object QrScanRequested : OnboardingUiEvent
+
+    data class ClientCertificateSelected(
+        val alias: String,
+    ) : OnboardingUiEvent
+
+    data object ClientCertificateCleared : OnboardingUiEvent
 
     data class QrCodeScanned(
         val value: String,

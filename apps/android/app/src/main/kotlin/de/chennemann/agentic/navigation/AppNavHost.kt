@@ -1,35 +1,47 @@
 package de.chennemann.agentic.navigation
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation3.runtime.NavEntry
 import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
+import de.chennemann.agentic.data.auth.AndroidClientCertificateSelector
+import de.chennemann.agentic.data.auth.ClientCertificateStore
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
+import de.chennemann.agentic.t3.contract.ProjectScript
+import de.chennemann.agentic.t3.contract.ProjectScriptIcon
 import de.chennemann.agentic.ui.chat.ChatViewModel
 import de.chennemann.agentic.ui.chat.ChatUiEvent
 import de.chennemann.agentic.ui.chat.T3ChatScreen
-import de.chennemann.agentic.ui.onboarding.OnboardingViewModel
-import de.chennemann.agentic.ui.onboarding.OnboardingUiEvent
-import de.chennemann.agentic.ui.onboarding.T3OnboardingScreen
 import de.chennemann.agentic.ui.files.WorkspaceFilesScreen
 import de.chennemann.agentic.ui.files.WorkspaceFilesViewModel
+import de.chennemann.agentic.ui.onboarding.OnboardingUiEvent
+import de.chennemann.agentic.ui.onboarding.OnboardingViewModel
+import de.chennemann.agentic.ui.onboarding.T3OnboardingScreen
 import de.chennemann.agentic.ui.terminal.TerminalScreen
 import de.chennemann.agentic.ui.terminal.TerminalViewModel
 import de.chennemann.agentic.ui.updater.StorUpdaterScreen
-import de.chennemann.agentic.t3.contract.ProjectScript
-import de.chennemann.agentic.t3.contract.ProjectScriptIcon
+import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import org.koin.core.context.GlobalContext
 
 @Composable
 fun AppNavHost() {
     val environments: EnvironmentRepository = GlobalContext.get().get()
+    val clientCertificateSelector: AndroidClientCertificateSelector = GlobalContext.get().get()
+    val clientCertificates: ClientCertificateStore = GlobalContext.get().get()
+    val activity = requireNotNull(LocalContext.current.findActivity())
+    val scope = rememberCoroutineScope()
     val activeEnvironment by environments.activeEnvironment.collectAsStateWithLifecycle()
     val stack = rememberNavBackStack(OnboardingRoute)
     var manualOnboarding by remember { mutableStateOf(false) }
@@ -57,6 +69,17 @@ fun AppNavHost() {
                                 manualOnboarding = false
                             } else {
                                 viewModel.onEvent(it)
+                            }
+                        },
+                        onChooseClientCertificate = { certificate ->
+                            scope.launch {
+                                clientCertificateSelector.choose(
+                                    activity = activity,
+                                    serverUrl = certificate.serverUrl,
+                                    preselectedAlias = clientCertificates.aliasFor(certificate.serverUrl),
+                                )?.let {
+                                    viewModel.onEvent(OnboardingUiEvent.ClientCertificateSelected(it))
+                                }
                             }
                         },
                     )
@@ -132,4 +155,10 @@ fun AppNavHost() {
             }
         },
     )
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
 }

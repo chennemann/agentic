@@ -2,7 +2,9 @@ package de.chennemann.agentic.ui.onboarding
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import de.chennemann.agentic.data.auth.ClientCertificateStore
 import de.chennemann.agentic.data.auth.PairingException
+import de.chennemann.agentic.data.auth.PairingUrlParser
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
 import de.chennemann.agentic.domain.environment.EnvironmentRemover
 import de.chennemann.agentic.domain.environment.EnvironmentService
@@ -17,6 +19,7 @@ class OnboardingViewModel(
     private val environments: EnvironmentRepository,
     private val service: EnvironmentService,
     private val remover: EnvironmentRemover,
+    private val clientCertificates: ClientCertificateStore,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
     private var pairingPreview: PairingPreview? = null
@@ -24,7 +27,11 @@ class OnboardingViewModel(
     val state = combine(environments.environments, local) { saved, local ->
         OnboardingUiState(
             endpointInput = local.endpointInput,
+            pairingCodeInput = local.pairingCodeInput,
             inputKind = local.inputKind,
+            clientCertificate = local.clientCertificateServerUrl?.let {
+                ClientCertificateUi(it, local.clientCertificateSelected)
+            },
             savedEnvironments = saved.map {
                 SavedEnvironmentUi(
                     id = it.id,
@@ -58,15 +65,30 @@ class OnboardingViewModel(
     fun onEvent(event: OnboardingUiEvent) {
         when (event) {
             OnboardingUiEvent.CloseRequested -> Unit
-            is OnboardingUiEvent.EndpointChanged -> update {
-                copy(endpointInput = event.value, error = null)
+            is OnboardingUiEvent.EndpointChanged -> updateEndpoint(event.value)
+            is OnboardingUiEvent.PairingCodeChanged -> {
+                pairingPreview = null
+                update { copy(pairingCodeInput = event.value, error = null) }
             }
 
-            is OnboardingUiEvent.InputKindSelected -> update {
-                copy(inputKind = event.kind, error = null)
+            is OnboardingUiEvent.InputKindSelected -> {
+                pairingPreview = null
+                update { copy(inputKind = event.kind, error = null) }
             }
 
             OnboardingUiEvent.EndpointSubmitted -> inspect()
+            is OnboardingUiEvent.ClientCertificateSelected -> {
+                val serverUrl = local.value.clientCertificateServerUrl ?: return
+                clientCertificates.setAlias(serverUrl, event.alias)
+                pairingPreview = null
+                update { copy(clientCertificateSelected = true, error = null) }
+            }
+            OnboardingUiEvent.ClientCertificateCleared -> {
+                val serverUrl = local.value.clientCertificateServerUrl ?: return
+                clientCertificates.setAlias(serverUrl, null)
+                pairingPreview = null
+                update { copy(clientCertificateSelected = false, error = null) }
+            }
             OnboardingUiEvent.PairingConfirmed -> {
                 val preview = pairingPreview ?: return
                 if (preview.target.requiresCleartextConfirmation && !local.value.cleartextAccepted) {
@@ -113,12 +135,7 @@ class OnboardingViewModel(
             OnboardingUiEvent.ErrorDismissed -> update { copy(error = null) }
             OnboardingUiEvent.QrScanRequested -> Unit
             is OnboardingUiEvent.QrCodeScanned -> {
-                update {
-                    copy(
-                        endpointInput = event.value,
-                        inputKind = OnboardingInputKindUi.PAIRING_LINK,
-                    )
-                }
+                updateEndpoint(event.value) { copy(inputKind = OnboardingInputKindUi.PAIRING_LINK) }
                 inspect()
             }
         }
@@ -129,7 +146,10 @@ class OnboardingViewModel(
         launchWork {
             pairingPreview = service.inspect(
                 input,
-                requireCredential = local.value.inputKind == OnboardingInputKindUi.PAIRING_LINK,
+                requireCredential = true,
+                pairingCode = local.value.pairingCodeInput.takeIf {
+                    local.value.inputKind == OnboardingInputKindUi.SERVER_URL
+                },
             )
         }
     }
@@ -155,9 +175,30 @@ class OnboardingViewModel(
         local.value = local.value.transform()
     }
 
+    private fun updateEndpoint(
+        value: String,
+        transform: LocalState.() -> LocalState = { this },
+    ) {
+        pairingPreview = null
+        val serverUrl = runCatching {
+            PairingUrlParser.parse(value, requireCredential = false).baseUrl
+        }.getOrNull()?.takeIf { it.startsWith("https://") }
+        update {
+            copy(
+                endpointInput = value,
+                clientCertificateServerUrl = serverUrl,
+                clientCertificateSelected = serverUrl?.let(clientCertificates::aliasFor) != null,
+                error = null,
+            ).transform()
+        }
+    }
+
     private data class LocalState(
         val endpointInput: String = "",
+        val pairingCodeInput: String = "",
         val inputKind: OnboardingInputKindUi = OnboardingInputKindUi.PAIRING_LINK,
+        val clientCertificateServerUrl: String? = null,
+        val clientCertificateSelected: Boolean = false,
         val working: Boolean = false,
         val error: OnboardingErrorUi? = null,
         val cleartextConfirmation: CleartextConfirmationUi? = null,

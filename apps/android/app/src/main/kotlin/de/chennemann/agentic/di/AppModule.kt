@@ -4,6 +4,9 @@ import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import de.chennemann.agentic.data.AndroidNetworkMonitor
 import de.chennemann.agentic.data.AndroidClientInstallationId
 import de.chennemann.agentic.data.auth.CredentialStore
+import de.chennemann.agentic.data.auth.AndroidClientCertificateSelector
+import de.chennemann.agentic.data.auth.AndroidClientCertificateStore
+import de.chennemann.agentic.data.auth.ClientCertificateStore
 import de.chennemann.agentic.data.auth.KeystoreCredentialStore
 import de.chennemann.agentic.data.cache.SqlComposerDraftRepository
 import de.chennemann.agentic.data.cache.SqlCommandOutbox
@@ -17,11 +20,13 @@ import de.chennemann.agentic.data.cache.SqlEnvironmentRepository
 import de.chennemann.agentic.data.cache.SqlModelFavoriteRepository
 import de.chennemann.agentic.data.cache.SqlOrchestrationRepository
 import de.chennemann.agentic.data.t3.AndroidClientMetadata
+import de.chennemann.agentic.data.t3.AndroidT3HttpClientProvider
 import de.chennemann.agentic.data.t3.EnvironmentAuthClient
 import de.chennemann.agentic.data.t3.EnvironmentMetadataClient
 import de.chennemann.agentic.data.t3.KtorT3Client
 import de.chennemann.agentic.data.t3.ProjectDestinationRpcClient
 import de.chennemann.agentic.data.t3.T3RpcClient
+import de.chennemann.agentic.data.t3.T3HttpClientProvider
 import de.chennemann.agentic.data.t3.TerminalRpcClient
 import de.chennemann.agentic.data.t3.ThreadWorkspaceRpcClient
 import de.chennemann.agentic.data.t3.WorkspaceFilesRpcClient
@@ -133,6 +138,9 @@ val appModule = module {
         )
     }
     single<CredentialStore> { KeystoreCredentialStore(get()) }
+    single<ClientCertificateStore> { AndroidClientCertificateStore(get()) }
+    single { AndroidClientCertificateSelector() }
+    single<T3HttpClientProvider> { AndroidT3HttpClientProvider(get(), get()) }
     single<GroqApiKeyStore> { KeystoreGroqApiKeyStore(get()) }
     single<AudioRecorder> { AndroidAudioRecorder(get()) }
     single<AudioTranscriptionClient> { KtorGroqTranscriptionClient(get()) }
@@ -153,7 +161,7 @@ val appModule = module {
     single<NetworkMonitor> { AndroidNetworkMonitor(get()) }
     single<ClientInstallationId> { AndroidClientInstallationId(get()) }
     single {
-        KtorT3Client(get(), get(named(AppScopeName)))
+        KtorT3Client(get<T3HttpClientProvider>(), get(named(AppScopeName)))
     }
     single<EnvironmentMetadataClient> { get<KtorT3Client>() }
     single<EnvironmentAuthClient> { get<KtorT3Client>() }
@@ -223,7 +231,7 @@ val appModule = module {
     single<EnvironmentCacheRemover> {
         EnvironmentCacheRemover { get<OrchestrationRepository>().clearEnvironment(it) }
     }
-    single<EnvironmentRemover> { RegisteredEnvironmentRemover(get(), get(), get()) }
+    single<EnvironmentRemover> { RegisteredEnvironmentRemover(get(), get(), get(), get()) }
     single {
         ThreadService(get(), get(), get())
     }
@@ -267,7 +275,7 @@ val appModule = module {
         BackgroundAwarenessService(get(), get(), get(), get(), get(), get(named(AppScopeName)))
     }
     single<AppVisibility> { get<BackgroundAwarenessService>() }
-    viewModel { OnboardingViewModel(get(), get(), get()) }
+    viewModel { OnboardingViewModel(get(), get(), get(), get()) }
     viewModel { WorkspaceFilesViewModel(get()) }
     viewModel { TerminalViewModel(get()) }
     viewModel {
