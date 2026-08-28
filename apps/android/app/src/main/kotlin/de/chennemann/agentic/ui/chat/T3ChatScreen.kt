@@ -1,5 +1,7 @@
 package de.chennemann.agentic.ui.chat
 
+import android.content.ClipData
+import android.content.ClipboardManager
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -9,6 +11,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.scrollBy
+import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,7 +28,9 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
@@ -39,6 +44,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -50,6 +56,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
@@ -62,6 +69,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
@@ -69,6 +78,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.input.KeyboardType
@@ -90,6 +100,8 @@ import androidx.compose.ui.unit.Density
 import de.chennemann.agentic.icons.Add
 import de.chennemann.agentic.icons.Archive
 import de.chennemann.agentic.icons.ArchiveRestore
+import de.chennemann.agentic.icons.Copy
+import de.chennemann.agentic.icons.DoubleChevronDown
 import de.chennemann.agentic.icons.Icons
 import de.chennemann.agentic.icons.Rename
 import de.chennemann.agentic.icons.Tune
@@ -167,9 +179,34 @@ fun T3ChatScreen(
     val imeInsets = WindowInsets.ime
     val imeHeightPx = imeInsets.getBottom(density)
     val composerHeight = with(density) { composerHeightPx.toDp() }
+    val turnBoundaryFlingThresholdPx = with(density) { TurnBoundaryFlingThreshold.toPx() }
     val lastItemSignature = state.timeline.lastOrNull().contentSignature()
     val latestMessageId = state.timeline.latestMessageId()
-    val historyScrollConnection = remember(state.threadId, latestMessageId) {
+    val userMessageIndices = remember(state.timeline) {
+        state.timeline.mapIndexedNotNull { index, item ->
+            index.takeIf {
+                (item as? ChatTimelineItemUi.Message)?.value?.author == ChatMessageAuthorUi.USER
+            }
+        }
+    }
+    val nativeFlingBehavior = ScrollableDefaults.flingBehavior()
+    val turnBoundaryFlingBehavior = remember(
+        listState,
+        userMessageIndices,
+        turnBoundaryFlingThresholdPx,
+        nativeFlingBehavior,
+    ) {
+        ChatTurnFlingBehavior(
+            listState = listState,
+            userMessageIndices = userMessageIndices,
+            minimumVelocity = turnBoundaryFlingThresholdPx,
+            nativeFlingBehavior = nativeFlingBehavior,
+        )
+    }
+    val historyScrollConnection = remember(
+        state.threadId,
+        latestMessageId,
+    ) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
                 if (
@@ -185,6 +222,7 @@ fun T3ChatScreen(
                 }
                 return Offset.Zero
             }
+
         }
     }
 
@@ -276,6 +314,7 @@ fun T3ChatScreen(
             ) {
                 LazyColumn(
                     state = listState,
+                    flingBehavior = turnBoundaryFlingBehavior,
                     modifier = Modifier
                         .fillMaxSize()
                         .nestedScroll(historyScrollConnection)
@@ -334,6 +373,12 @@ fun T3ChatScreen(
                     }
                 }
 
+                    state.latestTurnTiming?.let { timing ->
+                        item("latest-turn-timing:${timing.startedAt}") {
+                            TurnTimingRow(timing)
+                        }
+                    }
+
                     item("bottom-spacer") {
                         Spacer(modifier = Modifier.height(20.dp))
                     }
@@ -357,7 +402,11 @@ fun T3ChatScreen(
                             )
                             .testTag(FollowLatestTestTag),
                     ) {
-                        Text("↓")
+                        Icon(
+                            imageVector = Icons.DoubleChevronDown,
+                            contentDescription = "Scroll to latest message",
+                            modifier = Modifier.size(28.dp),
+                        )
                     }
                 }
 
@@ -444,43 +493,47 @@ fun T3ChatScreen(
                                 .padding(
                                     start = 72.dp,
                                     top = 12.dp,
-                                    end = if (state.latestTurnChanges.files.isEmpty()) 72.dp else 124.dp,
+                                    end = when {
+                                        state.canBrowseFiles && state.latestTurnChanges.files.isNotEmpty() -> 228.dp
+                                        state.canBrowseFiles || state.latestTurnChanges.files.isNotEmpty() -> 124.dp
+                                        else -> 72.dp
+                                    },
                                 )
                                 .zIndex(1f),
                         )
                     }
 
-                if (state.latestTurnChanges.files.isNotEmpty()) {
-                    OutlinedButton(
-                        onClick = {
-                            onEvent(
-                                ChatUiEvent.PickerRequested(
-                                    ChatPickerUi.LATEST_TURN_CHANGES,
-                                ),
-                            )
-                        },
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(end = 8.dp, top = 8.dp)
-                            .zIndex(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            contentColor = MaterialTheme.colorScheme.primary,
-                        ),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
-                        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-                    ) {
-                        Text("Changes (${state.latestTurnChanges.files.size})")
-                    }
-                }
-
-                state.threadId?.takeIf { state.canBrowseFiles }?.let { threadId ->
-                    if (state.latestTurnChanges.files.isEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(end = 8.dp, top = 8.dp)
+                        .zIndex(1f),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    state.threadId?.takeIf { state.canBrowseFiles }?.let { threadId ->
                         OutlinedButton(
                             onClick = { onOpenFiles(threadId) },
-                            modifier = Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = 8.dp).zIndex(1f),
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                         ) { Text("Files") }
+                    }
+                    if (state.latestTurnChanges.files.isNotEmpty()) {
+                        OutlinedButton(
+                            onClick = {
+                                onEvent(
+                                    ChatUiEvent.PickerRequested(
+                                        ChatPickerUi.LATEST_TURN_CHANGES,
+                                    ),
+                                )
+                            },
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                contentColor = MaterialTheme.colorScheme.primary,
+                            ),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                        ) {
+                            Text("Changes (${state.latestTurnChanges.files.size})")
+                        }
                     }
                 }
             }
@@ -918,18 +971,40 @@ private fun GroqSettingsDialog(
 
 @Composable
 private fun MessageItem(message: ChatMessageUi) {
+    val context = LocalContext.current
+    val clipboard = remember(context) { context.getSystemService(ClipboardManager::class.java) }
+    var copied by remember(message.id) { mutableStateOf(false) }
+    LaunchedEffect(copied) {
+        if (copied) {
+            delay(1_500)
+            copied = false
+        }
+    }
+    val copyMessage = {
+        clipboard.setPrimaryClip(ClipData.newPlainText("Message", message.content))
+        copied = true
+    }
     when (message.author) {
         ChatMessageAuthorUi.USER -> {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer,
-                ),
-            ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    MessageImages(message.attachments)
-                    if (message.content.isNotBlank()) SelectionContainer {
-                        Text(text = message.content)
+            Column(horizontalAlignment = Alignment.End) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    ),
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        MessageImages(message.attachments)
+                        if (message.content.isNotBlank()) SelectionContainer {
+                            StreamingMarkdownText(
+                                content = message.content,
+                                modifier = Modifier.fillMaxWidth(),
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                streaming = false,
+                                inlineCode = SpanStyle(color = MaterialTheme.colorScheme.onPrimaryContainer),
+                            )
+                        }
                     }
                 }
             }
@@ -964,6 +1039,9 @@ private fun MessageItem(message: ChatMessageUi) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                if (message.canCopy) {
+                    MessageCopyButton(copied = copied, onCopy = copyMessage)
+                }
             }
         }
 
@@ -981,10 +1059,32 @@ private fun MessageItem(message: ChatMessageUi) {
 }
 
 @Composable
+private fun MessageCopyButton(
+    copied: Boolean,
+    onCopy: () -> Unit,
+) {
+    IconButton(
+        onClick = onCopy,
+        modifier = Modifier.size(28.dp),
+    ) {
+        Icon(
+            imageVector = Icons.Copy,
+            contentDescription = if (copied) "Copied" else "Copy message",
+            modifier = Modifier.size(14.dp),
+            tint = if (copied) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.72f)
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+            },
+        )
+    }
+}
+
+@Composable
 private fun MessageImages(attachments: List<ChatImageAttachmentUi>) {
     if (attachments.isEmpty()) return
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        attachments.forEach { attachment ->
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        items(attachments, key = { it.id }) { attachment ->
             val bitmap = remember(attachment.previewDataUrl) {
                 attachment.previewDataUrl?.let { dataUrl ->
                     runCatching {
@@ -1001,10 +1101,45 @@ private fun MessageImages(attachments: List<ChatImageAttachmentUi>) {
                 Image(
                     bitmap = bitmap,
                     contentDescription = attachment.name,
-                    modifier = Modifier.size(140.dp),
+                    modifier = Modifier
+                        .width(220.dp)
+                        .height(164.dp)
+                        .clip(MaterialTheme.shapes.medium),
+                    contentScale = ContentScale.Fit,
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun TurnTimingRow(timing: ChatTurnTimingUi) {
+    var nowMillis by remember(timing.startedAt) { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(timing.startedAt, timing.running) {
+        while (timing.running) {
+            delay(1_000)
+            nowMillis = System.currentTimeMillis()
+        }
+    }
+    val duration = formatTurnDuration(timing.startedAt, timing.completedAt, nowMillis) ?: return
+    val label = when {
+        timing.running -> "Working for $duration"
+        timing.interrupted -> "Stopped after $duration"
+        else -> "Worked for $duration"
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        if (timing.running) {
+            CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 2.dp)
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 
@@ -1196,6 +1331,7 @@ private const val EndTolerancePx = 8
 private const val MaxEndVisibilityPasses = 8
 private const val LayoutSettleDelayMillis = 16L
 private const val ProjectPaneDirectionThreshold = 0.1f
+private val TurnBoundaryFlingThreshold = 1_200.dp
 
 internal const val ChatTimelineTestTag = "chat-timeline"
 internal const val FollowLatestTestTag = "follow-latest"

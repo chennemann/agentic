@@ -2,16 +2,20 @@
 
 Compose-specific streaming markdown rendering module for mobile.
 
-## Scope (v1)
+## Scope
 
 - Stream-safe inline code rendering based on backticks.
+- Block rendering for fenced code, ordered and unordered lists, and GFM-style tables.
+- Horizontally scrollable code and table content on narrow screens.
+- Copy actions for fenced code blocks.
+- Pluggable, theme-aware syntax highlighting with built-in lightweight lexers.
 - Compose adapter that produces `AnnotatedString` output.
 - Drop-in composable API via `StreamingMarkdownText`.
 
 ## Non-goals (v1)
 
 - Full markdown specification support.
-- Tables and nested markdown structures.
+- Arbitrary nested markdown structures.
 - Rich text editor behavior.
 
 ## Planned API shape
@@ -27,6 +31,26 @@ Compose-specific streaming markdown rendering module for mobile.
 - Add new token kinds in an additive way only.
 - Keep parser lifecycle methods stable (`start`, `write`, `end`, `reset`).
 - Keep default inline-code behavior line-scoped until a versioned parser mode is introduced.
+
+## Syntax highlighting plugins
+
+`StreamingMarkdownText` accepts a `CodeLexerRegistry`. A plugin declares its fenced-code language
+aliases and supplies a `CodeLexer` that returns ordered tokens. Token values must reproduce the
+source exactly when concatenated; the registry validates that invariant before Compose renders the
+token kinds with theme-aware colors.
+
+```kotlin
+val registry = CodeLexerRegistry.Default.withPlugins(
+    CodeLexerPlugin(setOf("my-language", "my")) { source ->
+        listOf(CodeToken(source, CodeTokenKind.PLAIN))
+    },
+)
+
+StreamingMarkdownText(
+    content = markdown,
+    codeLexerRegistry = registry,
+)
+```
 
 ## Publish locally
 

@@ -1502,6 +1502,14 @@ class ChatViewModel(
                 loading = orchestration.threadId != null && detail?.id != orchestration.threadId,
             ),
             latestTurnChanges = detail?.latestTurnChanges() ?: LatestTurnChangesUiState(),
+            latestTurnTiming = detail?.latestTurn?.let { turn ->
+                ChatTurnTimingUi(
+                    startedAt = turn.startedAt ?: turn.requestedAt,
+                    completedAt = turn.completedAt,
+                    running = turn.state in ActiveSessionStatuses,
+                    interrupted = turn.state == "interrupted",
+                )
+            },
             activePicker = local.activePicker,
             isTurnRunning = detail?.session?.status in ActiveSessionStatuses &&
                 detail?.session?.activeTurnId != null,
@@ -1617,6 +1625,20 @@ class ChatViewModel(
         detail: de.chennemann.agentic.t3.contract.OrchestrationThreadDetail,
         local: LocalState,
     ): List<ChatTimelineItemUi> {
+        val runningTurnId = detail.latestTurn?.takeIf { it.state in ActiveSessionStatuses }?.turnId
+        val copyableAssistantMessageIds = detail.messages
+            .filter {
+                it.role == "assistant" &&
+                    !it.streaming &&
+                    it.text.isNotBlank() &&
+                    it.turnId != runningTurnId
+            }
+            .groupBy { it.turnId ?: it.id }
+            .values
+            .mapNotNull { messages ->
+                messages.maxWithOrNull(compareBy({ it.updatedAt }, { it.id }))?.id
+            }
+            .toSet()
         val messages = detail.messages.map {
             TimedItem(
                 at = it.createdAt,
@@ -1630,6 +1652,7 @@ class ChatViewModel(
                         },
                         content = it.text,
                         isStreaming = it.streaming,
+                        canCopy = it.id in copyableAssistantMessageIds,
                         attachments = it.attachments.map { attachment ->
                             ChatImageAttachmentUi(
                                 id = attachment.id,

@@ -36,6 +36,14 @@ data class ChatUiState(
     val durableWork: List<DurableWorkUi> = emptyList(),
     val groqSettings: GroqSettingsUiState = GroqSettingsUiState(),
     val latestTurnChanges: LatestTurnChangesUiState = LatestTurnChangesUiState(),
+    val latestTurnTiming: ChatTurnTimingUi? = null,
+)
+
+data class ChatTurnTimingUi(
+    val startedAt: String,
+    val completedAt: String? = null,
+    val running: Boolean = false,
+    val interrupted: Boolean = false,
 )
 
 data class ProjectScriptUi(
@@ -171,6 +179,7 @@ data class ChatMessageUi(
     val author: ChatMessageAuthorUi,
     val content: String,
     val isStreaming: Boolean = false,
+    val canCopy: Boolean = false,
     val supportingText: String? = null,
     val attachments: List<ChatImageAttachmentUi> = emptyList(),
 )

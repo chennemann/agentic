@@ -8,7 +8,10 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -59,6 +62,26 @@ class StreamingMarkdownComposeTest {
             val snapshot = semantics("snapshot")
             assertEquals(snapshot, stream)
         }
+    }
+
+    @Test
+    fun renders_tables_lists_and_copyable_code_blocks() {
+        var copied: String? = null
+        compose.setContent {
+            StreamingMarkdownText(
+                content = "- first\n- second\n\n| Name | Value |\n| --- | --- |\n| answer | 42 |" +
+                    "\n\n```kotlin\nval answer = 42\n```",
+                onCopyCode = { copied = it },
+            )
+        }
+
+        compose.onNodeWithText("•").assertIsDisplayed()
+        compose.onNodeWithText("first").assertIsDisplayed()
+        compose.onNodeWithText("Name").assertIsDisplayed()
+        compose.onNodeWithText("answer").assertIsDisplayed()
+        compose.onNodeWithText("KOTLIN").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Copy code").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertEquals("val answer = 42", copied) }
     }
 
     private fun semantics(tag: String): List<AnnotatedString> {

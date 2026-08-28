@@ -1,13 +1,31 @@
 package de.chennemann.agentic.streamingmarkdown
 
-import androidx.compose.material3.Text
+import android.content.ClipData
+import android.content.ClipboardManager
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -16,6 +34,8 @@ import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 @Composable
 fun StreamingMarkdownText(
@@ -31,6 +51,8 @@ fun StreamingMarkdownText(
     strong: SpanStyle = StreamingMarkdownTextDefaults.strongStyle(),
     link: SpanStyle = StreamingMarkdownTextDefaults.linkStyle(),
     blockCode: SpanStyle = StreamingMarkdownTextDefaults.blockCodeStyle(),
+    codeLexerRegistry: CodeLexerRegistry = CodeLexerRegistry.Default,
+    onCopyCode: ((String) -> Unit)? = null,
 ) {
     val markdownInlineCode = StreamingMarkdownTextDefaults.inlineCodeStyle().merge(inlineCode)
     val markdownEmphasis = StreamingMarkdownTextDefaults.emphasisStyle().merge(emphasis)
@@ -38,37 +60,303 @@ fun StreamingMarkdownText(
     val markdownLink = StreamingMarkdownTextDefaults.linkStyle().merge(link)
     val markdownBlockCode = StreamingMarkdownTextDefaults.blockCodeStyle().merge(blockCode)
 
-    val model = remember(streaming) {
-        StreamingMarkdownState(streaming = streaming)
+    val model = remember(streaming) { StreamingMarkdownState(streaming) }
+    val blocks = remember(content, model) {
+        if (hasMarkdownBlockSyntax(content)) {
+            parseMarkdownBlocks(content)
+        } else {
+            listOf(MarkdownBlock.Paragraph(model.update(content)))
+        }
     }
-    val runs = remember(content, model) {
-        model.update(content)
+    val context = LocalContext.current
+    val clipboard = remember(context) { context.getSystemService(ClipboardManager::class.java) }
+    val copyCode = onCopyCode ?: { value: String ->
+        clipboard.setPrimaryClip(ClipData.newPlainText("Code", value))
     }
-    val text = remember(
-        runs,
-        markdownInlineCode,
-        markdownEmphasis,
-        markdownStrong,
-        markdownLink,
-        markdownBlockCode,
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        toAnnotatedString(
-            runs = runs,
-            inlineCode = markdownInlineCode,
-            emphasis = markdownEmphasis,
-            strong = markdownStrong,
-            link = markdownLink,
-            blockCode = markdownBlockCode,
+        blocks.forEach { block ->
+            when (block) {
+                is MarkdownBlock.Paragraph -> MarkdownRunsText(
+                    runs = block.runs,
+                    style = style,
+                    color = color,
+                    maxLines = maxLines,
+                    overflow = overflow,
+                    inlineCode = markdownInlineCode,
+                    emphasis = markdownEmphasis,
+                    strong = markdownStrong,
+                    link = markdownLink,
+                    blockCode = markdownBlockCode,
+                )
+                is MarkdownBlock.Code -> MarkdownCodeBlock(
+                    block = block,
+                    style = style,
+                    codeLexerRegistry = codeLexerRegistry,
+                    onCopy = copyCode,
+                )
+                is MarkdownBlock.ListBlock -> MarkdownList(
+                    block = block,
+                    style = style,
+                    color = color,
+                    inlineCode = markdownInlineCode,
+                    emphasis = markdownEmphasis,
+                    strong = markdownStrong,
+                    link = markdownLink,
+                    blockCode = markdownBlockCode,
+                )
+                is MarkdownBlock.Table -> MarkdownTable(
+                    block = block,
+                    style = style,
+                    color = color,
+                    inlineCode = markdownInlineCode,
+                    emphasis = markdownEmphasis,
+                    strong = markdownStrong,
+                    link = markdownLink,
+                    blockCode = markdownBlockCode,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MarkdownRunsText(
+    runs: List<MarkdownRun>,
+    style: TextStyle,
+    color: Color,
+    modifier: Modifier = Modifier,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    inlineCode: SpanStyle,
+    emphasis: SpanStyle,
+    strong: SpanStyle,
+    link: SpanStyle,
+    blockCode: SpanStyle,
+) {
+    val text = remember(runs, inlineCode, emphasis, strong, link, blockCode) {
+        toAnnotatedString(runs, inlineCode, emphasis, strong, link, blockCode)
+    }
+    Text(text, modifier, color, style = style, maxLines = maxLines, overflow = overflow)
+}
+
+@Composable
+private fun MarkdownCodeBlock(
+    block: MarkdownBlock.Code,
+    style: TextStyle,
+    codeLexerRegistry: CodeLexerRegistry,
+    onCopy: (String) -> Unit,
+) {
+    val keywordStyle = SpanStyle(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.78f))
+    val stringStyle = SpanStyle(color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.78f))
+    val numberStyle = SpanStyle(color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.78f))
+    val commentStyle = SpanStyle(
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.46f),
+        fontStyle = FontStyle.Italic,
+    )
+    val highlightedCode = remember(
+        block.content,
+        block.language,
+        codeLexerRegistry,
+        keywordStyle,
+        stringStyle,
+        numberStyle,
+        commentStyle,
+    ) {
+        codeTokensToAnnotatedString(
+            tokens = codeLexerRegistry.tokenize(block.language, block.content),
+            keywordStyle = keywordStyle,
+            stringStyle = stringStyle,
+            numberStyle = numberStyle,
+            commentStyle = commentStyle,
         )
     }
-    Text(
-        text = text,
-        modifier = modifier,
-        style = style,
-        color = color,
-        maxLines = maxLines,
-        overflow = overflow,
-    )
+    Column(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = block.language?.uppercase() ?: "TEXT",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            IconButton(
+                onClick = { onCopy(block.content) },
+                modifier = Modifier.size(28.dp),
+            ) {
+                Icon(
+                    imageVector = LucideCopyIcon,
+                    contentDescription = "Copy code",
+                    modifier = Modifier.size(14.dp),
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f),
+                )
+            }
+        }
+        Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+            Text(
+                text = highlightedCode,
+                style = style.copy(fontFamily = FontFamily.Monospace),
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
+            )
+        }
+    }
+}
+
+internal fun codeTokensToAnnotatedString(
+    tokens: List<CodeToken>,
+    keywordStyle: SpanStyle,
+    stringStyle: SpanStyle,
+    numberStyle: SpanStyle,
+    commentStyle: SpanStyle,
+): AnnotatedString = buildAnnotatedString {
+    tokens.forEach { token ->
+        val tokenStyle = when (token.kind) {
+            CodeTokenKind.PLAIN -> null
+            CodeTokenKind.KEYWORD -> keywordStyle
+            CodeTokenKind.STRING -> stringStyle
+            CodeTokenKind.NUMBER -> numberStyle
+            CodeTokenKind.COMMENT -> commentStyle
+        }
+        if (tokenStyle == null) {
+            append(token.value)
+        } else {
+            pushStyle(tokenStyle)
+            append(token.value)
+            pop()
+        }
+    }
+}
+
+@Composable
+private fun MarkdownList(
+    block: MarkdownBlock.ListBlock,
+    style: TextStyle,
+    color: Color,
+    inlineCode: SpanStyle,
+    emphasis: SpanStyle,
+    strong: SpanStyle,
+    link: SpanStyle,
+    blockCode: SpanStyle,
+) {
+    Column(
+        modifier = Modifier.padding(start = 16.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        block.items.forEach { item ->
+            Row(modifier = Modifier.padding(start = (item.level * 18).dp)) {
+                Text(
+                    text = item.marker,
+                    modifier = Modifier.width(if (block.ordered) 32.dp else 22.dp),
+                    style = style,
+                    color = color,
+                )
+                MarkdownRunsText(
+                    runs = item.runs,
+                    modifier = Modifier.weight(1f),
+                    style = style,
+                    color = color,
+                    inlineCode = inlineCode,
+                    emphasis = emphasis,
+                    strong = strong,
+                    link = link,
+                    blockCode = blockCode,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MarkdownTable(
+    block: MarkdownBlock.Table,
+    style: TextStyle,
+    color: Color,
+    inlineCode: SpanStyle,
+    emphasis: SpanStyle,
+    strong: SpanStyle,
+    link: SpanStyle,
+    blockCode: SpanStyle,
+) {
+    val widths = remember(block) { tableColumnWidths(block) }
+    Box(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+        Column {
+            MarkdownTableRow(
+                cells = block.header,
+                widths = widths,
+                header = true,
+                style = style,
+                color = color,
+                inlineCode = inlineCode,
+                emphasis = emphasis,
+                strong = strong,
+                link = link,
+                blockCode = blockCode,
+            )
+            block.rows.forEach { row ->
+                MarkdownTableRow(
+                    cells = row,
+                    widths = widths,
+                    header = false,
+                    style = style,
+                    color = color,
+                    inlineCode = inlineCode,
+                    emphasis = emphasis,
+                    strong = strong,
+                    link = link,
+                    blockCode = blockCode,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun MarkdownTableRow(
+    cells: List<List<MarkdownRun>>,
+    widths: List<Dp>,
+    header: Boolean,
+    style: TextStyle,
+    color: Color,
+    inlineCode: SpanStyle,
+    emphasis: SpanStyle,
+    strong: SpanStyle,
+    link: SpanStyle,
+    blockCode: SpanStyle,
+) {
+    Row {
+        cells.forEachIndexed { index, runs ->
+            Box(
+                modifier = Modifier
+                    .width(widths.getOrElse(index) { 120.dp })
+                    .border(0.5.dp, MaterialTheme.colorScheme.outlineVariant)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+            ) {
+                MarkdownRunsText(
+                    runs = runs,
+                    style = if (header) style.copy(fontWeight = FontWeight.Bold) else style,
+                    color = color,
+                    inlineCode = inlineCode,
+                    emphasis = emphasis,
+                    strong = strong,
+                    link = link,
+                    blockCode = blockCode,
+                )
+            }
+        }
+    }
+}
+
+private fun tableColumnWidths(block: MarkdownBlock.Table): List<Dp> = block.header.indices.map { column ->
+    val cells = listOf(block.header) + block.rows
+    val length = cells.maxOfOrNull { row -> row.getOrNull(column)?.sumOf { it.value.length } ?: 0 } ?: 0
+    (length * 8 + 24).coerceIn(88, 240).dp
 }
 
 object StreamingMarkdownTextDefaults {
@@ -155,6 +443,11 @@ fun toAnnotatedString(
                 addStringAnnotation(
                     tag = "URL",
                     annotation = href,
+                    start = start,
+                    end = length,
+                )
+                addLink(
+                    url = LinkAnnotation.Url(href),
                     start = start,
                     end = length,
                 )

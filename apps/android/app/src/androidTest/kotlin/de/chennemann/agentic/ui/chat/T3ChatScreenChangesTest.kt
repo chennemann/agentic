@@ -8,6 +8,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
@@ -16,6 +17,7 @@ import de.chennemann.agentic.MainActivity
 import de.chennemann.agentic.ui.theme.MobileTheme
 import org.junit.Rule
 import org.junit.Test
+import org.junit.Assert.assertEquals
 
 class T3ChatScreenChangesTest {
     @get:Rule
@@ -45,6 +47,74 @@ class T3ChatScreenChangesTest {
         compose.onNodeWithText("README.md").assertIsDisplayed()
         compose.onNodeWithText("+8").assertIsDisplayed()
         compose.onNodeWithText("−2").assertIsDisplayed()
+    }
+
+    @Test
+    fun files_remain_available_when_the_latest_turn_has_changes() {
+        var openedThreadId: String? = null
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                MobileTheme {
+                    T3ChatScreen(
+                        state = changesState().copy(canBrowseFiles = true),
+                        onEvent = {},
+                        onOpenFiles = { openedThreadId = it },
+                    )
+                }
+            }
+        }
+
+        compose.onNodeWithText("Files").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertEquals("thread-1", openedThreadId) }
+    }
+
+    @Test
+    fun completed_messages_expose_a_copy_action() {
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                MobileTheme {
+                    T3ChatScreen(
+                        state = changesState().copy(
+                            timeline = listOf(
+                                ChatTimelineItemUi.Message(
+                                    ChatMessageUi(
+                                        id = "assistant-1",
+                                        author = ChatMessageAuthorUi.ASSISTANT,
+                                        content = "A useful answer",
+                                        canCopy = true,
+                                    ),
+                                ),
+                            ),
+                        ),
+                        onEvent = {},
+                    )
+                }
+            }
+        }
+
+        compose.onNodeWithContentDescription("Copy message").assertIsDisplayed().performClick()
+        compose.onNodeWithContentDescription("Copied").assertIsDisplayed()
+    }
+
+    @Test
+    fun completed_turn_shows_server_derived_duration() {
+        compose.activityRule.scenario.onActivity { activity ->
+            activity.setContent {
+                MobileTheme {
+                    T3ChatScreen(
+                        state = changesState().copy(
+                            latestTurnTiming = ChatTurnTimingUi(
+                                startedAt = "2026-08-28T12:00:00Z",
+                                completedAt = "2026-08-28T12:01:05Z",
+                            ),
+                        ),
+                        onEvent = {},
+                    )
+                }
+            }
+        }
+
+        compose.onNodeWithText("Worked for 1m 5s").assertIsDisplayed()
     }
 
     @Test

@@ -737,6 +737,13 @@ class ChatViewModelIntentTest {
         advanceUntilIdle()
 
         assertTrue(viewModel.state.value.isTurnRunning)
+        assertEquals(
+            ChatTurnTimingUi(
+                startedAt = "2026-08-06T10:00:00Z",
+                running = true,
+            ),
+            viewModel.state.value.latestTurnTiming,
+        )
         assertTrue(viewModel.state.value.sessionTermination.canTerminate)
         viewModel.onEvent(ChatUiEvent.SessionTerminationRequested)
         viewModel.onEvent(ChatUiEvent.SessionTerminationRequested)
@@ -1605,6 +1612,13 @@ class ChatViewModelIntentTest {
 
         val group = viewModel.state.value.timeline.single() as ChatTimelineItemUi.ToolGroup
         assertEquals(ActivityStatusUi.COMPLETED, group.activities.single().status)
+        assertEquals(
+            ChatTurnTimingUi(
+                startedAt = "2026-07-29T10:00:00Z",
+                completedAt = "2026-07-29T10:01:00Z",
+            ),
+            viewModel.state.value.latestTurnTiming,
+        )
     }
 
     @Test
@@ -1714,6 +1728,18 @@ class ChatViewModelIntentTest {
         assertEquals(
             2,
             (viewModel.state.value.timeline[4] as ChatTimelineItemUi.ToolGroup).activities.size,
+        )
+        val messageCopyState = viewModel.state.value.timeline
+            .filterIsInstance<ChatTimelineItemUi.Message>()
+            .associate { it.value.id to it.value.canCopy }
+        assertEquals(
+            mapOf(
+                "user-1" to false,
+                "assistant-1" to false,
+                "assistant-2" to false,
+                "assistant-final" to true,
+            ),
+            messageCopyState,
         )
     }
 

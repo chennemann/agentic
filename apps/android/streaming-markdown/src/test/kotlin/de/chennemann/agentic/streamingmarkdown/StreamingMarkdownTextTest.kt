@@ -1,13 +1,43 @@
 package de.chennemann.agentic.streamingmarkdown
 
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.font.FontStyle
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
 class StreamingMarkdownTextTest {
+    @Test
+    fun maps_code_token_kinds_to_presentation_styles() {
+        val keywordStyle = SpanStyle(color = Color.Red)
+        val stringStyle = SpanStyle(color = Color.Green)
+        val numberStyle = SpanStyle(color = Color.Blue)
+        val commentStyle = SpanStyle(fontStyle = FontStyle.Italic)
+
+        val text = codeTokensToAnnotatedString(
+            tokens = listOf(
+                CodeToken("val", CodeTokenKind.KEYWORD),
+                CodeToken(" x = ", CodeTokenKind.PLAIN),
+                CodeToken("1", CodeTokenKind.NUMBER),
+                CodeToken(" ", CodeTokenKind.PLAIN),
+                CodeToken("// x", CodeTokenKind.COMMENT),
+            ),
+            keywordStyle = keywordStyle,
+            stringStyle = stringStyle,
+            numberStyle = numberStyle,
+            commentStyle = commentStyle,
+        )
+
+        assertEquals("val x = 1 // x", text.text)
+        assertEquals(3, text.spanStyles.size)
+        assertEquals(keywordStyle, text.spanStyles[0].item)
+        assertEquals(numberStyle, text.spanStyles[1].item)
+        assertEquals(commentStyle, text.spanStyles[2].item)
+    }
+
     @Test
     fun maps_run_boundaries_to_span_ranges() {
         val runs = listOf(
@@ -135,6 +165,8 @@ class StreamingMarkdownTextTest {
         assertEquals("visit site now", text.text)
         val annotation = text.getStringAnnotations(tag = "URL", start = 0, end = text.length).single()
         assertEquals("https://example.com", annotation.item)
+        val link = text.getLinkAnnotations(start = 0, end = text.length).single().item
+        assertEquals("https://example.com", (link as LinkAnnotation.Url).url)
     }
 
     @Test
@@ -158,6 +190,8 @@ class StreamingMarkdownTextTest {
         assertEquals("open https://example.com/path", text.text)
         val annotation = text.getStringAnnotations(tag = "URL", start = 0, end = text.length).single()
         assertEquals("https://example.com/path", annotation.item)
+        val link = text.getLinkAnnotations(start = 0, end = text.length).single().item
+        assertEquals("https://example.com/path", (link as LinkAnnotation.Url).url)
     }
 
     @Test

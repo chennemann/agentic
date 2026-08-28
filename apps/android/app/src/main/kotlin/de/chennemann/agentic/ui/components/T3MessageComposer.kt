@@ -315,7 +315,11 @@ fun T3MessageComposer(
                         onClick = { imagePicker.launch("image/*") },
                         enabled = state.enabled && !state.sending && state.imageAttachments.size < 8,
                     ) {
-                        Icon(Icons.Paperclip, contentDescription = "Attach images")
+                        Icon(
+                            imageVector = Icons.Paperclip,
+                            contentDescription = "Attach images",
+                            modifier = Modifier.size(22.dp),
+                        )
                     }
                     IconButton(
                         onClick = {
@@ -380,7 +384,7 @@ fun T3MessageComposer(
                             Icon(
                                 imageVector = Icons.Send,
                                 contentDescription = "Send message",
-                                modifier = Modifier.size(28.dp),
+                                modifier = Modifier.size(24.dp),
                             )
                         }
                     }
