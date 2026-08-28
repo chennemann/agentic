@@ -1078,6 +1078,14 @@ class ChatViewModelIntentTest {
         assertEquals(ChatPickerUi.PROJECT_THREAD, viewModel.state.value.activePicker)
         assertEquals("project-2", viewModel.state.value.threadPicker.selectedProjectId)
         assertEquals(listOf("thread-2"), viewModel.state.value.threadPicker.threads.map { it.id })
+
+        viewModel.onEvent(ChatUiEvent.PickerDismissed)
+        viewModel.onEvent(ChatUiEvent.ProjectPaneExpanded("project-1"))
+        advanceUntilIdle()
+
+        assertEquals(null, viewModel.state.value.activePicker)
+        assertEquals("project-1", viewModel.state.value.threadPicker.selectedProjectId)
+        assertEquals(listOf("thread-1"), viewModel.state.value.threadPicker.threads.map { it.id })
     }
 
     @Test

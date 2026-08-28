@@ -474,13 +474,21 @@ fun T3ChatScreen(
 
     ExperimentalSlideOutProjectPicker(
         visible = projectPickerPrototypeVisible,
-        projects = state.threadPicker.projects,
-        selectedProjectId = state.threadPicker.selectedProjectId,
+        state = state.threadPicker,
         onDismiss = { projectPickerPrototypeVisible = false },
-        onProjectSelected = { projectId ->
-            projectPickerPrototypeVisible = false
-            onEvent(ChatUiEvent.ProjectQuickSwitchRequested(projectId))
+        onProjectExpanded = { projectId ->
+            onEvent(ChatUiEvent.ProjectPaneExpanded(projectId))
         },
+        onThreadSelected = { threadId ->
+            projectPickerPrototypeVisible = false
+            onEvent(ChatUiEvent.ThreadSelected(threadId))
+        },
+        onNewThread = {
+            projectPickerPrototypeVisible = false
+            onEvent(ChatUiEvent.NewThreadRequested)
+        },
+        onSettleThread = { threadId -> onEvent(ChatUiEvent.ThreadSettleRequested(threadId)) },
+        onUnsettleThread = { threadId -> onEvent(ChatUiEvent.ThreadUnsettleRequested(threadId)) },
     )
 
     ChatSelectionSheets(

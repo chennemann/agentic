@@ -577,6 +577,9 @@ class ChatViewModel(
                     pickerProjectId = event.projectId,
                 )
             }
+            is ChatUiEvent.ProjectPaneExpanded -> update {
+                copy(pickerProjectId = event.projectId)
+            }
 
             is ChatUiEvent.ThreadSelected -> selectThread(event.threadId)
             is ChatUiEvent.ThreadSettleRequested -> launchCommand {

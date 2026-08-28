@@ -622,6 +622,10 @@ sealed interface ChatUiEvent {
         val projectId: String,
     ) : ChatUiEvent
 
+    data class ProjectPaneExpanded(
+        val projectId: String,
+    ) : ChatUiEvent
+
     data class ThreadSelected(
         val threadId: String,
     ) : ChatUiEvent
