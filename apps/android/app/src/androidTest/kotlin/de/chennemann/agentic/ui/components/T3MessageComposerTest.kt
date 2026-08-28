@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onRoot
 import de.chennemann.agentic.MainActivity
 import de.chennemann.agentic.ui.chat.ChatUiEvent
@@ -64,6 +65,11 @@ class T3MessageComposerTest {
                                     ),
                                     selectedValueId = "default",
                                 ),
+                                ProviderOptionUi.Toggle(
+                                    id = "fastMode",
+                                    label = "Fast Mode",
+                                    selected = false,
+                                ),
                             ),
                             selectedRuntimeModeId = "full-access",
                             runtimeModes = listOf(
@@ -96,8 +102,13 @@ class T3MessageComposerTest {
         compose.onNodeWithText("Reasoning").assertIsDisplayed()
         compose.onNodeWithText("xhigh").assertIsDisplayed()
         compose.onAllNodesWithText("Extra high").assertCountEquals(0)
-        compose.onAllNodesWithText("Service mode").assertCountEquals(0)
-        compose.onNodeWithText("Allow all supported actions without approval.").assertIsDisplayed()
+        compose.onNodeWithText("Service mode").assertIsDisplayed()
+        compose.onNodeWithText("Default").assertIsDisplayed()
+        compose.onNodeWithText("Fast").assertIsDisplayed()
+        compose.onNodeWithText("Fast Mode").assertIsDisplayed()
+        compose.onNodeWithText("Allow all supported actions without approval.")
+            .performScrollTo()
+            .assertIsDisplayed()
         compose.onAllNodesWithText("Ask before changes.").assertCountEquals(0)
 
         compose.onNodeWithText("Message").performClick()

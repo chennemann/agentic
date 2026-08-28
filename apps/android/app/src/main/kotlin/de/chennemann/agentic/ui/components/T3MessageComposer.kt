@@ -158,7 +158,6 @@ fun T3MessageComposer(
     } else {
         state.slashCommands.filter { it.name.startsWith(commandQuery, ignoreCase = true) }
     }
-    val visibleProviderOptions = state.providerOptions.filterNot(ProviderOptionUi::isServiceMode)
     val voiceControlVisible = state.voiceInputAvailable &&
         (state.draft.isBlank() && state.imageAttachments.isEmpty() || state.voiceInputStatus != VoiceInputStatusUi.IDLE)
 
@@ -394,7 +393,7 @@ fun T3MessageComposer(
             if (!expanded) {
                 ComposerSummary(
                     selectedModel = selectedModel,
-                    providerOptions = visibleProviderOptions,
+                    providerOptions = state.providerOptions,
                     selectedRuntimeMode = selectedRuntimeMode,
                     enabled = state.enabled,
                     onExpand = {
@@ -413,7 +412,7 @@ fun T3MessageComposer(
                 ExpandedControls(
                     state = state,
                     selectedModel = selectedModel,
-                    providerOptions = visibleProviderOptions,
+                    providerOptions = state.providerOptions,
                     onEvent = onEvent,
                 )
             }
@@ -945,14 +944,6 @@ private fun RuntimeModeOptionUi.icon(): ImageVector = when (id) {
     else -> Icons.Lock
 }
 
-private fun ProviderOptionUi.isServiceMode(): Boolean {
-    val normalizedId = id.filter(Char::isLetterOrDigit).lowercase()
-    if (normalizedId in ServiceModeOptionIds) return true
-    if (normalizedLabel() in ServiceModeLabels) return true
-    return this is ProviderOptionUi.Select &&
-        values.mapTo(linkedSetOf()) { it.id.lowercase() } == ServiceModeValues
-}
-
 private fun ProviderOptionUi.normalizedLabel(): String = label.trim().lowercase()
 
 @OptIn(ExperimentalFoundationApi::class)
@@ -1049,7 +1040,3 @@ private fun ProjectQuickSwitchButton(
         }
     }
 }
-
-private val ServiceModeOptionIds = setOf("fastmode", "servicemode", "servicetier")
-private val ServiceModeLabels = setOf("fast mode", "service mode", "service tier")
-private val ServiceModeValues = setOf("default", "fast")
