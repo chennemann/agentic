@@ -32,6 +32,7 @@ class T3MessageComposerTest {
 
     @Test
     fun summary_reveals_controls_and_input_collapses_them() {
+        val receivedEvents = mutableListOf<ChatUiEvent>()
         compose.activityRule.scenario.onActivity { activity ->
             activity.setContent {
                 MobileTheme {
@@ -86,7 +87,7 @@ class T3MessageComposerTest {
                             ),
                         ),
                         turnRunning = false,
-                        onEvent = {},
+                        onEvent = receivedEvents::add,
                     )
                 }
             }
@@ -103,9 +104,19 @@ class T3MessageComposerTest {
         compose.onNodeWithText("xhigh").assertIsDisplayed()
         compose.onAllNodesWithText("Extra high").assertCountEquals(0)
         compose.onNodeWithText("Service mode").assertIsDisplayed()
-        compose.onNodeWithText("Default").assertIsDisplayed()
         compose.onNodeWithText("Fast").assertIsDisplayed()
         compose.onNodeWithText("Fast Mode").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Service mode: Fast").performClick()
+        compose.onNodeWithContentDescription("Fast Mode: Enabled")
+            .performScrollTo()
+            .performClick()
+        assertEquals(
+            listOf(
+                ChatUiEvent.ProviderSelectOptionSelected("service-tier", "fast"),
+                ChatUiEvent.ProviderBooleanOptionChanged("fastMode", true),
+            ),
+            receivedEvents,
+        )
         compose.onNodeWithText("Allow all supported actions without approval.")
             .performScrollTo()
             .assertIsDisplayed()

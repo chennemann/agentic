@@ -33,11 +33,14 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -589,8 +592,21 @@ private fun ExpandedControls(
 
         providerOptions.forEach { option ->
             when (option) {
-                is ProviderOptionUi.Select -> SelectProviderOption(option, state.enabled, onEvent)
-                is ProviderOptionUi.Toggle -> ToggleProviderOption(option, state.enabled, onEvent)
+                is ProviderOptionUi.Select -> {
+                    val fastModeChoice = option.fastModeChoice()
+                    if (fastModeChoice == null) {
+                        SelectProviderOption(option, state.enabled, onEvent)
+                    } else {
+                        FastModeSelectProviderOption(option, fastModeChoice, state.enabled, onEvent)
+                    }
+                }
+                is ProviderOptionUi.Toggle -> {
+                    if (option.isFastModeOption()) {
+                        CheckboxProviderOption(option, state.enabled, onEvent)
+                    } else {
+                        ToggleProviderOption(option, state.enabled, onEvent)
+                    }
+                }
             }
         }
 
@@ -855,6 +871,46 @@ private fun SelectProviderOption(
 }
 
 @Composable
+private fun FastModeSelectProviderOption(
+    option: ProviderOptionUi.Select,
+    choice: FastModeChoice,
+    enabled: Boolean,
+    onEvent: (ChatUiEvent) -> Unit,
+) {
+    ProviderOptionCheckbox(
+        option = option,
+        checkboxLabel = choice.enabled.displayLabel(),
+        checked = option.selectedValueId == choice.enabled.id,
+        enabled = enabled,
+        onCheckedChange = { checked ->
+            onEvent(
+                ChatUiEvent.ProviderSelectOptionSelected(
+                    optionId = option.id,
+                    valueId = if (checked) choice.enabled.id else choice.disabled.id,
+                ),
+            )
+        },
+    )
+}
+
+@Composable
+private fun CheckboxProviderOption(
+    option: ProviderOptionUi.Toggle,
+    enabled: Boolean,
+    onEvent: (ChatUiEvent) -> Unit,
+) {
+    ProviderOptionCheckbox(
+        option = option,
+        checkboxLabel = "Enabled",
+        checked = option.selected,
+        enabled = enabled,
+        onCheckedChange = {
+            onEvent(ChatUiEvent.ProviderBooleanOptionChanged(option.id, it))
+        },
+    )
+}
+
+@Composable
 private fun ToggleProviderOption(
     option: ProviderOptionUi.Toggle,
     enabled: Boolean,
@@ -894,6 +950,61 @@ private fun ToggleProviderOption(
                     disabledUncheckedThumbColor = ComposerDisabled,
                     disabledUncheckedTrackColor = ComposerSelected,
                     disabledUncheckedBorderColor = ComposerDisabled,
+                ),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProviderOptionCheckbox(
+    option: ProviderOptionUi,
+    checkboxLabel: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Column {
+        SectionHeading(icon = option.icon(), label = option.label)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = checked,
+                    enabled = enabled,
+                    role = Role.Checkbox,
+                    onValueChange = onCheckedChange,
+                )
+                .semantics {
+                    contentDescription = "${option.label}: $checkboxLabel"
+                }
+                .padding(start = SectionContentIndent, top = 10.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = checkboxLabel,
+                    color = if (enabled) ComposerContent else ComposerDisabled,
+                )
+                option.description?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = ComposerMuted,
+                    )
+                }
+            }
+            Checkbox(
+                checked = checked,
+                onCheckedChange = null,
+                enabled = enabled,
+                colors = CheckboxDefaults.colors(
+                    checkedColor = MaterialTheme.colorScheme.primary,
+                    uncheckedColor = ComposerMuted,
+                    checkmarkColor = MaterialTheme.colorScheme.onPrimary,
+                    disabledCheckedColor = ComposerSelected,
+                    disabledUncheckedColor = ComposerDisabled,
                 ),
             )
         }
@@ -945,6 +1056,29 @@ private fun RuntimeModeOptionUi.icon(): ImageVector = when (id) {
 }
 
 private fun ProviderOptionUi.normalizedLabel(): String = label.trim().lowercase()
+
+private data class FastModeChoice(
+    val disabled: ProviderOptionValueUi,
+    val enabled: ProviderOptionValueUi,
+)
+
+private fun ProviderOptionUi.Select.fastModeChoice(): FastModeChoice? {
+    if (values.size != 2 || !isFastModeOption()) return null
+    val enabled = values.singleOrNull(ProviderOptionValueUi::isFastModeValue) ?: return null
+    val disabled = values.singleOrNull(ProviderOptionValueUi::isStandardModeValue) ?: return null
+    return FastModeChoice(disabled = disabled, enabled = enabled)
+}
+
+private fun ProviderOptionUi.isFastModeOption(): Boolean =
+    id.normalizedIdentifier() in FastModeOptionIds || normalizedLabel() in FastModeOptionLabels
+
+private fun ProviderOptionValueUi.isFastModeValue(): Boolean =
+    id.normalizedIdentifier() == "fast" || label.trim().equals("fast", ignoreCase = true)
+
+private fun ProviderOptionValueUi.isStandardModeValue(): Boolean =
+    id.normalizedIdentifier() in StandardModeValueIds || label.trim().lowercase() in StandardModeValueLabels
+
+private fun String.normalizedIdentifier(): String = filter(Char::isLetterOrDigit).lowercase()
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -1040,3 +1174,8 @@ private fun ProjectQuickSwitchButton(
         }
     }
 }
+
+private val FastModeOptionIds = setOf("fastmode", "servicemode", "servicetier")
+private val FastModeOptionLabels = setOf("fast mode", "service mode", "service tier")
+private val StandardModeValueIds = setOf("default", "normal", "standard")
+private val StandardModeValueLabels = setOf("default", "normal", "standard")

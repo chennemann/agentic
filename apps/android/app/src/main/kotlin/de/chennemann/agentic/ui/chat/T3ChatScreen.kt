@@ -321,7 +321,7 @@ fun T3ChatScreen(
                         .testTag(ChatTimelineTestTag),
                     contentPadding = PaddingValues(
                         start = 16.dp,
-                        top = 12.dp,
+                        top = TimelineTopContentPadding,
                         end = 16.dp,
                         bottom = 12.dp + composerHeight,
                     ),
@@ -1334,6 +1334,7 @@ private const val ProjectPaneDirectionThreshold = 0.1f
 private val TurnBoundaryFlingThreshold = 1_200.dp
 
 internal const val ChatTimelineTestTag = "chat-timeline"
+private val TimelineTopContentPadding = 72.dp
 internal const val FollowLatestTestTag = "follow-latest"
 internal const val NavigationControlTestTag = "navigation-control"
 internal const val TerminalControlTestTag = "terminal-control"
