@@ -371,7 +371,12 @@ class ChatViewModel(
             },
             sharedTextImportError = shared.error.takeIf { shared.pending == null },
             shortcutError = workflows.shortcutError,
-            interfaceSettings = InterfaceSettingsUi(display.theme, display.interfaceScale, display.codeScale),
+            interfaceSettings = InterfaceSettingsUi(
+                theme = display.theme,
+                accent = display.accent,
+                interfaceScale = display.interfaceScale,
+                codeScale = display.codeScale,
+            ),
             cacheClearance = cache.environmentId?.let {
                 CacheClearanceUi(it, cache.categories, cache.clearableBytes, cache.busy, cache.cleared, cache.error)
             },
@@ -643,6 +648,7 @@ class ChatViewModel(
             ChatUiEvent.SharedImportErrorDismissed -> acceptShared(SharedTextWorkflowIntent.DismissError)
             ChatUiEvent.ShortcutErrorDismissed -> shortcutWorkflow?.dismissError()
             is ChatUiEvent.ThemeSelected -> viewModelScope.launch { interfacePreferences?.setTheme(event.value) }
+            is ChatUiEvent.AccentSelected -> viewModelScope.launch { interfacePreferences?.setAccent(event.value) }
             is ChatUiEvent.InterfaceScaleSelected -> if (event.value in SupportedDisplayScales) {
                 viewModelScope.launch { interfacePreferences?.setInterfaceScale(event.value) }
             }

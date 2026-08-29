@@ -77,7 +77,7 @@ class MainActivity : ComponentActivity() {
                 LocalDensity provides Density(density.density * preferences.interfaceScale, density.fontScale),
                 LocalCodeScale provides preferences.codeScale,
             ) {
-            MobileTheme(darkTheme = dark, dynamicColor = false) {
+            MobileTheme(darkTheme = dark, dynamicColor = false, accent = preferences.accent) {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     Box(
                         modifier = Modifier

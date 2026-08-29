@@ -1,4 +1,5 @@
 package de.chennemann.agentic.ui.chat
+import de.chennemann.agentic.domain.preferences.AccentPreference
 import de.chennemann.agentic.domain.preferences.ThemePreference
 
 data class ChatUiState(
@@ -88,7 +89,12 @@ data class SharedTextImportUi(
 ) {
     val canImport: Boolean get() = environmentId != null && projectId != null && !importing
 }
-data class InterfaceSettingsUi(val theme: ThemePreference = ThemePreference.SYSTEM, val interfaceScale: Float = 1f, val codeScale: Float = 1f)
+data class InterfaceSettingsUi(
+    val theme: ThemePreference = ThemePreference.SYSTEM,
+    val accent: AccentPreference = AccentPreference.DEFAULT,
+    val interfaceScale: Float = 1f,
+    val codeScale: Float = 1f,
+)
 data class CacheClearanceUi(val environmentId: String, val categories: List<String> = emptyList(), val clearableBytes: Long = 0, val clearing: Boolean = false, val success: Boolean = false, val errorMessage: String? = null)
 data class DurableWorkUi(val commandId: String, val label: String, val threadId: String?, val failed: Boolean, val attemptCount: Long, val errorMessage: String?, val awaitsReplay: Boolean)
 
@@ -699,6 +705,7 @@ sealed interface ChatUiEvent {
 
     data object ShortcutErrorDismissed : ChatUiEvent
     data class ThemeSelected(val value: ThemePreference) : ChatUiEvent
+    data class AccentSelected(val value: AccentPreference) : ChatUiEvent
     data class InterfaceScaleSelected(val value: Float) : ChatUiEvent
     data class CodeScaleSelected(val value: Float) : ChatUiEvent
     data class CacheInspectionRequested(val environmentId: String) : ChatUiEvent

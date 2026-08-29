@@ -10,6 +10,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import de.chennemann.agentic.domain.preferences.AccentPreference
 
 private val DarkColorScheme = darkColorScheme(
     primary = Color(0xFFBFE13B),
@@ -58,9 +59,10 @@ fun MobileTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
     // Dynamic color is available on Android 12+
     dynamicColor: Boolean = false,
+    accent: AccentPreference = AccentPreference.DEFAULT,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
+    val baseColorScheme = when {
         dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
             val context = LocalContext.current
             if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
@@ -69,10 +71,71 @@ fun MobileTheme(
         darkTheme -> DarkColorScheme
         else -> LightColorScheme
     }
+    val colorScheme = baseColorScheme.withAccent(accent, darkTheme)
 
     MaterialTheme(
         colorScheme = colorScheme,
         typography = Typography,
         content = content
     )
+}
+
+private data class AccentColors(
+    val primary: Color,
+    val onPrimary: Color,
+    val primaryContainer: Color,
+    val onPrimaryContainer: Color,
+)
+
+private fun androidx.compose.material3.ColorScheme.withAccent(
+    accent: AccentPreference,
+    darkTheme: Boolean,
+): androidx.compose.material3.ColorScheme {
+    if (accent == AccentPreference.DEFAULT) return this
+    val colors = accent.colors(darkTheme)
+    return copy(
+        primary = colors.primary,
+        onPrimary = colors.onPrimary,
+        primaryContainer = colors.primaryContainer,
+        onPrimaryContainer = colors.onPrimaryContainer,
+        inversePrimary = colors.primary,
+    )
+}
+
+private fun AccentPreference.colors(darkTheme: Boolean): AccentColors = when (this) {
+    AccentPreference.DEFAULT -> error("Default accent uses the unchanged base color scheme")
+    AccentPreference.BLUE -> if (darkTheme) {
+        AccentColors(Color(0xFFA9C7FF), Color(0xFF003063), Color(0xFF214777), Color(0xFFD6E3FF))
+    } else {
+        AccentColors(Color(0xFF3F5F90), Color.White, Color(0xFFD6E3FF), Color(0xFF001B3D))
+    }
+    AccentPreference.PURPLE -> if (darkTheme) {
+        AccentColors(Color(0xFFD5BAFF), Color(0xFF3F2768), Color(0xFF573E80), Color(0xFFEADDFF))
+    } else {
+        AccentColors(Color(0xFF7055A0), Color.White, Color(0xFFEADDFF), Color(0xFF281344))
+    }
+    AccentPreference.ORANGE -> if (darkTheme) {
+        AccentColors(Color(0xFFFFB868), Color(0xFF492900), Color(0xFF693C00), Color(0xFFFFDDB8))
+    } else {
+        AccentColors(Color(0xFF8A5100), Color.White, Color(0xFFFFDDB8), Color(0xFF2C1600))
+    }
+    AccentPreference.PINK -> if (darkTheme) {
+        AccentColors(Color(0xFFFFB0C8), Color(0xFF650033), Color(0xFF88134B), Color(0xFFFFD9E2))
+    } else {
+        AccentColors(Color(0xFFA83C65), Color.White, Color(0xFFFFD9E2), Color(0xFF3E001D))
+    }
+    AccentPreference.TEAL -> if (darkTheme) {
+        AccentColors(Color(0xFF53DBC9), Color(0xFF003731), Color(0xFF005048), Color(0xFF75F8E5))
+    } else {
+        AccentColors(Color(0xFF006B5F), Color.White, Color(0xFF75F8E5), Color(0xFF00201C))
+    }
+}
+
+fun AccentPreference.previewColor(): Color = when (this) {
+    AccentPreference.DEFAULT -> Color(0xFFBFE13B)
+    AccentPreference.BLUE -> Color(0xFF79A9F5)
+    AccentPreference.PURPLE -> Color(0xFFB69BE8)
+    AccentPreference.ORANGE -> Color(0xFFE99A45)
+    AccentPreference.PINK -> Color(0xFFE67DA1)
+    AccentPreference.TEAL -> Color(0xFF49BFAF)
 }

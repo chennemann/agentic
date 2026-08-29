@@ -1,6 +1,9 @@
 package de.chennemann.agentic.ui.chat
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -9,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
@@ -26,6 +30,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -37,7 +42,9 @@ import de.chennemann.agentic.icons.Star
 import de.chennemann.agentic.icons.StarOutline
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import de.chennemann.agentic.domain.preferences.AccentPreference
 import de.chennemann.agentic.domain.preferences.ThemePreference
+import de.chennemann.agentic.ui.theme.previewColor
 
 @Composable
 fun ChatSelectionSheets(
@@ -218,6 +225,26 @@ fun ChatSelectionSheets(
                                     selected = state.interfaceSettings.theme == theme,
                                     onClick = { onEvent(ChatUiEvent.ThemeSelected(theme)) },
                                     label = { Text(theme.name.lowercase().replaceFirstChar(Char::uppercase)) },
+                                )
+                            }
+                        }
+                        Text("Accent color", style = MaterialTheme.typography.bodySmall)
+                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            items(AccentPreference.entries) { accent ->
+                                FilterChip(
+                                    selected = state.interfaceSettings.accent == accent,
+                                    onClick = { onEvent(ChatUiEvent.AccentSelected(accent)) },
+                                    label = {
+                                        Text(accent.name.lowercase().replaceFirstChar(Char::uppercase))
+                                    },
+                                    leadingIcon = {
+                                        Box(
+                                            Modifier
+                                                .size(12.dp)
+                                                .clip(CircleShape)
+                                                .background(accent.previewColor()),
+                                        )
+                                    },
                                 )
                             }
                         }

@@ -3,6 +3,7 @@ package de.chennemann.agentic.data.cache
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import de.chennemann.agentic.db.AgenticDb
+import de.chennemann.agentic.domain.preferences.AccentPreference
 import de.chennemann.agentic.domain.preferences.InterfacePreferences
 import de.chennemann.agentic.domain.preferences.InterfacePreferencesRepository
 import de.chennemann.agentic.domain.preferences.ThemePreference
@@ -22,6 +23,7 @@ class SqlInterfacePreferencesRepository(private val database: AgenticDb, private
         .map { raw -> raw?.let { runCatching { T3Json.decodeFromString<InterfacePreferences>(it) }.getOrNull() }?.validated() ?: InterfacePreferences() }
 
     override suspend fun setTheme(theme: ThemePreference) = update { copy(theme = theme) }
+    override suspend fun setAccent(accent: AccentPreference) = update { copy(accent = accent) }
     override suspend fun setInterfaceScale(scale: Float) = update { copy(interfaceScale = scale).validated() }
     override suspend fun setCodeScale(scale: Float) = update { copy(codeScale = scale).validated() }
 

@@ -7,8 +7,12 @@ import kotlinx.serialization.Serializable
 enum class ThemePreference { SYSTEM, LIGHT, DARK }
 
 @Serializable
+enum class AccentPreference { DEFAULT, BLUE, PURPLE, ORANGE, PINK, TEAL }
+
+@Serializable
 data class InterfacePreferences(
     val theme: ThemePreference = ThemePreference.SYSTEM,
+    val accent: AccentPreference = AccentPreference.DEFAULT,
     val interfaceScale: Float = 1f,
     val codeScale: Float = 1f,
 )
@@ -16,6 +20,7 @@ data class InterfacePreferences(
 interface InterfacePreferencesRepository {
     val preferences: Flow<InterfacePreferences>
     suspend fun setTheme(theme: ThemePreference)
+    suspend fun setAccent(accent: AccentPreference)
     suspend fun setInterfaceScale(scale: Float)
     suspend fun setCodeScale(scale: Float)
 }

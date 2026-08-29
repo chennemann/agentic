@@ -27,6 +27,7 @@ import de.chennemann.agentic.domain.orchestration.ThreadActions
 import de.chennemann.agentic.domain.preferences.ComposerDraftRepository
 import de.chennemann.agentic.domain.preferences.InterfacePreferences
 import de.chennemann.agentic.domain.preferences.InterfacePreferencesRepository
+import de.chennemann.agentic.domain.preferences.AccentPreference
 import de.chennemann.agentic.domain.preferences.ThemePreference
 import de.chennemann.agentic.domain.sharing.PendingSharedText
 import de.chennemann.agentic.domain.sharing.SharedTextImportRepository
@@ -294,7 +295,12 @@ class ChatViewModelIntentTest {
     fun `interface preferences map reactively and settings events use repository values`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model"))
         val preferences = RecordingInterfacePreferencesRepository(
-            InterfacePreferences(ThemePreference.DARK, interfaceScale = 1.15f, codeScale = 0.9f),
+            InterfacePreferences(
+                theme = ThemePreference.DARK,
+                accent = AccentPreference.PINK,
+                interfaceScale = 1.15f,
+                codeScale = 0.9f,
+            ),
         )
         val viewModel = ChatViewModel(
             environments = FakeViewModelEnvironmentRepository(), repository = repository,
@@ -305,10 +311,12 @@ class ChatViewModelIntentTest {
         advanceUntilIdle()
 
         assertEquals(ThemePreference.DARK, viewModel.state.value.interfaceSettings.theme)
+        assertEquals(AccentPreference.PINK, viewModel.state.value.interfaceSettings.accent)
         assertEquals(1.15f, viewModel.state.value.interfaceSettings.interfaceScale)
         assertEquals(0.9f, viewModel.state.value.interfaceSettings.codeScale)
 
         viewModel.onEvent(ChatUiEvent.ThemeSelected(ThemePreference.LIGHT))
+        viewModel.onEvent(ChatUiEvent.AccentSelected(AccentPreference.TEAL))
         viewModel.onEvent(ChatUiEvent.InterfaceScaleSelected(0.9f))
         viewModel.onEvent(ChatUiEvent.CodeScaleSelected(1.15f))
         viewModel.onEvent(ChatUiEvent.InterfaceScaleSelected(9f))
@@ -316,9 +324,11 @@ class ChatViewModelIntentTest {
         advanceUntilIdle()
 
         assertEquals(listOf(ThemePreference.LIGHT), preferences.themes)
+        assertEquals(listOf(AccentPreference.TEAL), preferences.accents)
         assertEquals(listOf(0.9f), preferences.interfaceScales)
         assertEquals(listOf(1.15f), preferences.codeScales)
         assertEquals(ThemePreference.LIGHT, viewModel.state.value.interfaceSettings.theme)
+        assertEquals(AccentPreference.TEAL, viewModel.state.value.interfaceSettings.accent)
         assertEquals(0.9f, viewModel.state.value.interfaceSettings.interfaceScale)
         assertEquals(1.15f, viewModel.state.value.interfaceSettings.codeScale)
     }
@@ -2166,12 +2176,18 @@ private class RecordingInterfacePreferencesRepository(initial: InterfacePreferen
     private val mutablePreferences = MutableStateFlow(initial)
     override val preferences: Flow<InterfacePreferences> = mutablePreferences
     val themes = mutableListOf<ThemePreference>()
+    val accents = mutableListOf<AccentPreference>()
     val interfaceScales = mutableListOf<Float>()
     val codeScales = mutableListOf<Float>()
 
     override suspend fun setTheme(theme: ThemePreference) {
         themes += theme
         mutablePreferences.value = mutablePreferences.value.copy(theme = theme)
+    }
+
+    override suspend fun setAccent(accent: AccentPreference) {
+        accents += accent
+        mutablePreferences.value = mutablePreferences.value.copy(accent = accent)
     }
 
     override suspend fun setInterfaceScale(scale: Float) {
