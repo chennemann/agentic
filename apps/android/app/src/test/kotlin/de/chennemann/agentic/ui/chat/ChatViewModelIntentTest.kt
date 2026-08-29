@@ -28,6 +28,7 @@ import de.chennemann.agentic.domain.preferences.ComposerDraftRepository
 import de.chennemann.agentic.domain.preferences.InterfacePreferences
 import de.chennemann.agentic.domain.preferences.InterfacePreferencesRepository
 import de.chennemann.agentic.domain.preferences.AccentPreference
+import de.chennemann.agentic.domain.preferences.ProjectFavoriteRepository
 import de.chennemann.agentic.domain.preferences.ThemePreference
 import de.chennemann.agentic.domain.sharing.PendingSharedText
 import de.chennemann.agentic.domain.sharing.SharedTextImportRepository
@@ -90,6 +91,7 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.BeforeEach
@@ -97,6 +99,31 @@ import org.junit.jupiter.api.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModelIntentTest {
+    @Test
+    fun `project favorites map from persistence and picker events write them back`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val favorites = RecordingProjectFavoriteRepository(setOf("project-1"))
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = NoOpChatActions(),
+            mappingDispatcher = dispatcher,
+            projectFavorites = favorites,
+        )
+        advanceUntilIdle()
+
+        assertTrue(viewModel.state.value.threadPicker.projects.single { it.id == "project-1" }.favorite)
+
+        viewModel.onEvent(ChatUiEvent.ProjectFavoriteChanged("project-1", false))
+        advanceUntilIdle()
+
+        assertEquals(listOf(Triple("environment", "project-1", false)), favorites.writes)
+        assertFalse(viewModel.state.value.threadPicker.projects.single { it.id == "project-1" }.favorite)
+    }
+
     @Test
     fun `terminal follows React Native workspace availability without capability advertisement`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model"))
@@ -2169,6 +2196,22 @@ private class FakeComposerDraftRepository : ComposerDraftRepository {
     ) {
         writes += Triple(environmentId, threadId, draft)
         drafts.getOrPut(environmentId to threadId) { MutableStateFlow("") }.value = draft
+    }
+}
+
+private class RecordingProjectFavoriteRepository(initial: Set<String>) : ProjectFavoriteRepository {
+    private val favorites = MutableStateFlow(initial)
+    val writes = mutableListOf<Triple<String, String, Boolean>>()
+
+    override fun observe(environmentId: String): Flow<Set<String>> = favorites
+
+    override suspend fun setFavorite(
+        environmentId: String,
+        projectId: String,
+        favorite: Boolean,
+    ) {
+        writes += Triple(environmentId, projectId, favorite)
+        favorites.value = if (favorite) favorites.value + projectId else favorites.value - projectId
     }
 }
 

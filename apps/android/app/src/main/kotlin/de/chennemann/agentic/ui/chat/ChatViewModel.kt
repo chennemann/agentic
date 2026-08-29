@@ -24,6 +24,7 @@ import de.chennemann.agentic.domain.orchestration.ThreadWorkspaceChoice
 import de.chennemann.agentic.domain.preferences.ComposerDraftRepository
 import de.chennemann.agentic.domain.preferences.FavoriteModelId
 import de.chennemann.agentic.domain.preferences.ModelFavoriteRepository
+import de.chennemann.agentic.domain.preferences.ProjectFavoriteRepository
 import de.chennemann.agentic.domain.preferences.InterfacePreferences
 import de.chennemann.agentic.domain.preferences.InterfacePreferencesRepository
 import de.chennemann.agentic.domain.preferences.SupportedDisplayScales
@@ -90,6 +91,7 @@ class ChatViewModel(
     private val mappingDispatcher: CoroutineDispatcher,
     private val composerDrafts: ComposerDraftRepository? = null,
     private val modelFavorites: ModelFavoriteRepository? = null,
+    private val projectFavorites: ProjectFavoriteRepository? = null,
     private val groqApiKeys: GroqApiKeyStore? = null,
     private val voiceInput: VoiceInputService? = null,
     private val environmentRemover: EnvironmentRemover? = null,
@@ -143,13 +145,21 @@ class ChatViewModel(
     ) { all, active, connection ->
         EnvironmentBundle(all, active, connection)
     }
-    private val favorites = environments.activeEnvironment.flatMapLatest { active ->
+    private val modelFavoriteIds = environments.activeEnvironment.flatMapLatest { active ->
         if (active == null || modelFavorites == null) {
             flowOf(emptyList())
         } else {
             modelFavorites.observe(active.id)
         }
     }
+    private val projectFavoriteIds = environments.activeEnvironment.flatMapLatest { active ->
+        if (active == null || projectFavorites == null) {
+            flowOf(emptySet())
+        } else {
+            projectFavorites.observe(active.id)
+        }
+    }
+    private val favorites = combine(modelFavoriteIds, projectFavoriteIds, ::FavoriteSelections)
     private val workflowPresentation = combine(
         projectWorkflow?.state ?: flowOf(ProjectWorkflowState()),
         sharedTextWorkflow?.state ?: flowOf(SharedTextWorkflowState()),
@@ -448,6 +458,15 @@ class ChatViewModel(
                 if (activeEnvironmentId != null && model != null && modelFavorites != null) {
                     launchCommand {
                         modelFavorites.setFavorite(activeEnvironmentId, model, event.favorite)
+                    }
+                }
+            }
+
+            is ChatUiEvent.ProjectFavoriteChanged -> {
+                val activeEnvironmentId = environments.activeEnvironment.value?.id
+                if (activeEnvironmentId != null && projectFavorites != null) {
+                    launchCommand {
+                        projectFavorites.setFavorite(activeEnvironmentId, event.projectId, event.favorite)
                     }
                 }
             }
@@ -1354,7 +1373,7 @@ class ChatViewModel(
         orchestration: OrchestrationBundle,
         environment: EnvironmentBundle,
         local: LocalState,
-        favorites: List<FavoriteModelId>,
+        favorites: FavoriteSelections,
         timeline: List<ChatTimelineItemUi>,
     ): ChatUiState {
         val shell = orchestration.shell.value
@@ -1365,7 +1384,7 @@ class ChatViewModel(
             ?: shellThread?.projectId
             ?: shell?.projects?.firstOrNull()?.id
         val project = shell?.projects?.firstOrNull { it.id == projectId }
-        val modelOptions = modelOptions(orchestration.config.value, favorites)
+        val modelOptions = modelOptions(orchestration.config.value, favorites.models)
         val selectedModelId = local.providerModelId
             ?: detail?.modelSelection?.optionId()
             ?: project?.defaultModelSelection?.optionId()
@@ -1475,6 +1494,7 @@ class ChatViewModel(
                             id = it.id,
                             label = it.title,
                             supportingText = it.workspaceRoot,
+                            favorite = it.id in favorites.projects,
                             unsettledThreadCount = shell?.threads.orEmpty().count { thread ->
                                 thread.projectId == it.id && !thread.isSettled()
                             },
@@ -1879,7 +1899,7 @@ class ChatViewModel(
         val orchestration: OrchestrationBundle,
         val environment: EnvironmentBundle,
         val local: LocalState,
-        val favorites: List<FavoriteModelId>,
+        val favorites: FavoriteSelections,
     ) {
         fun timelineInput() = TimelineInput(
             detail = orchestration.thread.value?.thread?.takeIf { it.id == orchestration.threadId },
@@ -1891,6 +1911,11 @@ class ChatViewModel(
             optionAnswers = local.optionAnswers,
         )
     }
+
+    private data class FavoriteSelections(
+        val models: List<FavoriteModelId>,
+        val projects: Set<String>,
+    )
 
     private data class TimelineInput(
         val detail: de.chennemann.agentic.t3.contract.OrchestrationThreadDetail?,

@@ -18,6 +18,7 @@ import de.chennemann.agentic.data.shortcuts.AndroidShortcutRouteInbox
 import de.chennemann.agentic.data.notifications.AndroidThreadNotificationPublisher
 import de.chennemann.agentic.data.cache.SqlEnvironmentRepository
 import de.chennemann.agentic.data.cache.SqlModelFavoriteRepository
+import de.chennemann.agentic.data.cache.SqlProjectFavoriteRepository
 import de.chennemann.agentic.data.cache.SqlOrchestrationRepository
 import de.chennemann.agentic.data.t3.AndroidClientMetadata
 import de.chennemann.agentic.data.t3.AndroidT3HttpClientProvider
@@ -87,6 +88,7 @@ import de.chennemann.agentic.domain.orchestration.ThreadService
 import de.chennemann.agentic.domain.orchestration.ThreadActions
 import de.chennemann.agentic.domain.preferences.ComposerDraftRepository
 import de.chennemann.agentic.domain.preferences.ModelFavoriteRepository
+import de.chennemann.agentic.domain.preferences.ProjectFavoriteRepository
 import de.chennemann.agentic.domain.preferences.InterfacePreferencesRepository
 import de.chennemann.agentic.domain.voice.AudioRecorder
 import de.chennemann.agentic.domain.voice.AudioTranscriptionClient
@@ -186,6 +188,12 @@ val appModule = module {
     }
     single<ModelFavoriteRepository> {
         SqlModelFavoriteRepository(
+            database = get(),
+            dispatcher = get<DispatcherProvider>().io,
+        )
+    }
+    single<ProjectFavoriteRepository> {
+        SqlProjectFavoriteRepository(
             database = get(),
             dispatcher = get<DispatcherProvider>().io,
         )
@@ -290,6 +298,7 @@ val appModule = module {
             chat = get(),
             composerDrafts = get(),
             modelFavorites = get(),
+            projectFavorites = get(),
             mappingDispatcher = get<DispatcherProvider>().default,
             groqApiKeys = get(),
             voiceInput = get(),

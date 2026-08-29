@@ -588,6 +588,9 @@ fun T3ChatScreen(
                     onProjectExpanded = { projectId ->
                         onEvent(ChatUiEvent.ProjectPaneExpanded(projectId))
                     },
+                    onProjectFavoriteChanged = { projectId, favorite ->
+                        onEvent(ChatUiEvent.ProjectFavoriteChanged(projectId, favorite))
+                    },
                     onThreadSelected = { threadId ->
                         projectPaneOpen = false
                         onEvent(ChatUiEvent.ThreadSelected(threadId))

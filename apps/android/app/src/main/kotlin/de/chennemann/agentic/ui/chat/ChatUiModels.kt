@@ -327,6 +327,7 @@ data class ProjectPickerItemUi(
     val id: String,
     val label: String,
     val supportingText: String? = null,
+    val favorite: Boolean = false,
     val unsettledThreadCount: Int = 0,
     val searchableThreadTitles: List<String> = emptyList(),
 )
@@ -558,6 +559,11 @@ sealed interface ChatUiEvent {
 
     data class ProviderModelFavoriteChanged(
         val id: String,
+        val favorite: Boolean,
+    ) : ChatUiEvent
+
+    data class ProjectFavoriteChanged(
+        val projectId: String,
         val favorite: Boolean,
     ) : ChatUiEvent
 

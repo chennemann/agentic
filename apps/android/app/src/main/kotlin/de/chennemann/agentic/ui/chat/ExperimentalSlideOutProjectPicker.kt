@@ -45,7 +45,7 @@ import de.chennemann.agentic.icons.StarOutline
 
 /**
  * Experimental full-screen project pane based on the selected favorites-focused prototype.
- * Favorites and filter state remain in memory until the interaction model is finalized.
+ * Filter and expansion state remain local while project favorites are persisted by the caller.
  */
 @Composable
 fun ExperimentalSlideOutProjectPicker(
@@ -53,6 +53,7 @@ fun ExperimentalSlideOutProjectPicker(
     state: ThreadPickerUiState,
     onDismiss: () -> Unit,
     onProjectExpanded: (String) -> Unit,
+    onProjectFavoriteChanged: (projectId: String, favorite: Boolean) -> Unit,
     onThreadSelected: (String) -> Unit,
     onNewThread: () -> Unit,
     onAddProject: (String) -> Unit,
@@ -60,10 +61,10 @@ fun ExperimentalSlideOutProjectPicker(
     onUnsettleThread: (String) -> Unit,
 ) {
     var expandedProjectId by rememberSaveable { mutableStateOf<String?>(null) }
-    var favorites by rememberSaveable { mutableStateOf(setOf<String>()) }
     var showAllProjects by rememberSaveable { mutableStateOf(false) }
     var query by rememberSaveable { mutableStateOf("") }
     val search = query.trim()
+    val favorites = state.projects.filter(ProjectPickerItemUi::favorite).mapTo(mutableSetOf()) { it.id }
     val projects = state.projects
         .filter { project ->
             val matchesSearch = project.matches(search)
@@ -100,7 +101,7 @@ fun ExperimentalSlideOutProjectPicker(
                     if (expandedProjectId != null) onProjectExpanded(projectId)
                 },
                 onToggleFavorite = { projectId ->
-                    favorites = if (projectId in favorites) favorites - projectId else favorites + projectId
+                    onProjectFavoriteChanged(projectId, projectId !in favorites)
                 },
                 onThreadSelected = onThreadSelected,
                 onNewThread = onNewThread,
