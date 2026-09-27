@@ -22,6 +22,7 @@ import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
 import io.ktor.client.request.post
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.Parameters
 import io.ktor.http.isSuccess
@@ -424,8 +425,17 @@ class KtorT3Client(
         return "$scheme://${source.rawAuthority}$path?wsTicket=$encodedTicket"
     }
 
-    private fun HttpResponse.checked() {
+    private suspend fun HttpResponse.checked() {
         if (status.isSuccess()) return
+        if (status.value == 400 && headers["Content-Type"]?.substringBefore(';')?.trim() == "text/html") {
+            val body = bodyAsText()
+            if ("<title>400 No required SSL certificate was sent</title>" in body) {
+                throw T3TransportException.ClientCertificate(required = true)
+            }
+            if ("<title>400 The SSL certificate error</title>" in body) {
+                throw T3TransportException.ClientCertificate(required = false)
+            }
+        }
         if (status.value == 401 || status.value == 403) {
             throw T3TransportException.Authentication(status.value)
         }

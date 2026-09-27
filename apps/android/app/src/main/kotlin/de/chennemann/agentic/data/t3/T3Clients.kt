@@ -148,6 +148,16 @@ sealed class T3TransportException(
         val statusCode: Int,
     ) : T3TransportException("T3 request failed with HTTP $statusCode.")
 
+    class ClientCertificate(
+        val required: Boolean,
+    ) : T3TransportException(
+        if (required) {
+            "The server requires a device certificate. Select the installed client certificate for this server."
+        } else {
+            "The server rejected the device certificate. Check the selected certificate and the proxy's trusted CA and certificate revocation list."
+        },
+    )
+
     class InvalidResponse : T3TransportException("T3 returned an invalid RPC response.")
 
     class UnsupportedStreamItem(
