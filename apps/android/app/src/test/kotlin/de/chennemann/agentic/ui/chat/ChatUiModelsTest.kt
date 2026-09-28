@@ -7,6 +7,25 @@ import org.junit.jupiter.api.Test
 
 class ChatUiModelsTest {
     @Test
+    fun `async answer message and activity have distinct stable timeline keys`() {
+        val sharedId = "async-answer:request-1"
+        val message = ChatTimelineItemUi.Message(
+            ChatMessageUi(sharedId, ChatMessageAuthorUi.USER, "Selected answer"),
+        )
+        val activity = ChatTimelineItemUi.Activity(
+            ChatActivityUi.Information(sharedId, "User input submitted"),
+        )
+        val toolGroup = ChatTimelineItemUi.ToolGroup(sharedId, emptyList())
+        val items = listOf(message, activity, toolGroup)
+
+        assertEquals(3, items.map { it.lazyKey }.toSet().size)
+        assertEquals(sharedId, message.value.id)
+        assertEquals(sharedId, activity.value.id)
+        assertEquals(message.lazyKey, message.copy(value = message.value.copy(content = "Updated answer")).lazyKey)
+        assertEquals(activity.lazyKey, activity.copy(value = ChatActivityUi.Information(sharedId, "Updated summary")).lazyKey)
+    }
+
+    @Test
     fun `saved and reconnecting conversations allow a manual connection retry`() {
         assertTrue(ChatConnectionUi.Cached().canRetryConnection)
         assertTrue(ChatConnectionUi.Reconnecting().canRetryConnection)

@@ -338,7 +338,7 @@ fun T3ChatScreen(
 
                 items(
                     items = state.timeline,
-                    key = { it.id },
+                    key = { it.lazyKey },
                 ) { item ->
                     when (item) {
                         is ChatTimelineItemUi.Message -> MessageItem(item.value)

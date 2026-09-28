@@ -162,6 +162,14 @@ data class ChangedFileUi(
 sealed interface ChatTimelineItemUi {
     val id: String
 
+    // Server IDs are unique within an entity kind, not across the combined timeline.
+    val lazyKey: String
+        get() = when (this) {
+            is Message -> "message:$id"
+            is Activity -> "activity:$id"
+            is ToolGroup -> "tool-group:$id"
+        }
+
     data class Message(
         val value: ChatMessageUi,
     ) : ChatTimelineItemUi {
