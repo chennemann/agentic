@@ -18,6 +18,62 @@ import org.junit.jupiter.api.Test
 
 class ProjectionReducersTest {
     @Test
+    fun `older pages preserve live messages and sequence while advancing the cursor`() {
+        val original = (threadItems().first() as OrchestrationThreadStreamItem.Snapshot).snapshot
+        val liveMessage = de.chennemann.agentic.t3.contract.OrchestrationMessage(
+            "live", "turn-live", "assistant", "new live text", true, "now", "now",
+        )
+        val olderMessage = liveMessage.copy(id = "older", text = "old text", streaming = false)
+        val page = de.chennemann.agentic.t3.contract.OrchestrationThreadDetailPage("cursor-1", true, 10, 10)
+        val current = ThreadProjectionReducer.snapshot(
+            ProjectionState(), original.copy(snapshotSequence = 10, thread = original.thread.copy(messages = listOf(liveMessage)), page = page),
+            ProjectionSource.LIVE,
+        )
+        val incoming = original.copy(
+            snapshotSequence = 20,
+            thread = original.thread.copy(messages = listOf(olderMessage, liveMessage.copy(text = "stale"))),
+            page = page.copy(beforeCursor = "cursor-2", snapshotSequence = 20),
+        )
+        val merged = requireNotNull(ThreadProjectionReducer.mergeHistory(current, incoming, "cursor-1", current.historyGeneration))
+        assertEquals(listOf("older", "live"), merged.value?.thread?.messages?.map { it.id })
+        assertEquals("new live text", merged.value?.thread?.messages?.last()?.text)
+        assertEquals(10, merged.sequence)
+        assertEquals(10, merged.value?.snapshotSequence)
+        assertEquals("cursor-2", merged.value?.page?.beforeCursor)
+        assertEquals(null, ThreadProjectionReducer.mergeHistory(current, incoming, "wrong-cursor", current.historyGeneration))
+        assertEquals(null, ThreadProjectionReducer.mergeHistory(current, incoming, "cursor-1", current.historyGeneration - 1))
+        assertEquals(null, ThreadProjectionReducer.mergeHistory(current, incoming.copy(snapshotSequence = 9), "cursor-1", current.historyGeneration))
+        assertEquals(null, ThreadProjectionReducer.mergeHistory(current, incoming.copy(page = page.copy(threadSequence = 11)), "cursor-1", current.historyGeneration))
+    }
+
+    @Test
+    fun `history rewrite invalidates in flight pages and requires a fresh snapshot`() {
+        val snapshot = (threadItems().first() as OrchestrationThreadStreamItem.Snapshot).snapshot
+        val current = ThreadProjectionReducer.snapshot(ProjectionState(), snapshot, ProjectionSource.LIVE)
+        val event = threadItems().filterIsInstance<OrchestrationThreadStreamItem.Event>().first().event
+            .copy(type = "thread.reverted", sequence = snapshot.snapshotSequence + 1)
+        val result = ThreadProjectionReducer.reduce(current, OrchestrationThreadStreamItem.Event(event)) as Reduction.Gap
+        assertEquals(current.historyGeneration + 1, result.state.historyGeneration)
+        assertEquals(false, result.state.synchronized)
+    }
+
+    @Test
+    fun `configuration events refresh providers and settings and ignore unknown additions`() {
+        val config = T3Json.decodeFromString<de.chennemann.agentic.t3.contract.ServerConfig>(
+            """{"environment":{"environmentId":"env","label":"Test","platform":{"os":"linux","arch":"x64"},"serverVersion":"1","capabilities":{}},"auth":{"policy":"test","bootstrapMethods":[],"sessionMethods":[],"sessionCookieName":"test"},"providers":[]}""",
+        )
+        val providers = T3Json.decodeFromString<de.chennemann.agentic.t3.contract.ServerConfigStreamEvent>(
+            """{"version":1,"type":"providerStatuses","payload":{"providers":[{"instanceId":"account","models":[]}]}}""",
+        )
+        val refreshed = ClientConfigReducer.applyEvent(config, providers)
+        assertEquals("account", refreshed.providers.single().instanceId)
+        val settings = T3Json.decodeFromString<de.chennemann.agentic.t3.contract.ServerConfigStreamEvent>(
+            """{"version":1,"type":"settingsUpdated","payload":{"settings":{"addProjectBaseDirectory":"/new"}}}""",
+        )
+        assertEquals("/new", ClientConfigReducer.applyEvent(refreshed, settings).settings.addProjectBaseDirectory)
+        assertSame(refreshed, ClientConfigReducer.applyEvent(refreshed, de.chennemann.agentic.t3.contract.ServerConfigStreamEvent("future")))
+    }
+    @Test
     fun `shell reducer applies every canonical variant and removes deleted entities`() {
         val items = shellItems()
         var state = ProjectionState<de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot>()

@@ -15,6 +15,7 @@ data class ProjectionState<T>(
     val sequence: Long? = null,
     val source: ProjectionSource? = null,
     val synchronized: Boolean = false,
+    val historyGeneration: Long = 0,
 )
 
 sealed interface Reduction<out T> {
@@ -82,6 +83,13 @@ interface OrchestrationRepository {
     ): Reduction<ProjectionState<OrchestrationThreadDetailSnapshot>>
 
     suspend fun clearEnvironment(environmentId: String)
+
+    suspend fun mergeThreadHistory(
+        environmentId: String,
+        snapshot: OrchestrationThreadDetailSnapshot,
+        beforeCursor: String,
+        historyGeneration: Long,
+    ): Boolean = error("Thread history merging is not supported.")
 
     suspend fun clearProjectionCache(environmentId: String): Unit = error("Projection cache clearing is not supported.")
 }

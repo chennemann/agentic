@@ -50,10 +50,7 @@ class BackgroundAwarenessService(
                 visible,
             ) { environment, config, threadIds, isVisible ->
                 val supported = config.value
-                    ?.takeIf { it.environment.environmentId == environment?.id }
-                    ?.environment
-                    ?.capabilities
-                    ?.backgroundActivity == true
+                    ?.takeIf { it.environment.environmentId == environment?.id } != null
                 AwarenessDemand(environment?.id, environment?.baseUrl, supported, threadIds, isVisible)
             }.distinctUntilChanged().collectLatest { demand ->
                 if (!demand.supported || demand.environmentId == null || demand.baseUrl == null) {

@@ -8,6 +8,10 @@ import de.chennemann.agentic.t3.contract.FilesystemBrowseResult
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.ServerConfig
+import de.chennemann.agentic.t3.contract.ServerConfigStreamEvent
+import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
+import de.chennemann.agentic.t3.contract.ProjectCreateNewResult
+import de.chennemann.agentic.t3.contract.ProjectEnsureScratchResult
 import de.chennemann.agentic.t3.contract.T3CommandJson
 import de.chennemann.agentic.t3.contract.T3Json
 import de.chennemann.agentic.t3.contract.TokenExchangeResponse
@@ -115,6 +119,37 @@ class KtorT3Client(
         baseUrl: String,
         bearerToken: String,
     ): ServerConfig = rpcCall(baseUrl, bearerToken, "server.getConfig", buildJsonObject {})
+
+    override fun configStream(baseUrl: String, bearerToken: String): Flow<ServerConfigStreamEvent> =
+        rpcStream(baseUrl, bearerToken, "subscribeServerConfig", buildJsonObject {})
+
+    override suspend fun ensureScratch(baseUrl: String, bearerToken: String): ProjectEnsureScratchResult =
+        rpcCall(baseUrl, bearerToken, "projects.ensureScratch", buildJsonObject {})
+
+    override suspend fun createNewProject(baseUrl: String, bearerToken: String, name: String): ProjectCreateNewResult =
+        rpcCall(baseUrl, bearerToken, "projects.createNew", buildJsonObject { put("name", name) })
+
+    override suspend fun threadHistory(
+        baseUrl: String,
+        bearerToken: String,
+        threadId: String,
+        beforeCursor: String?,
+        turnLimit: Int,
+        reasoningMessages: Boolean,
+    ): OrchestrationThreadDetailSnapshot = transport {
+        val encodedId = URLEncoder.encode(threadId, StandardCharsets.UTF_8).replace("+", "%20")
+        val response = httpClients.client(baseUrl).get(url(baseUrl, "/api/orchestration/threads/$encodedId")) {
+            bearerAuth(bearerToken)
+            accept(ContentType.Application.Json)
+            url {
+                beforeCursor?.let { parameters.append("beforeCursor", it) }
+                parameters.append("turnLimit", turnLimit.toString())
+                if (reasoningMessages) parameters.append("reasoningMessages", "true")
+            }
+        }
+        response.checked()
+        response.body()
+    }
 
     override suspend fun dispatch(
         baseUrl: String,
@@ -318,11 +353,17 @@ class KtorT3Client(
         threadId: String,
         afterSequence: Long?,
         requestCompletionMarker: Boolean,
+        turnLimit: Int?,
+        reasoningMessages: Boolean,
     ): Flow<OrchestrationThreadStreamItem> = rpcStream(
         baseUrl = baseUrl,
         bearerToken = bearerToken,
         tag = "orchestration.subscribeThread",
-        payload = subscriptionPayload(afterSequence, requestCompletionMarker, threadId),
+        payload = buildJsonObject {
+            subscriptionPayload(afterSequence, requestCompletionMarker, threadId).forEach { (key, value) -> put(key, value) }
+            turnLimit?.let { put("turnLimit", it) }
+            if (reasoningMessages) put("reasoningMessages", true)
+        },
         supportedKinds = ThreadStreamKinds,
     )
 

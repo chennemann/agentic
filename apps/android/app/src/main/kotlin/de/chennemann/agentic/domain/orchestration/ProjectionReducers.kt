@@ -12,12 +12,27 @@ import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.T3Json
 import de.chennemann.agentic.t3.contract.ProposedPlan
 import de.chennemann.agentic.t3.contract.ThreadSession
+import de.chennemann.agentic.t3.contract.ServerConfigStreamEvent
+import de.chennemann.agentic.t3.contract.ProviderInstance
+import de.chennemann.agentic.t3.contract.ServerSettings
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonPrimitive
 
 object ClientConfigReducer {
+    fun applyEvent(
+        current: de.chennemann.agentic.t3.contract.ServerConfig,
+        event: ServerConfigStreamEvent,
+    ): de.chennemann.agentic.t3.contract.ServerConfig = when (event.type) {
+        "snapshot" -> event.config ?: current
+        "providerStatuses" -> event.payload.decodeOrNull<List<ProviderInstance>>("providers")
+            ?.let { current.copy(providers = it) } ?: current
+        "settingsUpdated" -> event.payload.decodeOrNull<ServerSettings>("settings")
+            ?.let { current.copy(settings = it) } ?: current
+        else -> current
+    }
+
     fun reduce(
         current: ProjectionState<de.chennemann.agentic.t3.contract.ServerConfig>,
         incoming: de.chennemann.agentic.t3.contract.ServerConfig,
@@ -121,6 +136,7 @@ object ThreadProjectionReducer {
             sequence = incoming.snapshotSequence,
             source = source,
             synchronized = false,
+            historyGeneration = current.historyGeneration + 1,
         )
     }
 
@@ -141,6 +157,14 @@ object ThreadProjectionReducer {
         if (sequence <= currentSequence) return Reduction.Ignored(current)
         val snapshot = current.value
             ?: return Reduction.Gap(current, expected = currentSequence + 1, received = sequence)
+        if (event.type == "thread.reverted") {
+            // A new snapshot is authoritative after a history rewrite, including unloaded turns.
+            return Reduction.Gap(
+                current.copy(historyGeneration = current.historyGeneration + 1, synchronized = false),
+                expected = currentSequence + 1,
+                received = sequence,
+            )
+        }
         if (event.type == "thread.deleted") {
             return Reduction.Applied(
                 current.copy(
@@ -157,6 +181,31 @@ object ThreadProjectionReducer {
                 sequence = sequence,
                 source = ProjectionSource.LIVE,
             ),
+        )
+    }
+
+    fun mergeHistory(
+        current: ProjectionState<OrchestrationThreadDetailSnapshot>,
+        incoming: OrchestrationThreadDetailSnapshot,
+        beforeCursor: String,
+        historyGeneration: Long,
+    ): ProjectionState<OrchestrationThreadDetailSnapshot>? {
+        val loaded = current.value ?: return null
+        val sequence = current.sequence ?: return null
+        val page = incoming.page ?: return null
+        if (current.historyGeneration != historyGeneration || loaded.thread.id != incoming.thread.id) return null
+        if (loaded.page?.beforeCursor != beforeCursor || loaded.page?.hasMore != true) return null
+        if (incoming.snapshotSequence < sequence || (page.threadSequence ?: 0) > sequence) return null
+        val thread = loaded.thread.copy(
+            messages = (incoming.thread.messages + loaded.thread.messages).associateBy { it.id }.values.toList(),
+            activities = (incoming.thread.activities + loaded.thread.activities).associateBy { it.id }.values.toList(),
+            proposedPlans = (incoming.thread.proposedPlans + loaded.thread.proposedPlans).associateBy { it.id }.values.toList(),
+            checkpoints = (incoming.thread.checkpoints + loaded.thread.checkpoints).associateBy {
+                (it as? JsonObject)?.get("turnId") ?: it
+            }.values.toList(),
+        )
+        return current.copy(
+            value = loaded.copy(thread = thread, page = page.copy(snapshotSequence = sequence)),
         )
     }
 

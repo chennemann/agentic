@@ -50,7 +50,7 @@ class UpstreamRpcContractTest {
                 "label": "Development",
                 "platform": { "os": "linux", "arch": "x64" },
                 "serverVersion": "1.0.0",
-                "capabilities": { "connectionProbe": true, "workspaceFiles": true }
+                "capabilities": { "connectionProbe": true, "requiredWorktreeBootstrap": true }
               },
               "auth": {
                 "policy": "desktop-managed-local",
@@ -62,7 +62,7 @@ class UpstreamRpcContractTest {
               "keybindings": {},
               "settings": { "addProjectBaseDirectory": "~/Development" },
               "providers": [
-                { "instanceId": "codex", "displayName": "Codex", "models": [] }
+                { "instanceId": "provider-account", "models": [] }
               ],
               "shellResumeCompletionMarker": true,
               "threadResumeCompletionMarker": true
@@ -71,11 +71,12 @@ class UpstreamRpcContractTest {
         )
 
         assertEquals("environment-1", config.environment.environmentId)
-        assertEquals("codex", config.providers.single().instanceId)
+        assertEquals("provider-account", config.providers.single().instanceId)
+        assertEquals(null, config.providers.single().displayName)
         assertEquals("~/Development", config.settings.addProjectBaseDirectory)
         assertTrue(config.shellResumeCompletionMarker)
         assertTrue(config.threadResumeCompletionMarker)
-        assertTrue(config.environment.capabilities.workspaceFiles)
+        assertTrue(config.environment.capabilities.requiredWorktreeBootstrap)
     }
 
     @Test

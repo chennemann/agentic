@@ -172,7 +172,9 @@ class SqlOrchestrationRepository(
                 threadProjections[id]
                     ?: loadThreadProjection(environmentId, id)?.also { threadProjections[id] = it }
             } ?: ProjectionState()
-            mutableFocusedThread.value = projection
+            val focused = withShellMetadata(projection)
+            if (threadId != null) threadProjections[threadId] = focused
+            mutableFocusedThread.value = focused
             mutableFocusedThreadId.value = threadId
             if (threadId != null) {
                 database.agenticT3Queries.upsertPreference(
@@ -224,11 +226,11 @@ class SqlOrchestrationRepository(
                 return@withLock
             }
             val threadId = snapshot.thread.id
-            val state = ThreadProjectionReducer.snapshot(
+            val state = withShellMetadata(ThreadProjectionReducer.snapshot(
                 threadProjections[threadId] ?: ProjectionState(),
                 snapshot,
                 source,
-            )
+            ))
             threadProjections[threadId] = state
             if (threadId == mutableFocusedThreadId.value) mutableFocusedThread.value = state
             cancelScheduledCache(environmentId, ThreadKind, snapshot.thread.id)
@@ -236,8 +238,8 @@ class SqlOrchestrationRepository(
                 environmentId,
                 ThreadKind,
                 snapshot.thread.id,
-                snapshot.snapshotSequence,
-                T3Json.encodeToString(snapshot),
+                state.sequence,
+                T3Json.encodeToString(requireNotNull(state.value)),
             )
         }
     }
@@ -251,10 +253,17 @@ class SqlOrchestrationRepository(
             if (environmentId != currentEnvironmentId) {
                 return@withLock Reduction.Ignored(threadProjections[threadId] ?: ProjectionState())
             }
-            val reduction = ThreadProjectionReducer.reduce(
+            val rawReduction = ThreadProjectionReducer.reduce(
                 threadProjections[threadId] ?: ProjectionState(),
                 item,
             )
+            val reduction = if (rawReduction is Reduction.Applied) {
+                Reduction.Applied(withShellMetadata(rawReduction.state))
+            } else rawReduction
+            if (reduction is Reduction.Gap) {
+                threadProjections[threadId] = reduction.state
+                if (threadId == mutableFocusedThreadId.value) mutableFocusedThread.value = reduction.state
+            }
             if (reduction is Reduction.Applied) {
                 threadProjections[threadId] = reduction.state
                 if (threadId == mutableFocusedThreadId.value) mutableFocusedThread.value = reduction.state
@@ -300,6 +309,25 @@ class SqlOrchestrationRepository(
         }
     }
 
+    override suspend fun mergeThreadHistory(
+        environmentId: String,
+        snapshot: OrchestrationThreadDetailSnapshot,
+        beforeCursor: String,
+        historyGeneration: Long,
+    ): Boolean = withContext(dispatcher) {
+        lock.withLock {
+            if (environmentId != currentEnvironmentId || snapshot.thread.id != mutableFocusedThreadId.value) return@withLock false
+            val current = threadProjections[snapshot.thread.id] ?: return@withLock false
+            val merged = ThreadProjectionReducer.mergeHistory(current, snapshot, beforeCursor, historyGeneration)
+                ?: return@withLock false
+            threadProjections[snapshot.thread.id] = merged
+            mutableFocusedThread.value = merged
+            cancelScheduledCache(environmentId, ThreadKind, snapshot.thread.id)
+            cache(environmentId, ThreadKind, snapshot.thread.id, merged.sequence, T3Json.encodeToString(requireNotNull(merged.value)))
+            true
+        }
+    }
+
     override suspend fun clearProjectionCache(environmentId: String) = withContext(dispatcher) {
         lock.withLock {
             cancelScheduledCaches(environmentId)
@@ -321,11 +349,11 @@ class SqlOrchestrationRepository(
             runCatching { T3Json.decodeFromString<OrchestrationThreadDetailSnapshot>(it.payload) }
                 .getOrNull()
                 ?.let { snapshot ->
-                    ThreadProjectionReducer.snapshot(
+                    withShellMetadata(ThreadProjectionReducer.snapshot(
                         ProjectionState(),
                         snapshot,
                         ProjectionSource.CACHE,
-                    )
+                    ))
                 }
         }
 
@@ -348,6 +376,43 @@ class SqlOrchestrationRepository(
                 thread.projectId,
             )
         }
+        val current = threadProjections[threadId] ?: return
+        val updated = withShellMetadata(current)
+        if (updated != current) {
+            threadProjections[threadId] = updated
+            mutableFocusedThread.value = updated
+            updated.value?.let { snapshot ->
+                scheduleCache(environmentId, ThreadKind, threadId, updated.sequence) { T3Json.encodeToString(snapshot) }
+            }
+        }
+    }
+
+    private fun withShellMetadata(
+        state: ProjectionState<OrchestrationThreadDetailSnapshot>,
+    ): ProjectionState<OrchestrationThreadDetailSnapshot> {
+        val snapshot = state.value ?: return state
+        val shell = mutableShell.value
+        val metadata = shell.value?.threads?.firstOrNull { it.id == snapshot.thread.id } ?: return state
+        // The detail snapshot also contains metadata. Keep it until the shell catches up.
+        if ((shell.sequence ?: 0) < (state.sequence ?: 0)) return state
+        val thread = snapshot.thread.copy(
+            title = metadata.title,
+            modelSelection = metadata.modelSelection,
+            runtimeMode = metadata.runtimeMode,
+            interactionMode = metadata.interactionMode,
+            branch = metadata.branch,
+            worktreePath = metadata.worktreePath,
+            archivedAt = metadata.archivedAt,
+            settledAt = metadata.settledAt,
+            settledOverride = metadata.settledOverride,
+            snoozedAt = metadata.snoozedAt,
+            snoozedUntil = metadata.snoozedUntil,
+            lastWakeReason = metadata.lastWakeReason,
+            session = metadata.session,
+            latestTurn = metadata.latestTurn,
+            updatedAt = metadata.updatedAt,
+        )
+        return state.copy(value = snapshot.copy(thread = thread))
     }
 
     private fun projection(

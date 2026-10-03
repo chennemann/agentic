@@ -18,6 +18,7 @@ import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.domain.orchestration.ProjectionState
 import de.chennemann.agentic.domain.orchestration.ThreadService
 import de.chennemann.agentic.domain.orchestration.ThreadActions
+import de.chennemann.agentic.domain.orchestration.ThreadHistory
 import de.chennemann.agentic.domain.orchestration.NewThreadWorkspace
 import de.chennemann.agentic.domain.orchestration.ThreadWorkspaceBrowser
 import de.chennemann.agentic.domain.orchestration.ThreadWorkspaceChoice
@@ -105,8 +106,10 @@ class ChatViewModel(
     private val imageAttachments: ImageAttachmentReader? = null,
     private val attachmentAssets: AttachmentAssetClient? = null,
     private val credentials: CredentialStore? = null,
+    private val threadHistory: ThreadHistory? = null,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
+    private var historyJob: Job? = null
     private val mutableDraft = MutableStateFlow("")
     val draft = mutableDraft.asStateFlow()
     private val draftCache = mutableMapOf<DraftKey, String>()
@@ -175,6 +178,14 @@ class ChatViewModel(
     ) { display, work -> display to work }
 
     init {
+        viewModelScope.launch {
+            combine(environments.activeEnvironment, repository.focusedThreadId) { environment, threadId ->
+                environment?.id to threadId
+            }.distinctUntilChanged().collect {
+                historyJob?.cancel()
+                update { copy(historyLoading = false, historyError = null) }
+            }
+        }
         projectWorkflow?.let { workflow ->
             viewModelScope.launch {
                 workflow.state.map { it.selectedProjectId }.distinctUntilChanged().collect { selectedProjectId ->
@@ -357,8 +368,12 @@ class ChatViewModel(
                     parentPath = project.creationParentPath,
                     destinations = project.creationDestinations.map { ProjectDestinationUi(it.name, it.fullPath) },
                     browsing = project.creationBrowsing,
+                    createNew = project.creationNewProject,
+                    canCreateNew = mapped.canCreateNewProject,
+                    canUseScratch = mapped.canUseScratchProject,
                 )
             } else null,
+            projectCreationNotice = project.creationNotice,
             projectRename = project.renameId?.let {
                 ProjectRenameUi(it, project.renamePreviousTitle, project.renameTitle, project.renameSaving, project.renameError)
             },
@@ -569,6 +584,7 @@ class ChatViewModel(
                         }
                 }
             }
+            ChatUiEvent.OlderHistoryRequested -> loadOlderHistory()
             ChatUiEvent.ProjectCreationRequested -> acceptProject(ProjectWorkflowIntent.RequestCreation)
             is ChatUiEvent.ProjectCreationSourceChanged -> acceptProject(ProjectWorkflowIntent.ChangeCreationSource(event.value))
             ChatUiEvent.ProjectCreationBrowseRequested -> acceptProject(ProjectWorkflowIntent.BrowseCreationSource)
@@ -577,6 +593,9 @@ class ChatViewModel(
             ChatUiEvent.ProjectCreationParentOpened -> acceptProject(ProjectWorkflowIntent.OpenCreationParent)
             ChatUiEvent.ProjectCreationDismissed -> acceptProject(ProjectWorkflowIntent.DismissCreation)
             ChatUiEvent.ProjectCreationConfirmed -> acceptProject(ProjectWorkflowIntent.ConfirmCreation)
+            is ChatUiEvent.ProjectCreationKindChanged -> acceptProject(ProjectWorkflowIntent.ChangeCreationKind(event.createNew))
+            ChatUiEvent.ScratchProjectRequested -> acceptProject(ProjectWorkflowIntent.UseScratch)
+            ChatUiEvent.ProjectCreationNoticeDismissed -> acceptProject(ProjectWorkflowIntent.DismissCreationNotice)
             is ChatUiEvent.ProjectRenameRequested -> acceptProject(ProjectWorkflowIntent.RequestRename(event.projectId))
             is ChatUiEvent.ProjectRenameTitleChanged -> acceptProject(ProjectWorkflowIntent.ChangeRenameTitle(event.value))
             ChatUiEvent.ProjectRenameDismissed -> acceptProject(ProjectWorkflowIntent.DismissRename)
@@ -1054,6 +1073,22 @@ class ChatViewModel(
         viewModelScope.launch { workflow.accept(intent) }
     }
 
+    private fun loadOlderHistory() {
+        val history = threadHistory ?: return
+        if (local.value.historyLoading) return
+        update { copy(historyLoading = true, historyError = null) }
+        historyJob = viewModelScope.launch {
+            try {
+                history.loadOlder()
+                update { copy(historyLoading = false) }
+            } catch (cause: CancellationException) {
+                throw cause
+            } catch (cause: Exception) {
+                update { copy(historyLoading = false, historyError = cause.message ?: "Unable to load older messages.") }
+            }
+        }
+    }
+
     private fun acceptShared(intent: SharedTextWorkflowIntent) {
         val workflow = sharedTextWorkflow ?: return
         viewModelScope.launch { workflow.accept(intent) }
@@ -1094,7 +1129,7 @@ class ChatViewModel(
     private fun eligibleDeletionDetail(): de.chennemann.agentic.t3.contract.OrchestrationThreadDetail? {
         val active = environments.activeEnvironment.value ?: return null
         val config = repository.clientConfig.value.value ?: return null
-        if (config.environment.environmentId != active.id || !config.environment.capabilities.threadDeletion) return null
+        if (config.environment.environmentId != active.id) return null
         val focusedId = repository.focusedThreadId.value ?: return null
         return repository.focusedThread.value.value?.thread?.takeIf { it.id == focusedId }
     }
@@ -1410,13 +1445,22 @@ class ChatViewModel(
             .sortedByDescending { it.updatedAt }
         val activeTurnId = detail?.session?.activeTurnId
         val isTurnRunning = detail?.session?.status in ActiveSessionStatuses && activeTurnId != null
+        val hasEnvironmentConfig = environment.active != null &&
+            orchestration.config.value?.environment?.environmentId == environment.active.id
 
         return ChatUiState(
             title = detail?.title ?: shellThread?.title ?: "New thread",
             environmentLabel = environment.active?.label ?: "T3",
             projectLabel = project?.title,
+            canCreateNewProject = hasEnvironmentConfig && orchestration.config.value.newProjectsRoot != null,
+            canUseScratchProject = hasEnvironmentConfig && orchestration.config.value.scratchWorkspaceRoot != null,
             threadId = orchestration.threadId,
             timeline = timeline,
+            history = ThreadHistoryUi(
+                hasMore = orchestration.thread.value?.takeIf { it.thread.id == orchestration.threadId }?.page?.hasMore == true,
+                loading = local.historyLoading,
+                errorMessage = local.historyError,
+            ),
             connection = environment.connection.toUi(),
             composer = ComposerUiState(
                 draft = "",
@@ -1543,12 +1587,8 @@ class ChatViewModel(
             canRenameThread = detail != null,
             canArchiveThread = detail != null && detail.archivedAt == null,
             isThreadArchived = detail?.archivedAt != null,
-            canDeleteThread = detail != null &&
-                orchestration.config.value?.environment?.capabilities?.threadDeletion == true &&
-                orchestration.config.value.environment.environmentId == environment.active?.id,
-            canBrowseFiles = orchestration.threadId != null &&
-                orchestration.config.value?.environment?.capabilities?.workspaceFiles == true &&
-                orchestration.config.value.environment.environmentId == environment.active?.id,
+            canDeleteThread = detail != null && hasEnvironmentConfig,
+            canBrowseFiles = orchestration.threadId != null && project != null && hasEnvironmentConfig,
             canUseTerminal = orchestration.threadId != null &&
                 project != null &&
                 orchestration.config.value?.environment?.environmentId != null &&
@@ -1695,12 +1735,17 @@ class ChatViewModel(
                 turnPhase = if (it.role == "user") TurnPhaseUser else TurnPhaseAssistant,
             )
         }
+        val closedApprovals = detail.activities.closedRequestIds("approval")
+        val closedUserInputs = detail.activities.closedRequestIds("user-input")
         val oldestApproval = detail.activities
-            .filter { it.kind == "approval.requested" }
+            .filter {
+                it.kind == "approval.requested" && it.payload.string("requestId") !in closedApprovals &&
+                    it.payload.string("requestType") !in setOf("tool_user_input", "auth_tokens_refresh")
+            }
             .minWithOrNull(activityOrder)
             ?.id
         val oldestUserInput = detail.activities
-            .filter { it.kind == "user-input.requested" }
+            .filter { it.kind == "user-input.requested" && it.payload.string("requestId") !in closedUserInputs }
             .minWithOrNull(activityOrder)
             ?.id
         val finishedTurnId = detail.latestTurn
@@ -1935,6 +1980,8 @@ class ChatViewModel(
     )
 
     private data class LocalState(
+        val historyLoading: Boolean = false,
+        val historyError: String? = null,
         val activePicker: ChatPickerUi? = null,
         val showArchived: Boolean = false,
         val showSettled: Boolean = false,
@@ -2167,6 +2214,35 @@ private fun JsonObject.changedFiles(): List<String> {
     return files.toList()
 }
 
+// Native detail streams publish request closures as activities. Request IDs are unique, so a
+// terminal activity also closes a request loaded later from history, regardless of event order.
+private fun List<OrchestrationActivity>.closedRequestIds(kind: String): Set<String> = asSequence()
+    .filter { activity ->
+        activity.kind == "$kind.resolved" || (
+            activity.kind == "provider.$kind.respond.failed" &&
+                StaleRequestFailureFragments[activity.kind].orEmpty().any { fragment ->
+                    activity.payload.string("detail")?.contains(fragment, ignoreCase = true) == true
+                }
+            )
+    }
+    .mapNotNull { it.payload.string("requestId") }
+    .toSet()
+
+private val StaleRequestFailureFragments = mapOf(
+    "provider.approval.respond.failed" to listOf(
+        "stale pending approval request",
+        "unknown pending approval request",
+        "unknown pending permission request",
+        "unknown pending codex approval request",
+    ),
+    "provider.user-input.respond.failed" to listOf(
+        "stale pending user-input request",
+        "unknown pending user-input request",
+        "unknown pending user input request",
+        "unknown pending codex user input request",
+    ),
+)
+
 private val activityOrder = compareBy<OrchestrationActivity>(
     { it.sequence ?: Long.MAX_VALUE },
     { it.createdAt },
@@ -2246,7 +2322,7 @@ private fun modelOptions(
             ProviderModelOptionUi(
                 id = optionId(provider.instanceId, model.slug),
                 providerInstanceId = provider.instanceId,
-                providerLabel = provider.displayName,
+                providerLabel = provider.displayName?.takeIf(String::isNotBlank) ?: provider.instanceId,
                 modelLabel = model.name,
                 supportingText = model.slug,
                 favorite = FavoriteModelId(provider.instanceId, model.slug) in favorites,

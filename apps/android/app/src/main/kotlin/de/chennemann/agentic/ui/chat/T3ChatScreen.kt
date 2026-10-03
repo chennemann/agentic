@@ -307,6 +307,22 @@ fun T3ChatScreen(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
             )
 
+            if (state.history.hasMore) {
+                TextButton(
+                    onClick = {
+                        followLatest = false
+                        onEvent(ChatUiEvent.OlderHistoryRequested)
+                    },
+                    enabled = !state.history.loading,
+                    modifier = Modifier.align(Alignment.CenterHorizontally),
+                ) {
+                    Text(if (state.history.loading) "Loading history…" else "Load older messages")
+                }
+                state.history.errorMessage?.let {
+                    Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .weight(1f)
@@ -689,19 +705,37 @@ fun T3ChatScreen(
             title = { Text("Add project") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Enter an absolute path on the server or a repository URL.")
+                    if (creation.canCreateNew) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            TextButton(
+                                onClick = { onEvent(ChatUiEvent.ProjectCreationKindChanged(false)) },
+                                enabled = !creation.creating && !creation.browsing,
+                            ) { Text("Existing folder") }
+                            TextButton(
+                                onClick = { onEvent(ChatUiEvent.ProjectCreationKindChanged(true)) },
+                                enabled = !creation.creating && !creation.browsing,
+                            ) { Text("New project") }
+                        }
+                    }
+                    Text(if (creation.createNew) "The server creates a folder for this project." else "Enter an absolute path on the server or a repository URL.")
                     OutlinedTextField(
                         value = creation.source,
                         onValueChange = { onEvent(ChatUiEvent.ProjectCreationSourceChanged(it)) },
                         enabled = !creation.creating,
-                        label = { Text("Server path or repository URL") },
+                        label = { Text(if (creation.createNew) "Project name" else "Server path or repository URL") },
                         singleLine = true,
                     )
-                    OutlinedButton(
+                    if (!creation.createNew) OutlinedButton(
                         onClick = { onEvent(ChatUiEvent.ProjectCreationBrowseRequested) },
                         enabled = creation.source.isNotBlank() && !creation.creating && !creation.browsing,
                     ) {
                         Text("Browse folders")
+                    }
+                    if (creation.canUseScratch) {
+                        TextButton(
+                            onClick = { onEvent(ChatUiEvent.ScratchProjectRequested) },
+                            enabled = !creation.creating && !creation.browsing,
+                        ) { Text("Use Scratch") }
                     }
                     if (creation.browsing) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp))
@@ -755,6 +789,17 @@ fun T3ChatScreen(
                 ) {
                     Text("Cancel")
                 }
+            },
+        )
+    }
+
+    state.projectCreationNotice?.let { notice ->
+        AlertDialog(
+            onDismissRequest = { onEvent(ChatUiEvent.ProjectCreationNoticeDismissed) },
+            title = { Text("Project created") },
+            text = { Text(notice) },
+            confirmButton = {
+                TextButton(onClick = { onEvent(ChatUiEvent.ProjectCreationNoticeDismissed) }) { Text("OK") }
             },
         )
     }

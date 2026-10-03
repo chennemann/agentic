@@ -24,6 +24,9 @@ data class ChatUiState(
     val renameDialog: RenameThreadUi? = null,
     val environmentRemoval: EnvironmentRemovalUi? = null,
     val projectCreation: ProjectCreationUi? = null,
+    val projectCreationNotice: String? = null,
+    val canCreateNewProject: Boolean = false,
+    val canUseScratchProject: Boolean = false,
     val projectRename: ProjectRenameUi? = null,
     val projectRemoval: ProjectRemovalUi? = null,
     val sessionTermination: SessionTerminationUi = SessionTerminationUi(),
@@ -38,6 +41,13 @@ data class ChatUiState(
     val groqSettings: GroqSettingsUiState = GroqSettingsUiState(),
     val latestTurnChanges: LatestTurnChangesUiState = LatestTurnChangesUiState(),
     val latestTurnTiming: ChatTurnTimingUi? = null,
+    val history: ThreadHistoryUi = ThreadHistoryUi(),
+)
+
+data class ThreadHistoryUi(
+    val hasMore: Boolean = false,
+    val loading: Boolean = false,
+    val errorMessage: String? = null,
 )
 
 data class ChatTurnTimingUi(
@@ -118,6 +128,9 @@ data class ProjectCreationUi(
     val parentPath: String? = null,
     val destinations: List<ProjectDestinationUi> = emptyList(),
     val browsing: Boolean = false,
+    val createNew: Boolean = false,
+    val canCreateNew: Boolean = false,
+    val canUseScratch: Boolean = false,
 )
 
 data class ProjectDestinationUi(
@@ -527,6 +540,7 @@ enum class ChatPickerUi {
 }
 
 sealed interface ChatUiEvent {
+    data object OlderHistoryRequested : ChatUiEvent
     data class DraftChanged(
         val value: String,
     ) : ChatUiEvent
@@ -628,6 +642,9 @@ sealed interface ChatUiEvent {
     data object ProjectCreationParentOpened : ChatUiEvent
 
     data object ProjectCreationConfirmed : ChatUiEvent
+    data class ProjectCreationKindChanged(val createNew: Boolean) : ChatUiEvent
+    data object ScratchProjectRequested : ChatUiEvent
+    data object ProjectCreationNoticeDismissed : ChatUiEvent
 
     data object ProjectCreationDismissed : ChatUiEvent
 

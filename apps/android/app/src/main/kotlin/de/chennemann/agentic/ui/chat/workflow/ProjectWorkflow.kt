@@ -2,6 +2,8 @@ package de.chennemann.agentic.ui.chat.workflow
 
 import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.domain.orchestration.ProjectActions
+import de.chennemann.agentic.domain.orchestration.ProjectStarter
+import de.chennemann.agentic.domain.orchestration.StartedProject
 import de.chennemann.agentic.domain.orchestration.ProjectDestination
 import de.chennemann.agentic.domain.orchestration.ProjectDestinationBrowser
 import de.chennemann.agentic.domain.orchestration.ThreadActions
@@ -13,6 +15,8 @@ import kotlinx.coroutines.flow.asStateFlow
 data class ProjectWorkflowState(
     val creationVisible: Boolean = false,
     val creationSource: String = "",
+    val creationNewProject: Boolean = false,
+    val creationNotice: String? = null,
     val creationSaving: Boolean = false,
     val creationError: String? = null,
     val creationBrowsePath: String? = null,
@@ -39,6 +43,9 @@ sealed interface ProjectWorkflowIntent {
     data object OpenCreationParent : ProjectWorkflowIntent
     data object DismissCreation : ProjectWorkflowIntent
     data object ConfirmCreation : ProjectWorkflowIntent
+    data class ChangeCreationKind(val createNew: Boolean) : ProjectWorkflowIntent
+    data object UseScratch : ProjectWorkflowIntent
+    data object DismissCreationNotice : ProjectWorkflowIntent
     data class RequestRename(val projectId: String) : ProjectWorkflowIntent
     data class ChangeRenameTitle(val value: String) : ProjectWorkflowIntent
     data object DismissRename : ProjectWorkflowIntent
@@ -58,6 +65,7 @@ class DefaultProjectWorkflow(
     private val projects: ProjectActions,
     private val threads: ThreadActions,
     private val destinations: ProjectDestinationBrowser? = null,
+    private val starter: ProjectStarter? = null,
 ) : ProjectWorkflow {
     private val mutableState = MutableStateFlow(ProjectWorkflowState())
     override val state = mutableState.asStateFlow()
@@ -68,6 +76,7 @@ class DefaultProjectWorkflow(
                 update {
                     copy(
                         creationVisible = true,
+                        creationNewProject = false,
                         creationSource = creationSource.ifBlank { initialBrowsePath() },
                         creationError = null,
                     )
@@ -75,6 +84,18 @@ class DefaultProjectWorkflow(
                 if (destinations != null) browse(state.value.creationSource, enterDirectory = false)
             }
             is ProjectWorkflowIntent.ChangeCreationSource -> update { copy(creationSource = intent.value, creationError = null) }
+            is ProjectWorkflowIntent.ChangeCreationKind -> updateUnless(state.value.creationSaving || state.value.creationBrowsing) {
+                copy(
+                    creationNewProject = intent.createNew,
+                    creationSource = if (intent.createNew) "" else initialBrowsePath(),
+                    creationError = null,
+                    creationBrowsePath = null,
+                    creationParentPath = null,
+                    creationDestinations = emptyList(),
+                )
+            }
+            ProjectWorkflowIntent.UseScratch -> createProject(scratch = true)
+            ProjectWorkflowIntent.DismissCreationNotice -> update { copy(creationNotice = null) }
             ProjectWorkflowIntent.BrowseCreationSource -> browse(state.value.creationSource, enterDirectory = false)
             is ProjectWorkflowIntent.OpenCreationDestination -> browse(intent.path, enterDirectory = true)
             ProjectWorkflowIntent.OpenCreationParent -> state.value.creationParentPath?.let { browse(it, enterDirectory = true) }
@@ -88,23 +109,7 @@ class DefaultProjectWorkflow(
                     creationDestinations = emptyList(),
                 )
             }
-            ProjectWorkflowIntent.ConfirmCreation -> runSaving(
-                start = { copy(creationSaving = true, creationError = null) },
-                operation = { projects.create(state.value.creationSource) },
-                success = { id ->
-                    threads.selectProject(id)
-                    copy(
-                        creationVisible = false,
-                        creationSource = "",
-                        creationSaving = false,
-                        selectedProjectId = id,
-                        creationBrowsePath = null,
-                        creationParentPath = null,
-                        creationDestinations = emptyList(),
-                    )
-                },
-                failure = { copy(creationSaving = false, creationError = it.message ?: "Project creation failed.") },
-            )
+            ProjectWorkflowIntent.ConfirmCreation -> createProject(scratch = false)
             is ProjectWorkflowIntent.RequestRename -> {
                 val project = repository.shell.value.value?.projects?.firstOrNull { it.id == intent.projectId } ?: return
                 update { copy(renameId = project.id, renamePreviousTitle = project.title, renameTitle = project.title, renameError = null) }
@@ -144,6 +149,36 @@ class DefaultProjectWorkflow(
         }
     }
 
+    private suspend fun createProject(scratch: Boolean) {
+        if (state.value.creationSaving) return
+        val input = state.value
+        runSaving(
+            start = { copy(creationSaving = true, creationError = null) },
+            operation = {
+                when {
+                    scratch -> requireNotNull(starter).useScratch()
+                    input.creationNewProject -> requireNotNull(starter).createNew(input.creationSource)
+                    else -> StartedProject(projects.create(input.creationSource))
+                }
+            },
+            success = { result ->
+                threads.selectProject(result.projectId)
+                copy(
+                    creationVisible = false,
+                    creationSource = "",
+                    creationSaving = false,
+                    creationNewProject = false,
+                    creationNotice = result.notice,
+                    selectedProjectId = result.projectId,
+                    creationBrowsePath = null,
+                    creationParentPath = null,
+                    creationDestinations = emptyList(),
+                )
+            },
+            failure = { copy(creationSaving = false, creationError = it.message ?: "Project creation failed.") },
+        )
+    }
+
     private fun initialBrowsePath(): String {
         val config = repository.clientConfig.value.value
         val configured = config?.settings?.addProjectBaseDirectory.orEmpty().trim()
@@ -156,7 +191,7 @@ class DefaultProjectWorkflow(
         path: String,
         enterDirectory: Boolean,
     ) {
-        if (path.isBlank() || state.value.creationBrowsing || state.value.creationSaving) return
+        if (path.isBlank() || state.value.creationNewProject || state.value.creationBrowsing || state.value.creationSaving) return
         update { copy(creationBrowsing = true, creationError = null) }
         try {
             val listing = requireNotNull(destinations).browse(path, enterDirectory)

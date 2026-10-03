@@ -25,7 +25,6 @@ class ThreadWorkspaceService(
         val environment = requireNotNull(environments.activeEnvironment.value) { "Select an environment first." }
         val config = repository.clientConfig.value.value
         require(config?.environment?.environmentId == environment.id) { "The environment is not ready yet." }
-        if (!config.environment.capabilities.threadWorktrees) return listOf(InPlaceChoice)
         val project = requireNotNull(repository.shell.value.value?.projects?.firstOrNull { it.id == projectId }) {
             "The project is no longer available."
         }

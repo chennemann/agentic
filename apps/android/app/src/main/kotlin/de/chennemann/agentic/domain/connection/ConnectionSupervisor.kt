@@ -10,6 +10,8 @@ import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.domain.orchestration.PendingCommandReplayer
 import de.chennemann.agentic.domain.orchestration.ProjectionSource
 import de.chennemann.agentic.domain.orchestration.Reduction
+import de.chennemann.agentic.domain.orchestration.ClientConfigReducer
+import de.chennemann.agentic.domain.orchestration.ThreadHistoryService
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import kotlinx.coroutines.CancellationException
@@ -144,6 +146,16 @@ class ConnectionSupervisor(
         val clientConfig = rpc.serverConfig(environment.baseUrl, token)
         if (clientConfig.environment.environmentId != environment.id) throw EnvironmentMismatch()
         orchestration.setClientConfig(environment.id, clientConfig, ProjectionSource.LIVE)
+        launch {
+            rpc.configStream(environment.baseUrl, token).collect { event ->
+                val current = orchestration.clientConfig.value.value ?: return@collect
+                val updated = ClientConfigReducer.applyEvent(current, event)
+                if (updated.environment.environmentId != environment.id) throw EnvironmentMismatch()
+                orchestration.setClientConfig(environment.id, updated, ProjectionSource.LIVE)
+            }
+            // A completed config subscription needs a fresh authenticated connection too.
+            throw T3TransportException.Network()
+        }
         mutableState.value = ConnectionState.Synchronizing
         launch {
             combine(orchestration.shell, orchestration.focusedThreadId) { shell, focusedThreadId ->
@@ -251,12 +263,15 @@ class ConnectionSupervisor(
         while (true) {
             try {
                 var gap = false
+                val config = orchestration.clientConfig.value.value
                 rpc.threadStream(
                     environment.baseUrl,
                     token,
                     threadId,
                     sequence,
-                    requestCompletionMarker = true,
+                    requestCompletionMarker = config?.threadResumeCompletionMarker == true,
+                    turnLimit = ThreadHistoryService.PageTurnLimit.takeIf { config?.threadSnapshotPagination == true },
+                    reasoningMessages = config?.reasoningMessages == true,
                 ).collect { item ->
                     when (val reduction = orchestration.applyThreadItem(environment.id, threadId, item)) {
                         is Reduction.Gap -> gap = true

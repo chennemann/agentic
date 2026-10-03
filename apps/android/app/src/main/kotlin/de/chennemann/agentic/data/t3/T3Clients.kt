@@ -8,6 +8,10 @@ import de.chennemann.agentic.t3.contract.FilesystemBrowseResult
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.ServerConfig
+import de.chennemann.agentic.t3.contract.ServerConfigStreamEvent
+import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
+import de.chennemann.agentic.t3.contract.ProjectCreateNewResult
+import de.chennemann.agentic.t3.contract.ProjectEnsureScratchResult
 import de.chennemann.agentic.t3.contract.TokenExchangeResponse
 import de.chennemann.agentic.t3.contract.TerminalAttachEvent
 import de.chennemann.agentic.t3.contract.TerminalMetadataEvent
@@ -63,6 +67,24 @@ interface T3RpcClient {
         command: ClientOrchestrationCommand,
     ): DispatchResult
 
+    fun configStream(baseUrl: String, bearerToken: String): Flow<ServerConfigStreamEvent> =
+        kotlinx.coroutines.flow.flow { kotlinx.coroutines.awaitCancellation() }
+
+    suspend fun threadHistory(
+        baseUrl: String,
+        bearerToken: String,
+        threadId: String,
+        beforeCursor: String?,
+        turnLimit: Int,
+        reasoningMessages: Boolean,
+    ): OrchestrationThreadDetailSnapshot = error("Thread history is not supported.")
+
+    suspend fun ensureScratch(baseUrl: String, bearerToken: String): ProjectEnsureScratchResult =
+        error("Scratch projects are not supported.")
+
+    suspend fun createNewProject(baseUrl: String, bearerToken: String, name: String): ProjectCreateNewResult =
+        error("New projects are not supported.")
+
     suspend fun reportClientActivity(
         baseUrl: String,
         bearerToken: String,
@@ -82,6 +104,8 @@ interface T3RpcClient {
         threadId: String,
         afterSequence: Long?,
         requestCompletionMarker: Boolean,
+        turnLimit: Int? = null,
+        reasoningMessages: Boolean = false,
     ): Flow<OrchestrationThreadStreamItem>
 }
 

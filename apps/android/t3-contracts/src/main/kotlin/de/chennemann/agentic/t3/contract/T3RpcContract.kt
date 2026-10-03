@@ -42,11 +42,7 @@ data class ExecutionEnvironmentCapabilities(
     val repositoryIdentity: Boolean = false,
     val threadSettlement: Boolean = false,
     val threadSnooze: Boolean = false,
-    val threadDeletion: Boolean = false,
-    val threadWorktrees: Boolean = false,
-    val workspaceFiles: Boolean = false,
-    val executionSessions: Boolean = false,
-    val backgroundActivity: Boolean = false
+    val requiredWorktreeBootstrap: Boolean = false
 )
 
 @Serializable
@@ -86,8 +82,25 @@ data class ServerConfig(
     val providers: List<ProviderInstance>,
     val settings: ServerSettings = ServerSettings(),
     val shellResumeCompletionMarker: Boolean = false,
-    val threadResumeCompletionMarker: Boolean = false
+    val threadResumeCompletionMarker: Boolean = false,
+    val threadSnapshotPagination: Boolean = false,
+    val reasoningMessages: Boolean = false,
+    val scratchWorkspaceRoot: String? = null,
+    val newProjectsRoot: String? = null
 )
+
+@Serializable
+data class ServerConfigStreamEvent(
+    val type: String,
+    val config: ServerConfig? = null,
+    val payload: JsonObject = JsonObject(emptyMap())
+)
+
+@Serializable
+data class ProjectEnsureScratchResult(val projectId: String)
+
+@Serializable
+data class ProjectCreateNewResult(val projectId: String, val workspaceRoot: String, val commitError: String? = null)
 
 @Serializable
 data class ServerSettings(val addProjectBaseDirectory: String = "")
@@ -236,7 +249,7 @@ data class VcsListRefsResult(
 @Serializable
 data class ProviderInstance(
     val instanceId: String,
-    val displayName: String,
+    val displayName: String? = null,
     val driver: String? = null,
     val enabled: Boolean = true,
     val installed: Boolean = true,
@@ -395,7 +408,19 @@ sealed interface OrchestrationShellStreamItem {
 }
 
 @Serializable
-data class OrchestrationThreadDetailSnapshot(val snapshotSequence: Long, val thread: OrchestrationThreadDetail)
+data class OrchestrationThreadDetailSnapshot(
+    val snapshotSequence: Long,
+    val thread: OrchestrationThreadDetail,
+    val page: OrchestrationThreadDetailPage? = null
+)
+
+@Serializable
+data class OrchestrationThreadDetailPage(
+    val beforeCursor: String?,
+    val hasMore: Boolean,
+    val snapshotSequence: Long,
+    val threadSequence: Long? = null
+)
 
 @Serializable
 data class OrchestrationThreadDetail(

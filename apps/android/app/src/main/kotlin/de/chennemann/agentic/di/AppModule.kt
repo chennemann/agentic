@@ -71,6 +71,10 @@ import de.chennemann.agentic.domain.orchestration.DurableCommandDispatcher
 import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.domain.orchestration.PendingCommandReplayer
 import de.chennemann.agentic.domain.orchestration.ProjectActions
+import de.chennemann.agentic.domain.orchestration.ProjectStarter
+import de.chennemann.agentic.domain.orchestration.ProjectStarterService
+import de.chennemann.agentic.domain.orchestration.ThreadHistory
+import de.chennemann.agentic.domain.orchestration.ThreadHistoryService
 import de.chennemann.agentic.domain.orchestration.ProjectDestinationBrowser
 import de.chennemann.agentic.domain.orchestration.ThreadWorkspaceBrowser
 import de.chennemann.agentic.domain.orchestration.ThreadWorkspaceService
@@ -250,6 +254,12 @@ val appModule = module {
     single<ChatActions> { get<ChatService>() }
     single { ProjectService(get(), get()) }
     single<ProjectActions> { get<ProjectService>() }
+    single<ProjectStarter> {
+        ProjectStarterService(get(), get(), get(), get())
+    }
+    single<ThreadHistory> {
+        ThreadHistoryService(get(), get(), get(), get())
+    }
     single { ProjectDestinationService(get(), get(), get()) }
     single<ProjectDestinationBrowser> { get<ProjectDestinationService>() }
     single { ThreadWorkspaceService(get(), get(), get(), get()) }
@@ -258,7 +268,7 @@ val appModule = module {
     single<WorkspaceFilesBrowser> { get<WorkspaceFilesService>() }
     single { TerminalSessionService(get(), get(), get(), get()) }
     single<TerminalSessions> { get<TerminalSessionService>() }
-    factory<ProjectWorkflow> { DefaultProjectWorkflow(get(), get(), get(), get()) }
+    factory<ProjectWorkflow> { DefaultProjectWorkflow(get(), get(), get(), get(), get()) }
     factory<SharedTextWorkflow> {
         DefaultSharedTextWorkflow(get(), get(), get(), get(), get(), get())
     }
@@ -311,6 +321,7 @@ val appModule = module {
             imageAttachments = get(),
             attachmentAssets = get(),
             credentials = get(),
+            threadHistory = get(),
         )
     }
 }

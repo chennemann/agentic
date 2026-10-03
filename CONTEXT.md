@@ -1,7 +1,7 @@
 # Agentic
 
-Agentic is a native Android client for interacting with T3 environments through a portable,
-provider-neutral contract.
+Agentic is a native Android client for interacting with T3 environments through the authenticated
+upstream HTTP and WebSocket RPC APIs. The runtime remains provider-neutral.
 
 ## Language
 
@@ -22,14 +22,14 @@ not inferred from error text.
 _Avoid_: Diagnostics snapshot, observability dashboard, raw server error
 
 **Server accommodation requirement**:
-A client-observable capability that the portable T3 contract does not currently expose and that
+A client-observable capability that the upstream T3 contract does not currently expose and that
 must be communicated to the T3 Code project without prescribing its server implementation.
 _Avoid_: Server implementation task, shim implementation plan
 
 **Capability-parity inventory entry**:
 A single user-observable capability or behavioral guarantee, paired with separate source evidence
-from the frozen T3 reference clients, portable protocol, and Agentic rather than represented as a
-screen or feature bundle.
+from the frozen T3 reference clients, the protocol at the inventory baseline, and Agentic rather
+than represented as a screen or feature bundle.
 _Avoid_: Gap item, screen inventory, reference-client feature bundle
 
 **Active thread workspace**:

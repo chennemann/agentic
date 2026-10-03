@@ -41,6 +41,10 @@ import de.chennemann.agentic.domain.shortcuts.ShortcutRoute
 import de.chennemann.agentic.domain.shortcuts.ShortcutRouteInbox
 import de.chennemann.agentic.ui.chat.workflow.DefaultCacheAdministration
 import de.chennemann.agentic.ui.chat.workflow.DefaultProjectWorkflow
+import de.chennemann.agentic.ui.chat.workflow.ProjectWorkflowIntent
+import de.chennemann.agentic.domain.orchestration.ProjectStarter
+import de.chennemann.agentic.domain.orchestration.StartedProject
+import de.chennemann.agentic.domain.orchestration.ThreadProjectionReducer
 import de.chennemann.agentic.ui.chat.workflow.DefaultSharedTextWorkflow
 import de.chennemann.agentic.ui.chat.workflow.DefaultShortcutWorkflow
 import de.chennemann.agentic.domain.voice.GroqApiKeyStore
@@ -55,6 +59,7 @@ import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
 import de.chennemann.agentic.t3.contract.LatestTurn
 import de.chennemann.agentic.t3.contract.ModelSelection
 import de.chennemann.agentic.t3.contract.OrchestrationActivity
+import de.chennemann.agentic.t3.contract.OrchestrationEvent
 import de.chennemann.agentic.t3.contract.OrchestrationMessage
 import de.chennemann.agentic.t3.contract.OrchestrationProject
 import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
@@ -89,6 +94,7 @@ import kotlinx.coroutines.test.setMain
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.encodeToJsonElement
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertFalse
@@ -99,6 +105,80 @@ import org.junit.jupiter.api.Test
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModelIntentTest {
+    @Test
+    fun `native request closures clear prompts even when older requests load afterward`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val current = requireNotNull(repository.focusedThread.value.value)
+        fun activity(id: String, kind: String, requestId: String, detail: String = "") = OrchestrationActivity(
+            id = id, kind = kind, tone = "info", summary = kind, createdAt = "2026-07-29T10:00:00Z",
+            payload = T3Json.parseToJsonElement("""{"requestId":"$requestId","detail":"$detail","questions":[{"id":"choice","question":"Choose an approach","options":["Keep it"]}]}""").jsonObject,
+        )
+        val approval = activity("approval", "approval.requested", "approval-request")
+        val question = activity("question", "user-input.requested", "question-request")
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = current.copy(thread = current.thread.copy(messages = emptyList(), activities = listOf(approval, question))),
+        )
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository), chat = NoOpChatActions(), mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+        assertEquals(2, viewModel.state.value.timeline.filterIsInstance<ChatTimelineItemUi.Activity>().count {
+            it.value is ChatActivityUi.Approval || it.value is ChatActivityUi.UserInput
+        })
+        fun appendNativeActivity(activity: OrchestrationActivity) {
+            val sequence = requireNotNull(repository.focusedThread.value.sequence) + 1
+            val event = OrchestrationEvent(
+                type = "thread.activity-appended", sequence = sequence, aggregateId = current.thread.id,
+                aggregateKind = "thread", eventId = "event-$sequence", commandId = "command-$sequence",
+                correlationId = "correlation", occurredAt = activity.createdAt,
+                payload = JsonObject(mapOf("activity" to T3Json.encodeToJsonElement(activity))),
+            )
+            val reduced = ThreadProjectionReducer.reduce(repository.focusedThread.value, OrchestrationThreadStreamItem.Event(event))
+            repository.focusedThread.value = (reduced as Reduction.Applied).state
+        }
+        appendNativeActivity(activity("approved", "approval.resolved", "approval-request"))
+        appendNativeActivity(activity("answered", "user-input.resolved", "question-request"))
+        // A page or reordered delivery can introduce an old request after its terminal activity.
+        appendNativeActivity(approval.copy(id = "older-approval"))
+        appendNativeActivity(question.copy(id = "older-question"))
+        advanceUntilIdle()
+        assertFalse(viewModel.state.value.timeline.filterIsInstance<ChatTimelineItemUi.Activity>().any {
+            it.value is ChatActivityUi.Approval || it.value is ChatActivityUi.UserInput
+        })
+        appendNativeActivity(activity("new-request", "approval.requested", "retry-request"))
+        appendNativeActivity(activity("temporary-failure", "provider.approval.respond.failed", "retry-request", "Network interrupted"))
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.timeline.filterIsInstance<ChatTimelineItemUi.Activity>().any { it.value is ChatActivityUi.Approval })
+        appendNativeActivity(activity("stale-failure", "provider.approval.respond.failed", "retry-request", "Unknown pending approval request"))
+        advanceUntilIdle()
+        assertFalse(viewModel.state.value.timeline.filterIsInstance<ChatTimelineItemUi.Activity>().any { it.value is ChatActivityUi.Approval })
+    }
+
+    @Test
+    fun `new project partial success selects the project and keeps its notice visible`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val threads = RecordingThreadActions(repository)
+        val starter = object : ProjectStarter {
+            override suspend fun createNew(name: String) = StartedProject("created", "Project created. The initial commit failed.")
+            override suspend fun useScratch() = StartedProject("scratch")
+        }
+        val workflow = DefaultProjectWorkflow(repository, RecordingProjectActions(), threads, starter = starter)
+        workflow.accept(ProjectWorkflowIntent.RequestCreation)
+        workflow.accept(ProjectWorkflowIntent.ChangeCreationKind(true))
+        workflow.accept(ProjectWorkflowIntent.ChangeCreationSource("New project"))
+        workflow.accept(ProjectWorkflowIntent.ConfirmCreation)
+
+        assertEquals(listOf("created"), threads.selectedProjects)
+        assertFalse(workflow.state.value.creationVisible)
+        assertFalse(workflow.state.value.creationSaving)
+        assertEquals(null, workflow.state.value.creationError)
+        assertEquals("Project created. The initial commit failed.", workflow.state.value.creationNotice)
+        workflow.accept(ProjectWorkflowIntent.DismissCreationNotice)
+        assertEquals(null, workflow.state.value.creationNotice)
+    }
+
     @Test
     fun `project favorites map from persistence and picker events write them back`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model"))
@@ -516,7 +596,7 @@ class ChatViewModelIntentTest {
     }
 
     @Test
-    fun `unknown deletion capability and wrong environment never expose confirmation`() = runTest(dispatcher) {
+    fun `upstream deletion needs no custom capability and rejects a different environment`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model"))
         val actions = RecordingThreadActions(repository)
         val viewModel = ChatViewModel(
@@ -527,14 +607,16 @@ class ChatViewModelIntentTest {
         advanceUntilIdle()
         viewModel.onEvent(ChatUiEvent.DeleteThreadRequested)
         advanceUntilIdle()
-        assertEquals(null, viewModel.state.value.threadDeletion)
+        assertTrue(viewModel.state.value.canDeleteThread)
+        assertTrue(viewModel.state.value.threadDeletion != null)
+        viewModel.onEvent(ChatUiEvent.DeleteThreadDismissed)
 
         val config = requireNotNull(repository.clientConfig.value.value)
         repository.clientConfig.value = repository.clientConfig.value.copy(
             value = config.copy(
                 environment = config.environment.copy(
                     environmentId = "wrong-environment",
-                    capabilities = config.environment.capabilities.copy(threadDeletion = true),
+                    capabilities = config.environment.capabilities.copy(),
                 ),
             ),
         )
@@ -550,7 +632,7 @@ class ChatViewModelIntentTest {
         val repository = submissionRepository(ModelSelection("provider", "model"))
         val config = requireNotNull(repository.clientConfig.value.value)
         repository.clientConfig.value = repository.clientConfig.value.copy(
-            value = config.copy(environment = config.environment.copy(capabilities = config.environment.capabilities.copy(threadDeletion = true))),
+            value = config.copy(environment = config.environment.copy(capabilities = config.environment.capabilities.copy())),
         )
         val actions = RecordingThreadActions(repository)
         val outbox = FakeCommandOutbox()

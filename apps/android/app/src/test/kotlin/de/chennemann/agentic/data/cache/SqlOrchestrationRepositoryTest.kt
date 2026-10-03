@@ -28,6 +28,72 @@ import org.junit.jupiter.api.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class SqlOrchestrationRepositoryTest {
     @Test
+    fun `older history persists its cursor and rejects replaced or differently focused snapshots`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AgenticDb.Schema.create(driver)
+        val database = AgenticDb(driver)
+        val repository = SqlOrchestrationRepository(database, StandardTestDispatcher(testScheduler), backgroundScope)
+        repository.loadCached(EnvironmentId)
+        repository.focusThread(EnvironmentId, ThreadId)
+        val page = de.chennemann.agentic.t3.contract.OrchestrationThreadDetailPage("cursor", true, 10, 10)
+        val initial = threadSnapshot().copy(snapshotSequence = 10, page = page)
+        repository.setThreadSnapshot(EnvironmentId, initial, ProjectionSource.LIVE)
+        val generation = repository.focusedThread.value.historyGeneration
+        val older = initial.copy(page = page.copy(beforeCursor = "older-cursor"))
+        assertEquals(false, repository.mergeThreadHistory("other-environment", older, "cursor", generation))
+        assertEquals(true, repository.mergeThreadHistory(EnvironmentId, older, "cursor", generation))
+        val restarted = SqlOrchestrationRepository(database, StandardTestDispatcher(testScheduler), backgroundScope)
+        restarted.loadCached(EnvironmentId)
+        assertEquals("older-cursor", restarted.focusedThread.value.value?.page?.beforeCursor)
+        repository.setThreadSnapshot(EnvironmentId, initial, ProjectionSource.LIVE)
+        assertEquals(false, repository.mergeThreadHistory(EnvironmentId, older, "cursor", generation))
+        repository.focusThread(EnvironmentId, "different-thread")
+        assertEquals(false, repository.mergeThreadHistory(EnvironmentId, older, "cursor", generation))
+        driver.close()
+    }
+
+    @Test
+    fun `shell metadata refreshes the conversation without changing its content cursor`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AgenticDb.Schema.create(driver)
+        val database = AgenticDb(driver)
+        val repository = SqlOrchestrationRepository(database, StandardTestDispatcher(testScheduler), backgroundScope)
+        repository.loadCached(EnvironmentId)
+        repository.setShellSnapshot(EnvironmentId, shellSnapshot(threads = listOf(threadShell())), ProjectionSource.LIVE)
+        repository.focusThread(EnvironmentId, ThreadId)
+        val message = de.chennemann.agentic.t3.contract.OrchestrationMessage("live", "turn", "assistant", "streaming", true, Timestamp, Timestamp)
+        val initial = threadSnapshot().let { it.copy(thread = it.thread.copy(messages = listOf(message))) }
+        repository.setThreadSnapshot(EnvironmentId, initial, ProjectionSource.LIVE)
+        repository.applyShellItem(EnvironmentId, OrchestrationShellStreamItem.ThreadUpserted(2, threadShell().copy(title = "New title")))
+        assertEquals("New title", repository.focusedThread.value.value?.thread?.title)
+        assertEquals(listOf(message), repository.focusedThread.value.value?.thread?.messages)
+        assertEquals(1, repository.focusedThread.value.sequence)
+        driver.close()
+    }
+
+    @Test
+    fun `older shell metadata cannot replace a newer detail snapshot and restores consistently`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AgenticDb.Schema.create(driver)
+        val database = AgenticDb(driver)
+        val dispatcher = StandardTestDispatcher(testScheduler)
+        val repository = SqlOrchestrationRepository(database, dispatcher, backgroundScope)
+        repository.loadCached(EnvironmentId)
+        repository.setShellSnapshot(EnvironmentId, shellSnapshot(threads = listOf(threadShell())), ProjectionSource.LIVE)
+        repository.focusThread(EnvironmentId, ThreadId)
+        val initial = threadSnapshot().let { it.copy(thread = it.thread.copy(title = "Newer detail")) }
+        repository.setThreadSnapshot(EnvironmentId, initial, ProjectionSource.LIVE)
+        assertEquals("Newer detail", repository.focusedThread.value.value?.thread?.title)
+
+        repository.applyShellItem(EnvironmentId, OrchestrationShellStreamItem.ThreadUpserted(2, threadShell().copy(title = "Latest shell")))
+        repository.setThreadSnapshot(EnvironmentId, initial, ProjectionSource.LIVE)
+        val restarted = SqlOrchestrationRepository(database, dispatcher, backgroundScope)
+        restarted.loadCached(EnvironmentId)
+        assertEquals("Latest shell", restarted.focusedThread.value.value?.thread?.title)
+        assertEquals(1, restarted.focusedThread.value.sequence)
+        driver.close()
+    }
+    @Test
     fun `switching between cached threads never emits an empty focused projection`() = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         AgenticDb.Schema.create(driver)

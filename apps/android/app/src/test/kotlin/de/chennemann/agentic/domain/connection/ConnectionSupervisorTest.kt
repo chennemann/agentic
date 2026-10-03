@@ -3,6 +3,7 @@ package de.chennemann.agentic.domain.connection
 import app.cash.sqldelight.driver.jdbc.sqlite.JdbcSqliteDriver
 import de.chennemann.agentic.data.auth.CredentialStore
 import de.chennemann.agentic.data.cache.SqlCommandOutbox
+import de.chennemann.agentic.data.cache.SqlOrchestrationRepository
 import de.chennemann.agentic.data.t3.EnvironmentMetadataClient
 import de.chennemann.agentic.data.t3.T3RpcClient
 import de.chennemann.agentic.data.t3.T3TransportException
@@ -15,6 +16,8 @@ import de.chennemann.agentic.domain.orchestration.PendingCommandReplayer
 import de.chennemann.agentic.domain.orchestration.ProjectionSource
 import de.chennemann.agentic.domain.orchestration.ProjectionState
 import de.chennemann.agentic.domain.orchestration.Reduction
+import de.chennemann.agentic.domain.orchestration.ThreadHistoryService
+import de.chennemann.agentic.domain.orchestration.ProjectStarterService
 import de.chennemann.agentic.t3.contract.ServerConfig
 import de.chennemann.agentic.db.AgenticDb
 import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
@@ -30,11 +33,19 @@ import de.chennemann.agentic.t3.contract.OrchestrationThreadShell
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.ServerAuthDescriptor
 import de.chennemann.agentic.t3.contract.ThreadSession
+import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailPage
+import de.chennemann.agentic.t3.contract.OrchestrationEvent
+import de.chennemann.agentic.t3.contract.OrchestrationProject
+import de.chennemann.agentic.t3.contract.ProjectCreateNewResult
+import de.chennemann.agentic.t3.contract.ServerConfigStreamEvent
+import de.chennemann.agentic.t3.contract.ServerSettings
+import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -44,10 +55,103 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
+import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.encodeToJsonElement
+import de.chennemann.agentic.t3.contract.T3Json
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class ConnectionSupervisorTest {
+    @Test
+    fun `config subscription refreshes settings and reconnects after completion`() = runTest {
+        val environment = savedEnvironment("one")
+        val transport = SupervisorTransport(completeFirstConfigStream = true)
+        val repository = SupervisorOrchestrationRepository()
+        val supervisor = ConnectionSupervisor(
+            environments = SupervisorEnvironmentRepository(environment),
+            orchestration = repository,
+            credentials = SupervisorCredentialStore("token"),
+            metadata = transport,
+            rpc = transport,
+            network = OnlineMonitor,
+            pendingCommands = PendingCommandReplayer {},
+            scope = backgroundScope,
+        )
+        runCurrent()
+        assertTrue(supervisor.state.value is ConnectionState.Backoff)
+        advanceTimeBy(1_000)
+        runCurrent()
+        assertEquals(ConnectionState.Live, supervisor.state.value)
+        val shellRequests = transport.shellStreamRequests
+        transport.configEvents.emit(ServerConfigStreamEvent(
+            type = "settingsUpdated",
+            payload = JsonObject(mapOf("settings" to T3Json.encodeToJsonElement(ServerSettings(addProjectBaseDirectory = "/new-projects")))),
+        ))
+        runCurrent()
+        assertEquals("/new-projects", repository.clientConfig.value.value?.settings?.addProjectBaseDirectory)
+        assertEquals(shellRequests, transport.shellStreamRequests)
+    }
+
+    @Test
+    fun `history waits for the thread watermark before merging an older page`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AgenticDb.Schema.create(driver)
+        val environment = savedEnvironment("one")
+        val repository = SqlOrchestrationRepository(AgenticDb(driver), StandardTestDispatcher(testScheduler), backgroundScope)
+        val transport = SupervisorTransport()
+        repository.loadCached(environment.id)
+        repository.setClientConfig(environment.id, transport.serverConfig(environment.baseUrl, "token").copy(threadSnapshotPagination = true), ProjectionSource.LIVE)
+        repository.focusThread(environment.id, "thread-one")
+        val initial = threadSnapshot("thread-one").copy(snapshotSequence = 10, page = OrchestrationThreadDetailPage("cursor", true, 10, 10))
+        repository.setThreadSnapshot(environment.id, initial, ProjectionSource.LIVE)
+        val rpc = object : T3RpcClient by transport {
+            override suspend fun threadHistory(baseUrl: String, bearerToken: String, threadId: String, beforeCursor: String?, turnLimit: Int, reasoningMessages: Boolean) =
+                initial.copy(snapshotSequence = 12, page = OrchestrationThreadDetailPage("older-cursor", true, 12, 11))
+        }
+        val service = ThreadHistoryService(SupervisorEnvironmentRepository(environment), SupervisorCredentialStore("token"), repository, rpc)
+        val loading = async { service.loadOlder() }
+        runCurrent()
+        assertFalse(loading.isCompleted)
+        assertEquals("cursor", repository.focusedThread.value.value?.page?.beforeCursor)
+        repository.applyThreadItem(environment.id, "thread-one", OrchestrationThreadStreamItem.Event(OrchestrationEvent(
+            type = "thread.session-set", sequence = 11, aggregateId = "thread-one", occurredAt = "2026-01-01T00:00:00Z",
+            aggregateKind = "thread", eventId = "event", commandId = "command", correlationId = "correlation",
+            payload = JsonObject(mapOf("session" to JsonNull)),
+        )))
+        loading.await()
+        assertEquals("older-cursor", repository.focusedThread.value.value?.page?.beforeCursor)
+        assertEquals(11, repository.focusedThread.value.sequence)
+        driver.close()
+    }
+
+    @Test
+    fun `new project partial success waits for the shell and redacts its commit notice`() = runTest {
+        val environment = savedEnvironment("one")
+        val repository = SupervisorOrchestrationRepository()
+        val transport = SupervisorTransport()
+        repository.setClientConfig(environment.id, transport.serverConfig(environment.baseUrl, "secret-token").copy(newProjectsRoot = "/projects"), ProjectionSource.LIVE)
+        val rpc = object : T3RpcClient by transport {
+            override suspend fun createNewProject(baseUrl: String, bearerToken: String, name: String): ProjectCreateNewResult {
+                assertEquals("New project", name)
+                return ProjectCreateNewResult("created", "/projects/new-project", "Authorization: Bearer secret-token")
+            }
+        }
+        val service = ProjectStarterService(SupervisorEnvironmentRepository(environment), SupervisorCredentialStore("secret-token"), repository, rpc)
+        val creating = async { service.createNew(" New project ") }
+        runCurrent()
+        assertFalse(creating.isCompleted)
+        repository.setShellSnapshot(environment.id, OrchestrationShellSnapshot(
+            listOf(OrchestrationProject(id = "created", title = "New project", workspaceRoot = "/projects/new-project", createdAt = "2026-01-01T00:00:00Z", updatedAt = "2026-01-01T00:00:00Z")),
+            emptyList(), 1, "2026-01-01T00:00:00Z",
+        ), ProjectionSource.LIVE)
+        val result = creating.await()
+        assertEquals("created", result.projectId)
+        assertTrue(requireNotNull(result.notice).contains("initial commit failed"))
+        assertFalse(requireNotNull(result.notice).contains("secret-token"))
+    }
+
     @Test
     fun `overlapping live retries collapse into one replay`() = runTest {
         val environment = savedEnvironment("one")
@@ -556,7 +660,7 @@ private class RetryCommandClient(
         bearerToken: String,
         threadId: String,
         afterSequence: Long?,
-        requestCompletionMarker: Boolean,
+        requestCompletionMarker: Boolean, turnLimit: Int?, reasoningMessages: Boolean
     ): Flow<OrchestrationThreadStreamItem> = flowOf()
 }
 
@@ -618,6 +722,7 @@ private class SupervisorTransport(
     private val failFirstThreadStream: Boolean = false,
     private val unknownFirstThreadStream: Boolean = false,
     private val shellThreads: List<OrchestrationThreadShell> = emptyList(),
+    private val completeFirstConfigStream: Boolean = false,
 ) : EnvironmentMetadataClient,
     T3RpcClient {
     var descriptorRequests = 0
@@ -629,6 +734,14 @@ private class SupervisorTransport(
     var cancelledStreams = 0
     val shellAfterSequences = mutableListOf<Long?>()
     val threadAfterSequences = mutableListOf<Long?>()
+    val configEvents = MutableSharedFlow<ServerConfigStreamEvent>()
+    private var configStreamRequests = 0
+
+    override fun configStream(baseUrl: String, bearerToken: String): Flow<ServerConfigStreamEvent> = flow {
+        configStreamRequests++
+        if (completeFirstConfigStream && configStreamRequests == 1) return@flow
+        configEvents.collect { emit(it) }
+    }
 
     override suspend fun environmentDescriptor(baseUrl: String): ExecutionEnvironmentDescriptor {
         descriptorRequests++
@@ -702,7 +815,7 @@ private class SupervisorTransport(
         bearerToken: String,
         threadId: String,
         afterSequence: Long?,
-        requestCompletionMarker: Boolean,
+        requestCompletionMarker: Boolean, turnLimit: Int?, reasoningMessages: Boolean
     ): Flow<OrchestrationThreadStreamItem> {
         threadStreamRequests++
         threadAfterSequences += afterSequence

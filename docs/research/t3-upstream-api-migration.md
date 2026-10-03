@@ -1,6 +1,8 @@
 # Agentic and the current upstream T3 API
 
-Assessment date: 2026-10-02. Static source assessment; no live upstream-server interoperability run was performed.
+Assessment date: 2026-10-02. The original assessment below was static. The migration and live
+interoperability checks were completed on 2026-10-04 against the same pinned upstream revision;
+see the implementation verification section.
 
 ## Revisions and scope
 
@@ -28,13 +30,13 @@ Agentic commit `8685d016` (`fix(transport): use upstream T3 WebSocket RPC`) alre
 | Files, worktrees, execution sessions | `projects.*`, `vcs.*`, `terminal.*` RPCs | Extra capability flags advertising these existing APIs |
 | Foreground/background activity | `server.reportClientActivity`, background-policy RPCs | `backgroundActivity` capability flag |
 
-Sources: upstream [HTTP contracts](https://github.com/pingdotgg/t3code/blob/54084ae1e6c32809db040e4fa571c80fdf2d8ae4/packages/contracts/src/environmentHttp.ts#L409), [RPC contracts](https://github.com/pingdotgg/t3code/blob/54084ae1e6c32809db040e4fa571c80fdf2d8ae4/packages/contracts/src/rpc.ts#L293), [provider descriptors](https://github.com/pingdotgg/t3code/blob/54084ae1e6c32809db040e4fa571c80fdf2d8ae4/packages/contracts/src/server.ts#L206), and fork [portable contract](../../apps/t3code/packages/contracts/src/downstream/portableClient.ts), [routes](../../apps/t3code/apps/server/src/downstream/Routes.ts).
+Sources: upstream [HTTP contracts](https://github.com/pingdotgg/t3code/blob/54084ae1e6c32809db040e4fa571c80fdf2d8ae4/packages/contracts/src/environmentHttp.ts#L409), [RPC contracts](https://github.com/pingdotgg/t3code/blob/54084ae1e6c32809db040e4fa571c80fdf2d8ae4/packages/contracts/src/rpc.ts#L293), and [provider descriptors](https://github.com/pingdotgg/t3code/blob/54084ae1e6c32809db040e4fa571c80fdf2d8ae4/packages/contracts/src/server.ts#L206). The retired portable contract and routes remain available in fork revision `b5542294` at `packages/contracts/src/downstream/portableClient.ts` and `apps/server/src/downstream/Routes.ts`.
 
 The server's native socket endpoint is `/ws`, using Effect RPC JSON serialization. It is not a generic JSON-RPC endpoint. Native clients need request/stream/exit semantics, cancellation and flow control, ticket authentication and protocol negotiation. Upstream's shared client implements that transport with `RpcSerialization.layerJson`; this is useful executable reference material, without introducing a build-time dependency into Android. Sources: [server socket](https://github.com/pingdotgg/t3code/blob/54084ae1e6c32809db040e4fa571c80fdf2d8ae4/apps/server/src/ws.ts), [client session](https://github.com/pingdotgg/t3code/blob/54084ae1e6c32809db040e4fa571c80fdf2d8ae4/packages/client-runtime/src/rpc/session.ts#L192), [compatibility negotiation](https://github.com/pingdotgg/t3code/blob/54084ae1e6c32809db040e4fa571c80fdf2d8ae4/packages/client-runtime/src/connection/compatibility.ts).
 
 Upstream supports HTTP snapshot plus socket catch-up, or a socket subscription that starts with a snapshot. It can replace an oversized or invalid replay range with a fresh snapshot. Thread reads support optional pagination and reasoning messages; server config advertises those options. Therefore retiring SSE does not require giving up persisted sequence cursors or bounded catch-up. Sources: [subscription contracts](https://github.com/pingdotgg/t3code/blob/54084ae1e6c32809db040e4fa571c80fdf2d8ae4/packages/contracts/src/orchestration.ts#L987), [subscription implementation](https://github.com/pingdotgg/t3code/blob/54084ae1e6c32809db040e4fa571c80fdf2d8ae4/apps/server/src/orchestration/Subscriptions.ts), [server config](https://github.com/pingdotgg/t3code/blob/54084ae1e6c32809db040e4fa571c80fdf2d8ae4/packages/contracts/src/server.ts#L578).
 
-## Confirmed residual fork dependency
+## Residual fork dependency at the assessment baseline
 
 The fork advertises `threadWorktrees`, `workspaceFiles`, `executionSessions`, and `backgroundActivity`. These fields are absent from the upstream descriptor even though their underlying RPCs exist. Android defaults them to false, and three currently gate behavior:
 
@@ -69,6 +71,57 @@ The fork still owns todo/planning commands and projections, `agentInstructions`,
 
 Before deleting the server adapter, verify Agentic against an isolated, unmodified upstream server: pairing, config decoding, shell/thread subscriptions, send/interrupt, approval and question responses, reconnect and snapshot replacement, workspace file access, worktree choices, terminal lifecycle and activity reporting. Pin the upstream revision used for fixtures and compatibility checks. Keep the existing provider-neutral repository/service/Compose boundary; the implementation seam to maintain is the Android upstream transport and DTO adapter.
 
-## Assessment validation
+## Original assessment validation
 
 Only this research document changed. The repository-required Android gate passed in order: `ktlintFormat`, `ktlintCheck`, then `build` (including existing unit tests). The existing debug APK installed and launched successfully on the connected device. These checks establish the current Android baseline; they do not establish compatibility with a running stock upstream server.
+
+## Implementation verification (2026-10-04)
+
+Agentic now uses the upstream descriptor without fork-only capability flags. File browsing,
+worktree choices, thread deletion and activity reporting no longer depend on those flags. Provider
+display names are optional. Native configuration subscriptions refresh provider catalogs and
+settings and reconnect when the subscription ends.
+
+Thread subscriptions opt into the advertised pagination and reasoning support. Older pages merge
+without replacing live message text or advancing the stream cursor. A page waits for the native
+thread event watermark; changed focus, snapshot replacement and history rewrites invalidate stale
+requests. Shell metadata updates the conversation separately from its content stream.
+Native resolution activities close approval and question prompts, including replies from other
+clients and requests loaded later from history. Stale-request failures close the prompt while
+transient failures retain it.
+
+The new project dialog uses `projects.createNew` and `projects.ensureScratch` when advertised.
+An initial Git commit failure preserves the newly created project and displays a notice. The
+portable server configuration route, SSE routes, service wrapper, contract exports, generated
+schemas and generator were removed from the fork. Its independent todo and terminal settings
+features remain.
+
+[UpstreamServerCompatibilityTest](../../apps/android/app/src/test/kotlin/de/chennemann/agentic/data/t3/UpstreamServerCompatibilityTest.kt)
+passed against an isolated, unmodified checkout of `54084ae1e6c32809db040e4fa571c80fdf2d8ae4`.
+It exercised discovery, pairing, authenticated config and config subscriptions, Scratch creation
+and reuse, new project creation, shell and thread subscriptions and replay, windowed HTTP thread
+reads, workspace files, repository refs, activity reporting, terminal open/attach/write/clear/close,
+and thread creation, rename and deletion. The server used disposable state outside a Git repository
+so Scratch was advertised. It never used the installed server's data.
+
+Run this opt-in check only against disposable server state; it creates projects and directories.
+Supply the reusable development bootstrap credential through a local file outside the repository:
+
+```bash
+AGENTIC_T3_TEST_URL=http://127.0.0.1:47381 \
+AGENTIC_T3_TEST_TOKEN_FILE=C:/path/to/disposable-bootstrap-token \
+./apps/android/gradlew -p apps/android :app:testUitestUnitTest \
+  --tests de.chennemann.agentic.data.t3.UpstreamServerCompatibilityTest
+```
+
+The default suite skips this opt-in check. Deterministic Android tests cover history merge ordering,
+watermark waiting, snapshot invalidation, config reconnects, metadata cache restoration, and project
+partial success. Native server tests cover replay and snapshot replacement after adapter retirement.
+No live provider turn, approval or question lifecycle was exercised by the stock-server check;
+those retain the existing command and reducer test coverage.
+
+The Android gate passed in order: `ktlintFormat`, `ktlintCheck`, then `build`. The resulting debug
+APK installed and launched successfully on the connected Android device. T3 contracts and server
+typechecks, targeted lint, environment descriptor tests, and the native replay/snapshot tests
+passed. The integration policy covers all changed application paths; the pre-existing deleted
+`.repos` references were preserved and excluded from the server commit.
