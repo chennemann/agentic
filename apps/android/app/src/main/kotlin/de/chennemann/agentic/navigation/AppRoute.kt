@@ -21,3 +21,6 @@ data class WorkspaceFilesRoute(val threadId: String) : AppRoute
 
 @Serializable
 data class TerminalRoute(val threadId: String, val script: ProjectScript? = null) : AppRoute
+
+@Serializable
+data object UsageRoute : AppRoute

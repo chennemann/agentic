@@ -30,6 +30,8 @@ object ClientConfigReducer {
             ?.let { current.copy(providers = it) } ?: current
         "settingsUpdated" -> event.payload.decodeOrNull<ServerSettings>("settings")
             ?.let { current.copy(settings = it) } ?: current
+        "usageLimitSourcesUpdated" -> event.payload.decodeOrNull<List<de.chennemann.agentic.t3.contract.UsageLimitSource>>("sources")
+            ?.let { current.copy(usageLimitSources = it) } ?: current
         else -> current
     }
 

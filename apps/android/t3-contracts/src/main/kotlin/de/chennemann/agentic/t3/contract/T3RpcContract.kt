@@ -42,6 +42,7 @@ data class ExecutionEnvironmentCapabilities(
     val repositoryIdentity: Boolean = false,
     val threadSettlement: Boolean = false,
     val threadSnooze: Boolean = false,
+    val usagePriceOverrides: Boolean = false,
     val requiredWorktreeBootstrap: Boolean = false
 )
 
@@ -86,6 +87,7 @@ data class ServerConfig(
     val threadSnapshotPagination: Boolean = false,
     val reasoningMessages: Boolean = false,
     val scratchWorkspaceRoot: String? = null,
+    val usageLimitSources: List<UsageLimitSource> = emptyList(),
     val newProjectsRoot: String? = null
 )
 
@@ -103,7 +105,10 @@ data class ProjectEnsureScratchResult(val projectId: String)
 data class ProjectCreateNewResult(val projectId: String, val workspaceRoot: String, val commitError: String? = null)
 
 @Serializable
-data class ServerSettings(val addProjectBaseDirectory: String = "")
+data class ServerSettings(
+    val addProjectBaseDirectory: String = "",
+    val usagePriceOverrides: Map<String, UsageModelPrice> = emptyMap()
+)
 
 @Serializable
 data class FilesystemBrowseEntry(val name: String, val fullPath: String)
@@ -258,6 +263,8 @@ data class ProviderInstance(
     val models: List<ProviderModel> = emptyList(),
     val showInteractionModeToggle: Boolean = true,
     val slashCommands: List<SlashCommand> = emptyList(),
+    val auth: ProviderAuth = ProviderAuth(),
+    val usageLimits: ProviderUsageLimits? = null,
     val skills: List<JsonElement> = emptyList()
 )
 

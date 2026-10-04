@@ -94,6 +94,7 @@ fun AppNavHost() {
                         },
                         onOpenFiles = { threadId -> stack.add(WorkspaceFilesRoute(threadId)) },
                         onOpenUpdater = { stack.add(StorUpdaterRoute) },
+                        onOpenUsage = { viewModel.onEvent(ChatUiEvent.PickerDismissed); stack.add(UsageRoute) },
                         onOpenTerminal = { threadId -> stack.add(TerminalRoute(threadId)) },
                         onRunProjectScript = { threadId, script ->
                             stack.add(
@@ -123,6 +124,12 @@ fun AppNavHost() {
                         onOpenFile = viewModel::open,
                         onClosePreview = viewModel::closePreview,
                     )
+                }
+
+                UsageRoute -> NavEntry(route) {
+                    val viewModel: de.chennemann.agentic.ui.usage.UsageViewModel = koinViewModel()
+                    val state by viewModel.state.collectAsStateWithLifecycle()
+                    de.chennemann.agentic.ui.usage.UsageScreen(state, { stack.removeLastOrNull() }, viewModel::selectMetric, viewModel::selectDays, viewModel::selectEnvironment, viewModel::selectAll, viewModel::refresh, viewModel::redeem, viewModel::savePrice, viewModel::enableKeychain)
                 }
 
                 StorUpdaterRoute -> NavEntry(route) {

@@ -52,6 +52,7 @@ fun ChatSelectionSheets(
     state: ChatUiState,
     onEvent: (ChatUiEvent) -> Unit,
     onOpenUpdater: () -> Unit = {},
+    onOpenUsage: () -> Unit = {},
 ) {
     when (state.activePicker) {
         ChatPickerUi.NAVIGATION -> {
@@ -86,6 +87,7 @@ fun ChatSelectionSheets(
                         TextButton(onClick = { onEvent(ChatUiEvent.CacheInspectionRequested(environmentId)) }) { Text("Storage and cache") }
                     }
                 }
+                item("usage") { TextButton(onClick = onOpenUsage) { Text("Usage") } }
                 StorUpdaterSettingsEntry(onClick = onOpenUpdater)
                 if (state.durableWork.isNotEmpty()) {
                     item("durable-work") {

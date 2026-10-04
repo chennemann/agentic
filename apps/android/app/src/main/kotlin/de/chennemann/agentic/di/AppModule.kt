@@ -295,6 +295,11 @@ val appModule = module {
         BackgroundAwarenessService(get(), get(), get(), get(), get(), get(named(AppScopeName)))
     }
     single<AppVisibility> { get<BackgroundAwarenessService>() }
+    single<de.chennemann.agentic.data.t3.UsageRpcClient> { get<KtorT3Client>() }
+    single { de.chennemann.agentic.domain.usage.UsageRepository() }
+    single { de.chennemann.agentic.domain.usage.UsageService(get(), get(), get(), get(), get()) }
+    single { de.chennemann.agentic.data.cache.SqlUsagePreferences(get(), get<DispatcherProvider>().io) }
+    viewModel { de.chennemann.agentic.ui.usage.UsageViewModel(get(), get()) }
     viewModel { OnboardingViewModel(get(), get(), get(), get()) }
     viewModel { WorkspaceFilesViewModel(get()) }
     factory<de.chennemann.agentic.ui.terminal.TerminalDisplayFactory> { de.chennemann.agentic.ui.terminal.ConnectBotTerminalDisplayFactory() }

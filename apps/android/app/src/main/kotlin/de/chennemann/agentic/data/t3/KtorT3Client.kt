@@ -76,7 +76,8 @@ class KtorT3Client(
     ThreadWorkspaceRpcClient,
     WorkspaceFilesRpcClient,
     TerminalRpcClient,
-    AttachmentAssetClient {
+    AttachmentAssetClient,
+    UsageRpcClient {
     constructor(httpClient: HttpClient, scope: CoroutineScope) : this(
         T3HttpClientProvider { httpClient },
         scope,
@@ -122,6 +123,12 @@ class KtorT3Client(
 
     override fun configStream(baseUrl: String, bearerToken: String): Flow<ServerConfigStreamEvent> =
         rpcStream(baseUrl, bearerToken, "subscribeServerConfig", buildJsonObject {})
+
+    override suspend fun usageCall(baseUrl: String, bearerToken: String, method: String, input: JsonObject): JsonElement =
+        rpcCall(baseUrl, bearerToken, method, input)
+
+    override fun usageConfigStream(baseUrl: String, bearerToken: String): Flow<ServerConfigStreamEvent> =
+        rpcStream(baseUrl, bearerToken, "subscribeServerConfig", buildJsonObject { put("usageLimitSources", true) })
 
     override suspend fun ensureScratch(baseUrl: String, bearerToken: String): ProjectEnsureScratchResult =
         rpcCall(baseUrl, bearerToken, "projects.ensureScratch", buildJsonObject {})

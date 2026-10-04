@@ -124,6 +124,7 @@ fun T3ChatScreen(
     modifier: Modifier = Modifier,
     onOpenFiles: (String) -> Unit = {},
     onOpenUpdater: () -> Unit = {},
+    onOpenUsage: () -> Unit = {},
     onOpenTerminal: (String) -> Unit = {},
     onRunProjectScript: (String, ProjectScriptUi) -> Unit = { _, _ -> },
 ) {
@@ -671,6 +672,7 @@ fun T3ChatScreen(
         state = state,
         onEvent = onEvent,
         onOpenUpdater = onOpenUpdater,
+        onOpenUsage = onOpenUsage,
     )
 
     state.renameDialog?.let { rename ->
