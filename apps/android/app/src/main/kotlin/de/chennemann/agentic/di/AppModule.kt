@@ -295,7 +295,8 @@ val appModule = module {
     single<AppVisibility> { get<BackgroundAwarenessService>() }
     viewModel { OnboardingViewModel(get(), get(), get(), get()) }
     viewModel { WorkspaceFilesViewModel(get()) }
-    viewModel { TerminalViewModel(get()) }
+    factory<de.chennemann.agentic.ui.terminal.TerminalDisplayFactory> { de.chennemann.agentic.ui.terminal.ConnectBotTerminalDisplayFactory() }
+    viewModel { TerminalViewModel(get(), get()) }
     viewModel {
         ChatViewModel(
             environments = get(),

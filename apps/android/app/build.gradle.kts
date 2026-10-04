@@ -27,12 +27,13 @@ val hasReleaseSigning = listOf(
 
 android {
     namespace = "de.chennemann.agentic"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "de.chennemann.agentic"
         minSdk = 36
         targetSdk = 36
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = appVersionCode
         versionName = appVersionName
     }
@@ -91,10 +92,12 @@ kotlin {
 dependencies {
     implementation(project(":streaming-markdown"))
     implementation(project(":t3-contracts"))
+    implementation(project(":terminal-emulator"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
+    implementation(libs.androidx.lifecycle.viewmodel.navigation3)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
@@ -133,6 +136,7 @@ dependencies {
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
+    "uitestImplementation"(libs.androidx.compose.ui.test.manifest)
     debugImplementation("dev.stor:kmp-sdk:0.2.0")
     "uitestImplementation"("dev.stor:kmp-sdk:0.2.0")
 }

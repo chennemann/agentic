@@ -1,0 +1,219 @@
+--- a/TerminalEmulator.kt
++++ b/TerminalEmulator.kt
+@@ -76,7 +76,9 @@
+  * so it may be run in a Service on Android. It handles the management of
+  * the terminal emulation state.
+  */
+-sealed interface TerminalEmulator {
++sealed interface TerminalEmulator : AutoCloseable {
++    /** Agentic: release JNI resources; later queued work becomes a no-op. */
++    override fun close()
+     /** Queue pasted text in the same FIFO as keyboard/IME input, honoring bracketed paste. */
+     fun pasteText(text: String)
+ 
+@@ -323,8 +325,10 @@
+     internal val commands = TerminalDispatcher()
+     private val snapshots = TerminalDispatcher()
+     private var outputBatch: ByteArrayOutputStream? = null
++    @Volatile private var closed = false
+ 
+     internal fun batchOutput(action: () -> Unit) = synchronized(damageLock) {
++        if (closed) return@synchronized
+         check(outputBatch == null)
+         val batch = ByteArrayOutputStream(4096)
+         outputBatch = batch
+@@ -334,7 +338,10 @@
+             outputBatch = null
+             if (batch.size() > 0) {
+                 val data = batch.toByteArray()
+-                handler.post { onKeyboardInput.invoke(data) }
++                handler.post {
++                    if (closed) return@post
++                    onKeyboardInput.invoke(data)
++                }
+             }
+         }
+     }
+@@ -359,6 +366,7 @@
+     override val inlineImages: InlineImages get() = imagePolicy
+ 
+     override fun setInlineImages(inlineImages: InlineImages): Unit = synchronized(damageLock) {
++        if (closed) return@synchronized
+         val oldLimits = imageStore.limits
+         imageProtocol.consentGate?.reset()
+         imageProtocol.reset()
+@@ -375,6 +383,7 @@
+         if (policy !is InlineImages.Ask) return null
+         return InlineImageConsentGate(policy.limits.maxImages) { request, completion ->
+             handler.post {
++                if (closed) return@post
+                 policy.confirm.startCoroutine(
+                     request,
+                     object : Continuation<Boolean> {
+@@ -395,6 +404,7 @@
+     }
+ 
+     override fun setCellPixelSize(width: Int, height: Int): Unit = synchronized(damageLock) {
++        if (closed) return@synchronized
+         require(width > 0 && height > 0)
+         imageStore.updateCellSize(width, height)
+         propertyChanged = true
+@@ -502,7 +512,7 @@
+     }
+ 
+     // Native terminal instance - MUST be initialized AFTER damageLock and other state
+-    private val terminalNative by lazy {
++    private val nativeHolder = lazy {
+         TerminalNative(this).apply {
+             resize(initialRows, initialCols)
+             if (setBoldHighbright(boldAsBright) != 0) {
+@@ -512,7 +522,22 @@
+     }
+ 
+     // Parser for OSC sequences
++    private val terminalNative by nativeHolder
+     private val oscParser = OscParser()
++
++    // Agentic: the native callback is a JNI global reference to this instance, so a finalizer
++    // alone cannot collect it. Serialize close with parser/snapshot work and neutralize queued input.
++    override fun close(): Unit = synchronized(damageLock) {
++        if (closed) return@synchronized
++        closed = true
++        if (nativeHolder.isInitialized()) nativeHolder.value.close()
++        imageProtocol.consentGate?.reset()
++        imageProtocol.reset()
++        imageStore.clear()
++        handler.removeCallbacksAndMessages(null)
++        pendingDamageRegions.clear()
++        pendingSemanticSegments.clear()
++    }
+ 
+     // ================================================================================
+     // Public API
+@@ -522,6 +547,7 @@
+      * Write data to the terminal (from PTY/transport).
+      */
+     override fun writeInput(data: ByteArray, offset: Int, length: Int): Unit = synchronized(damageLock) {
++        if (closed) return@synchronized
+         terminalNative.writeInput(data, offset, length)
+     }
+ 
+@@ -529,6 +555,7 @@
+      * Write data to the terminal using ByteBuffer (more efficient for large data).
+      */
+     override fun writeInput(buffer: ByteBuffer, length: Int): Unit = synchronized(damageLock) {
++        if (closed) return@synchronized
+         terminalNative.writeInput(buffer, length)
+     }
+ 
+@@ -546,6 +573,7 @@
+ 
+     /** Resize using the physical viewport measured by the Compose terminal. */
+     internal fun resize(newRows: Int, newCols: Int, widthPixels: Int, heightPixels: Int): Unit = synchronized(damageLock) {
++        if (closed) return@synchronized
+         require(newRows > 0 && newCols > 0) { "Terminal dimensions must be positive" }
+         require(widthPixels > 0 && heightPixels > 0) { "Terminal pixel dimensions must be positive" }
+         imageStore.rows = newRows
+@@ -573,14 +601,17 @@
+         publishedDimensions = resized
+ 
+         // Resize callback - post to handler to avoid blocking native thread
+-        handler.post { onResize?.invoke(resized) }
++        handler.post {
++            if (closed) return@post
++            onResize?.invoke(resized)
++        }
+     }
+ 
+     /**
+      * Dispatch a key event to the terminal.
+      */
+     override fun dispatchKey(modifiers: Int, key: Int): Unit = commands.call {
+-        synchronized(damageLock) { terminalNative.dispatchKey(modifiers, key) }
++        synchronized(damageLock) { if (!closed) terminalNative.dispatchKey(modifiers, key) }
+         Unit
+     }
+ 
+@@ -588,7 +619,7 @@
+      * Dispatch a character to the terminal.
+      */
+     override fun dispatchCharacter(modifiers: Int, codepoint: Int): Unit = commands.call {
+-        synchronized(damageLock) { terminalNative.dispatchCharacter(modifiers, codepoint) }
++        synchronized(damageLock) { if (!closed) terminalNative.dispatchCharacter(modifiers, codepoint) }
+         Unit
+     }
+ 
+@@ -630,6 +661,7 @@
+      * @return Number of colors set, or -1 on error
+      */
+     override fun setAnsiPalette(ansiColors: IntArray): Int = synchronized(damageLock) {
++        if (closed) return@synchronized -1
+         require(ansiColors.size >= 16) {
+             "ANSI palette must contain 16 colors"
+         }
+@@ -650,6 +682,7 @@
+      * @return 0 on success, -1 on error
+      */
+     override fun setDefaultColors(foreground: Int, background: Int): Int = synchronized(damageLock) {
++        if (closed) return@synchronized -1
+         synchronized(damageLock) {
+             currentDefaultForeground = Color(foreground)
+             currentDefaultBackground = Color(background)
+@@ -813,6 +846,7 @@
+     override fun bell(): Int {
+         // Bell callback - post to handler to avoid blocking native thread
+         handler.post {
++            if (closed) return@post
+             onBell?.invoke()
+         }
+         return 0
+@@ -893,12 +927,16 @@
+             if (batch.size() >= 16 * 1024) {
+                 val chunk = batch.toByteArray()
+                 batch.reset()
+-                handler.post { onKeyboardInput.invoke(chunk) }
++                handler.post {
++                    if (closed) return@post
++                    onKeyboardInput.invoke(chunk)
++                }
+             }
+             return 0
+         }
+         // Keyboard output callback - post to handler
+         handler.post {
++            if (closed) return@post
+             onKeyboardInput.invoke(data)
+         }
+         return 0
+@@ -952,6 +990,7 @@
+                     is OscParser.Action.ClipboardCopy -> {
+                         // Post clipboard copy to handler thread to avoid blocking native callback
+                         handler.post {
++                            if (closed) return@post
+                             onClipboardCopy?.invoke(action.data)
+                         }
+                     }
+@@ -959,6 +998,7 @@
+                     is OscParser.Action.SetProgress -> {
+                         // Post progress change to handler thread to avoid blocking native callback
+                         handler.post {
++                            if (closed) return@post
+                             onProgressChange?.invoke(action.state, action.progress)
+                         }
+                     }
+@@ -1026,6 +1066,7 @@
+      */
+     @VisibleForTesting
+     fun processPendingUpdates(): Unit = synchronized(damageLock) {
++        if (closed) return@synchronized
+         // Collect pending changes
+         val damageRegions: List<DamageRegion>
+         val needsUpdate: Boolean
+@@ -1415,6 +1456,7 @@
+      * MUST be called with damageLock held.
+      */
+     private fun requestProcessPendingUpdatesLocked() {
++        if (closed) return
+         if (damagePosted) return
+         damagePosted = true
+         val waitNanos = nextSnapshotNanos - System.nanoTime()

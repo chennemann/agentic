@@ -273,6 +273,14 @@ class KtorT3Client(
         rpcCall<JsonElement>(baseUrl, bearerToken, "terminal.clear", terminalPayload(threadId, terminalId))
     }
 
+    override suspend fun resizeTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cols: Int, rows: Int) {
+        require(cols in 1..1000 && rows in 1..500)
+        rpcCall<JsonElement>(baseUrl, bearerToken, "terminal.resize", terminalPayload(threadId, terminalId) {
+            put("cols", cols)
+            put("rows", rows)
+        })
+    }
+
     override suspend fun restartTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cwd: String, worktreePath: String?, env: Map<String, String>) =
         rpcCall<de.chennemann.agentic.t3.contract.TerminalSessionSnapshot>(
             baseUrl, bearerToken, "terminal.restart", terminalPayload(threadId, terminalId) {

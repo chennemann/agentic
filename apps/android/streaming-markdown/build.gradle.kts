@@ -10,7 +10,7 @@ version = findProperty("streamingMarkdownVersion") as String? ?: "0.1.0-SNAPSHOT
 
 android {
     namespace = "de.chennemann.agentic.streamingmarkdown"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         minSdk = 36

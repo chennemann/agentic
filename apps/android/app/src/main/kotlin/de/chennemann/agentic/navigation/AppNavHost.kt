@@ -7,13 +7,12 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation3.runtime.NavEntry
-import androidx.navigation3.runtime.rememberNavBackStack
 import androidx.navigation3.ui.NavDisplay
 import de.chennemann.agentic.data.auth.AndroidClientCertificateSelector
 import de.chennemann.agentic.data.auth.ClientCertificateStore
@@ -43,20 +42,15 @@ fun AppNavHost() {
     val activity = requireNotNull(LocalContext.current.findActivity())
     val scope = rememberCoroutineScope()
     val activeEnvironment by environments.activeEnvironment.collectAsStateWithLifecycle()
-    val stack = rememberNavBackStack(OnboardingRoute)
-    var manualOnboarding by remember { mutableStateOf(false) }
+    var manualOnboarding by rememberSaveable { mutableStateOf(false) }
     val target = if (activeEnvironment == null || manualOnboarding) OnboardingRoute else ChatRoute
 
-    LaunchedEffect(target) {
-        if (stack.lastOrNull() != target) {
-            stack.clear()
-            stack.add(target)
-        }
-    }
+    val stack = rememberAppBackStack(target)
 
     NavDisplay(
         backStack = stack,
-        onBack = {},
+        entryDecorators = rememberAppEntryDecorators(),
+        onBack = { if (stack.size > 1) stack.removeLastOrNull() },
         entryProvider = { route ->
             when (route) {
                 OnboardingRoute -> NavEntry(route) {
@@ -144,7 +138,7 @@ fun AppNavHost() {
                         onBack = { stack.removeLastOrNull() },
                         onCreate = viewModel::create,
                         onSelect = viewModel::select,
-                        onSend = viewModel::send,
+                        onReconnect = viewModel::reconnect,
                         onClear = viewModel::clear,
                         onRestart = viewModel::restart,
                         onClose = viewModel::close,

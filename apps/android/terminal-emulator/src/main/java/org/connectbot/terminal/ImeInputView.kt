@@ -1,0 +1,831 @@
+/*
+ * ConnectBot Terminal
+ * Copyright 2025 Kenny Root
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+package org.connectbot.terminal
+
+import android.content.Context
+import android.graphics.Rect
+import android.os.Build
+import android.text.Editable
+import android.text.Selection
+import android.view.KeyEvent
+import android.view.View
+import android.view.WindowInsets
+import android.view.inputmethod.BaseInputConnection
+import android.view.inputmethod.EditorInfo
+import android.view.inputmethod.ExtractedText
+import android.view.inputmethod.ExtractedTextRequest
+import android.view.inputmethod.InputConnection
+import android.view.inputmethod.InputMethodManager
+import android.view.inputmethod.TextAttribute
+import androidx.annotation.RequiresApi
+import androidx.core.view.SoftwareKeyboardControllerCompat
+import androidx.compose.ui.input.key.KeyEvent as ComposeKeyEvent
+
+/**
+ * A minimal invisible View that provides proper IME input handling for terminal emulation.
+ *
+ * This view creates a custom InputConnection that:
+ * - Handles backspace via deleteSurroundingText by sending KEYCODE_DEL
+ * - Handles enter/return keys properly via sendKeyEvent
+ * - Configures the keyboard to disable suggestions while allowing voice input
+ * - Handles composing text from IME (for voice input partial results)
+ * - Manages IME visibility using InputMethodManager for reliable show/hide
+ *
+ * Based on the ConnectBot v1.9.13 TerminalView implementation.
+ */
+internal class ImeInputView(
+    context: Context,
+    private val keyboardHandler: KeyboardHandler,
+    internal val inputMethodManager: InputMethodManager =
+        context.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager,
+    internal val onUpdateSelection: (view: View, selStart: Int, selEnd: Int, candidatesStart: Int, candidatesEnd: Int) -> Unit =
+        { view, selStart, selEnd, candidatesStart, candidatesEnd ->
+            inputMethodManager.updateSelection(view, selStart, selEnd, candidatesStart, candidatesEnd)
+        },
+    internal val onRestartInput: (view: View) -> Unit =
+        { view -> inputMethodManager.restartInput(view) },
+    private val onShowKeyboard: (View) -> Unit = { view ->
+        // This runs in our cancellable posted request. Compat.show() posts another
+        // IMM request internally, which could outlive a subsequent hide/disposal.
+        if (Build.VERSION.SDK_INT >= 30 && view.windowInsetsController != null) {
+            if (Build.VERSION.SDK_INT < 33) {
+                // Flush IMM's focus bookkeeping before requesting IME insets.
+                inputMethodManager.isActive
+            }
+            view.windowInsetsController?.show(WindowInsets.Type.ime())
+        } else {
+            inputMethodManager.showSoftInput(view, 0)
+        }
+    },
+    private val onHideKeyboard: (View) -> Unit = { SoftwareKeyboardControllerCompat(it).hide() },
+) : View(context) {
+
+    init {
+        isFocusable = true
+        isFocusableInTouchMode = true
+    }
+
+    var isComposeModeActive: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            if (!value) shortcutInputMode = ImeShortcutInputMode.DISABLED
+            if (windowToken != null) {
+                onRestartInput(this)
+            }
+        }
+
+    internal var imeAllowed = true
+        set(value) {
+            if (field == value) return
+            field = value
+            if (!value) hideIme()
+        }
+    private var pendingShow = false
+    private var restoreOnWindowFocus = false
+    private var lastImeVisible = false
+    private val showRequest = Runnable {
+        if (imeAllowed && pendingShow && isAttachedToWindow && hasWindowFocus() && hasFocus()) {
+            pendingShow = false
+            onShowKeyboard(this)
+        }
+    }
+
+    internal fun observeImeVisibility(visible: Boolean) {
+        if (hasWindowFocus()) lastImeVisible = visible
+    }
+
+    /** An explicit request also works when this editor already has focus. */
+    fun showIme() {
+        if (!imeAllowed) return
+        pendingShow = true
+        dispatchShowRequest()
+    }
+
+    private fun dispatchShowRequest() {
+        removeCallbacks(showRequest)
+        if (pendingShow && isAttachedToWindow && width > 0 && height > 0 && hasWindowFocus() && requestFocus()) post(showRequest)
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        super.onSizeChanged(w, h, oldw, oldh)
+        dispatchShowRequest()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        dispatchShowRequest()
+    }
+
+    override fun onFocusChanged(gainFocus: Boolean, direction: Int, previouslyFocusedRect: Rect?) {
+        super.onFocusChanged(gainFocus, direction, previouslyFocusedRect)
+        if (!gainFocus) {
+            // A different editor now owns input; never reclaim it on window return.
+            pendingShow = false
+            restoreOnWindowFocus = false
+            removeCallbacks(showRequest)
+        }
+    }
+
+    override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+        super.onWindowFocusChanged(hasWindowFocus)
+        if (!hasWindowFocus) {
+            restoreOnWindowFocus = hasFocus() && lastImeVisible && imeAllowed
+            removeCallbacks(showRequest)
+        } else {
+            if (restoreOnWindowFocus && hasFocus() && imeAllowed) pendingShow = true
+            restoreOnWindowFocus = false
+            dispatchShowRequest()
+        }
+    }
+
+    /**
+     * Hide the IME.
+     */
+    fun hideIme() {
+        pendingShow = false
+        restoreOnWindowFocus = false
+        removeCallbacks(showRequest)
+        if (isAttachedToWindow && hasFocus()) onHideKeyboard(this)
+    }
+
+    override fun onDetachedFromWindow() {
+        hideIme()
+        super.onDetachedFromWindow()
+    }
+
+    override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
+        // Configure IME options
+        outAttrs.imeOptions = outAttrs.imeOptions or
+            EditorInfo.IME_FLAG_NO_EXTRACT_UI or
+            EditorInfo.IME_FLAG_NO_ENTER_ACTION or
+            EditorInfo.IME_ACTION_NONE
+
+        val useFullEditor = isComposeModeActive && shortcutInputMode != ImeShortcutInputMode.TYPE_NULL
+        if (useFullEditor) {
+            // Compose mode: allow voice input and IME suggestions.
+            // TYPE_CLASS_TEXT without NO_SUGGESTIONS keeps the suggestion strip (and its
+            // microphone button) visible. fullEditor=true makes BaseInputConnection provide
+            // a real Editable so getExtractedText() returns non-null (required by Gboard
+            // for voice input).
+            outAttrs.inputType = EditorInfo.TYPE_CLASS_TEXT
+            if (shortcutInputMode == ImeShortcutInputMode.FORCE_ASCII) {
+                outAttrs.imeOptions = outAttrs.imeOptions or EditorInfo.IME_FLAG_FORCE_ASCII
+            }
+            outAttrs.initialSelStart = 0
+            outAttrs.initialSelEnd = 0
+        } else {
+            // Normal terminal mode:
+            // - TYPE_TEXT_VARIATION_PASSWORD: Shows password-style keyboard with number rows
+            // - TYPE_TEXT_VARIATION_VISIBLE_PASSWORD: Keeps text visible (we handle display ourselves)
+            // - TYPE_TEXT_FLAG_NO_SUGGESTIONS: Disables autocomplete/suggestions
+            // - TYPE_NULL: No special input processing
+            outAttrs.inputType = EditorInfo.TYPE_NULL or
+                EditorInfo.TYPE_TEXT_VARIATION_PASSWORD or
+                EditorInfo.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD or
+                EditorInfo.TYPE_TEXT_FLAG_NO_SUGGESTIONS
+        }
+
+        return TerminalInputConnection(this, useFullEditor).also { activeConnection = it }
+    }
+
+    override fun onCheckIsTextEditor(): Boolean = true
+
+    /** Delegate IME paste actions to the same clipboard handler as the terminal context menu. */
+    var onPasteRequest: (() -> Unit)? = null
+
+    private var activeConnection: TerminalInputConnection? = null
+    private var shortcutInputMode: ImeShortcutInputMode = ImeShortcutInputMode.DISABLED
+
+    /** Apply or clear the temporary editor mode used for terminal modifier shortcuts. */
+    fun syncShortcutInputMode(preferredMode: ImeShortcutInputMode) {
+        val nextMode = if (
+            isComposeModeActive &&
+            keyboardHandler.hasTerminalShortcutModifiers()
+        ) {
+            preferredMode
+        } else {
+            ImeShortcutInputMode.DISABLED
+        }
+        if (shortcutInputMode == nextMode) return
+
+        resetImeBuffer()
+        shortcutInputMode = nextMode
+        restartInputSoon()
+    }
+
+    /** Process a raw view key event and restore full IME input after a one-shot shortcut. */
+    fun handleRawKeyEvent(event: KeyEvent): Boolean {
+        if (event.action == KeyEvent.ACTION_DOWN) resetImeBuffer()
+        val handled = keyboardHandler.onKeyEvent(ComposeKeyEvent(event))
+        if (handled && event.action == KeyEvent.ACTION_DOWN) {
+            finishShortcutInput(restartWhenStillActive = false)
+        }
+        return handled
+    }
+
+    /**
+     * Clears the IME's internal text buffer and resets its selection state to (0, 0).
+     *
+     * Call this after key events that are dispatched outside the InputConnection (e.g. physical
+     * keyboard events handled via onPreviewKeyEvent or setOnKeyListener), so that the IME's
+     * suggestion context stays in sync with the terminal's stateless text model.
+     */
+    fun resetImeBuffer() {
+        // Clear both the Editable AND the composing-text tracking so an
+        // in-flight IME composition doesn't resume against stale state.
+        // Without the composition reset, a mid-composition interruption
+        // from an external key path (hardware keyboard, macro key, IME
+        // dismissal) leaves the tracked composingText non-empty, and the
+        // next setComposingText() computes its backspace-count against
+        // that stale length — producing ghost backspaces or duplicated
+        // input on the next IME message.
+        activeConnection?.editable?.clear()
+        activeConnection?.resetComposition()
+        onUpdateSelection(this, 0, 0, -1, -1)
+    }
+
+    /**
+     * Drop suggestion context when the terminal cursor settles somewhere that no longer
+     * follows the text reported to the IME. Partial echoes are accepted until the complete
+     * context has appeared, which accommodates slower remote sessions.
+     */
+    internal fun validateTerminalCursorContext(textBeforeCursor: String) {
+        activeConnection?.validateTerminalCursorContext(textBeforeCursor)
+    }
+
+    private fun restartInputSoon() {
+        onRestartInput(this)
+    }
+
+    private fun finishShortcutInput(restartWhenStillActive: Boolean) {
+        if (shortcutInputMode == ImeShortcutInputMode.DISABLED) {
+            if (restartWhenStillActive) restartInputSoon()
+            return
+        }
+        val nextMode = if (keyboardHandler.hasTerminalShortcutModifiers()) {
+            shortcutInputMode
+        } else {
+            ImeShortcutInputMode.DISABLED
+        }
+        val changed = nextMode != shortcutInputMode
+        shortcutInputMode = nextMode
+        if (changed || restartWhenStillActive) restartInputSoon()
+    }
+
+    /**
+     * Custom InputConnection that handles backspace and other special keys for terminal input.
+     */
+    private inner class TerminalInputConnection(
+        targetView: View,
+        private val fullEditor: Boolean,
+    ) : BaseInputConnection(targetView, fullEditor) {
+
+        private var composingText: String = ""
+        private var committedContext: String = ""
+        private var committedContextConfirmed: Boolean = false
+        private var awaitingPostEnterCommitReplay: Boolean = false
+        private var postEnterSubmittedText: String? = null
+        private var shortcutSubmittedText: String? = null
+        private var batchEditDepth: Int = 0
+        private var selectionUpdatePending: Boolean = false
+
+        /**
+         * Cookie from the last [InputConnection.GET_EXTRACTED_TEXT_MONITOR] request, or -1
+         * when no IME is monitoring. A monitoring IME polls the editor once and afterwards
+         * expects [InputMethodManager.updateExtractedText] pushes; without them its mirror of
+         * this editor goes stale (SwiftKey composes over text the shell already executed).
+         * The token lives on the connection, so an IME restart starts a fresh one.
+         */
+        private var extractedTextToken: Int = -1
+
+        override fun performContextMenuAction(id: Int): Boolean {
+            if (id == android.R.id.paste || id == android.R.id.pasteAsPlainText) {
+                val paste = onPasteRequest ?: return false
+                paste()
+                return true
+            }
+            return super.performContextMenuAction(id)
+        }
+
+        override fun beginBatchEdit(): Boolean {
+            if (!fullEditor) return super.beginBatchEdit()
+            batchEditDepth++
+            return true
+        }
+
+        override fun endBatchEdit(): Boolean {
+            if (!fullEditor) return super.endBatchEdit()
+            if (batchEditDepth > 0) batchEditDepth--
+            if (batchEditDepth == 0 && selectionUpdatePending) {
+                selectionUpdatePending = false
+                reportSelectionToIme()
+            }
+            return batchEditDepth > 0
+        }
+
+        override fun getExtractedText(request: ExtractedTextRequest?, flags: Int): ExtractedText? {
+            if (!fullEditor) return super.getExtractedText(request, flags)
+            val buffer = editable ?: return null
+            if (request != null && flags and InputConnection.GET_EXTRACTED_TEXT_MONITOR != 0) {
+                extractedTextToken = request.token
+            }
+            return buildExtractedText(buffer, flags and InputConnection.GET_TEXT_WITH_STYLES != 0)
+        }
+
+        private fun buildExtractedText(buffer: Editable, withStyles: Boolean): ExtractedText = ExtractedText().apply {
+            text = if (withStyles) {
+                buffer.subSequence(0, buffer.length)
+            } else {
+                buffer.toString()
+            }
+            startOffset = 0
+            partialStartOffset = -1
+            partialEndOffset = -1
+            selectionStart = Selection.getSelectionStart(buffer).coerceAtLeast(0)
+            selectionEnd = Selection.getSelectionEnd(buffer).coerceAtLeast(0)
+            flags = if ('\n' in buffer) 0 else ExtractedText.FLAG_SINGLE_LINE
+        }
+
+        override fun setSelection(start: Int, end: Int): Boolean {
+            val result = super.setSelection(start, end)
+            if (fullEditor && result) scheduleSelectionUpdate()
+            return result
+        }
+
+        override fun setComposingText(text: CharSequence?, newCursorPosition: Int): Boolean {
+            if (!fullEditor) return super.setComposingText(text, newCursorPosition)
+
+            val newText = text?.toString() ?: ""
+            if (shortcutInputMode == ImeShortcutInputMode.FORCE_ASCII &&
+                keyboardHandler.hasTerminalShortcutModifiers() &&
+                newText.isNotEmpty()
+            ) {
+                super.setComposingText(text, newCursorPosition)
+                keyboardHandler.onCommittedText(newText)
+                shortcutSubmittedText = newText
+                clearEditableContext()
+                finishShortcutInput(restartWhenStillActive = true)
+                return true
+            }
+            if (awaitingPostEnterCommitReplay &&
+                newText.isNotEmpty() &&
+                postEnterSubmittedText != null &&
+                newText == postEnterSubmittedText
+            ) {
+                super.setComposingText(text, newCursorPosition)
+                awaitingPostEnterCommitReplay = false
+                postEnterSubmittedText = null
+                composingText = ""
+                editable?.clear()
+                onUpdateSelection(this@ImeInputView, 0, 0, -1, -1)
+                // Some IMEs replay the just-submitted composition through setComposingText()
+                // after Enter. Ignore that replay so the compose overlay stays cleared.
+                restartInputSoon()
+                return true
+            }
+
+            if (awaitingPostEnterCommitReplay && newText.isNotEmpty()) {
+                awaitingPostEnterCommitReplay = false
+                postEnterSubmittedText = null
+            }
+            super.setComposingText(text, newCursorPosition)
+            scheduleSelectionUpdate()
+
+            if (newText == composingText) {
+                return true
+            }
+
+            if (newText.isEmpty()) {
+                if (composingText.isNotEmpty()) {
+                    // Composition cleared by IME; remove the projected text from the terminal.
+                    sendBackspaces(composingText.codePointCount(0, composingText.length))
+                }
+                composingText = ""
+                return true
+            }
+
+            when {
+                newText.startsWith(composingText) -> {
+                    // Typical case: IME appends new chars to the composition
+                    val delta = newText.substring(composingText.length)
+                    sendTextInput(delta)
+                }
+
+                composingText.startsWith(newText) -> {
+                    // IME removed characters from the end of the composition
+                    val removedText = composingText.substring(newText.length)
+                    val deleteCount = removedText.codePointCount(0, removedText.length)
+                    sendBackspaces(deleteCount)
+                }
+
+                else -> {
+                    // IME replaced the composition; rewrite it in the terminal
+                    sendBackspaces(composingText.codePointCount(0, composingText.length))
+                    sendTextInput(newText)
+                }
+            }
+
+            composingText = newText
+            return true
+        }
+
+        override fun finishComposingText(): Boolean {
+            if (!fullEditor) return super.finishComposingText()
+
+            super.finishComposingText()
+            composingText = ""
+            trimEditableContext()
+            committedContext = editable?.toString().orEmpty()
+            committedContextConfirmed = false
+            scheduleSelectionUpdate()
+            return true
+        }
+
+        override fun deleteSurroundingText(leftLength: Int, rightLength: Int): Boolean {
+            // Handle backspace by sending DEL key events
+            // When IME sends delete, it often sends (0, 0) or (1, 0) for backspace
+            if (rightLength == 0 && leftLength == 0) {
+                return sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
+            }
+
+            // Cap the loop: real IMEs send single-digit values here. A misbehaving
+            // or hostile IME asking for ~2^31 deletions would freeze the UI thread
+            // in a DEL-key loop. MAX_DELETE_SURROUNDING is well above anything
+            // legitimate.
+            val bounded = leftLength.coerceIn(0, MAX_DELETE_SURROUNDING)
+            for (i in 0 until bounded) {
+                sendKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL))
+            }
+
+            // TODO: Implement forward delete if rightLength > 0
+            if (bounded > 0 && composingText.isNotEmpty()) {
+                val newLength = (composingText.length - bounded).coerceAtLeast(0)
+                composingText = composingText.substring(0, newLength)
+            }
+
+            super.deleteSurroundingText(leftLength, rightLength)
+            scheduleSelectionUpdate()
+            return true
+        }
+
+        override fun sendKeyEvent(event: KeyEvent): Boolean {
+            if (fullEditor) {
+                val isKeyDown = event.action == KeyEvent.ACTION_DOWN
+                val postEnterSubmittedBeforeDispatch = if (isKeyDown && event.keyCode == KeyEvent.KEYCODE_ENTER) {
+                    composingText.takeIf { it.isNotEmpty() }
+                } else {
+                    null
+                }
+
+                // Compose mode (TYPE_CLASS_TEXT): route through dispatchKeyEvent so the
+                // setOnKeyListener chain handles it. Clear the editable buffer afterward so
+                // Gboard does not accumulate terminal input as suggestion candidates.
+                val result = this@ImeInputView.dispatchKeyEvent(event)
+                if (isKeyDown) {
+                    awaitingPostEnterCommitReplay = event.keyCode == KeyEvent.KEYCODE_ENTER
+                    postEnterSubmittedText = postEnterSubmittedBeforeDispatch
+                    editable?.clear()
+                    onUpdateSelection(this@ImeInputView, 0, 0, -1, -1)
+                }
+                return result
+            } else {
+                // TYPE_NULL mode: forward the key directly to keyboardHandler.
+                //
+                // Some IMEs (e.g. Gboard) also fire a concurrent raw View.dispatchKeyEvent
+                // for the same key, but since we call keyboardHandler directly here (not via
+                // dispatchKeyEvent), setOnKeyListener is never triggered — no duplication.
+                //
+                // Other IMEs (e.g. Hacker's Keyboard) only use sendKeyEvent and fire no raw
+                // view event, so forwarding here is the only way their keys reach the terminal.
+                if (event.action == KeyEvent.ACTION_DOWN) {
+                    keyboardHandler.onKeyEvent(ComposeKeyEvent(event))
+                    finishShortcutInput(restartWhenStillActive = false)
+                }
+                return true
+            }
+        }
+
+        override fun commitText(text: CharSequence?, newCursorPosition: Int): Boolean {
+            val committedText = text?.toString() ?: ""
+            if (shortcutSubmittedText == committedText) {
+                shortcutSubmittedText = null
+                clearEditableContext()
+                return true
+            }
+            if (!fullEditor) {
+                if (committedText.isNotEmpty()) {
+                    // When in TYPE_NULL mode, Gboard sends regular characters (a-z, etc.) via BOTH
+                    // sendKeyEvent AND a raw View.dispatchKeyEvent.
+                    //
+                    // We've modified sendKeyEvent to be a no-op in this mode to avoid doubling
+                    // with the raw View event. However, accented characters (ü, etc.) often
+                    // ONLY arrive via commitText because they have no direct KEYCODE.
+                    //
+                    // Deliver the text directly; this covers accented chars and any regular
+                    // chars sent via commitText rather than the sendKeyEvent/raw-view paths.
+                    if (keyboardHandler.hasTerminalShortcutModifiers()) {
+                        keyboardHandler.onCommittedText(committedText)
+                        finishShortcutInput(restartWhenStillActive = true)
+                    } else {
+                        sendTextInput(committedText)
+                    }
+                }
+                return true
+            }
+
+            val previousEditable = editable?.toString().orEmpty()
+            val committedEdit = committedEditableText(committedText, newCursorPosition)
+            val retainCommittedContext = !keyboardHandler.hasTerminalShortcutModifiers()
+            // Save the projected composition before committing it into the editable context.
+            val previousComposingText = composingText
+
+            if (awaitingPostEnterCommitReplay &&
+                postEnterSubmittedText != null &&
+                committedText == postEnterSubmittedText
+            ) {
+                awaitingPostEnterCommitReplay = false
+                postEnterSubmittedText = null
+                composingText = ""
+                editable?.clear()
+                onUpdateSelection(this@ImeInputView, 0, 0, -1, -1)
+                // Some IMEs replay the just-submitted composition after Enter. Ignore that
+                // replay so the shell text stays committed, then force the IME to drop the
+                // stale composing span that would otherwise keep the green overlay alive.
+                restartInputSoon()
+                return true
+            }
+
+            awaitingPostEnterCommitReplay = false
+            postEnterSubmittedText = null
+            if (previousComposingText.isNotEmpty()) {
+                sendBackspaces(previousComposingText.codePointCount(0, previousComposingText.length))
+                if (committedText.isNotEmpty()) {
+                    keyboardHandler.onCommittedText(committedText)
+                }
+            } else if (previousEditable != committedEdit.first) {
+                replaceCommittedContext(previousEditable, committedEdit.first)
+            }
+            composingText = ""
+            if (retainCommittedContext) {
+                applyCommittedEditableText(committedEdit)
+                trimEditableContext()
+                committedContext = editable?.toString().orEmpty()
+                committedContextConfirmed = false
+                scheduleSelectionUpdate()
+            } else {
+                clearEditableContext()
+                // updateSelection(0, 0) is not sufficient to make every IME forget its
+                // prediction history. Gboard can otherwise carry a terminal shortcut such
+                // as Ctrl+A into the next candidate and offer "a1" after a tmux window
+                // switch. Recreate the input connection so the next character starts with
+                // genuinely empty IME context.
+                finishShortcutInput(restartWhenStillActive = true)
+            }
+            return true
+        }
+
+        @RequiresApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
+        override fun replaceText(
+            start: Int,
+            end: Int,
+            text: CharSequence,
+            newCursorPosition: Int,
+            textAttribute: TextAttribute?,
+        ): Boolean {
+            if (!fullEditor) {
+                return super.replaceText(start, end, text, newCursorPosition, textAttribute)
+            }
+
+            val previousEditable = editable?.toString().orEmpty()
+            val replacement = replacementEditableText(
+                previousEditable,
+                start,
+                end,
+                text.toString(),
+                newCursorPosition,
+            )
+            if (previousEditable != replacement.first) {
+                replaceCommittedContext(previousEditable, replacement.first)
+            }
+            composingText = ""
+            applyCommittedEditableText(replacement)
+            trimEditableContext()
+            committedContext = editable?.toString().orEmpty()
+            committedContextConfirmed = false
+            scheduleSelectionUpdate()
+            return true
+        }
+
+        private fun replaceCommittedContext(previous: String, current: String) {
+            var commonPrefixLength = 0
+            val limit = minOf(previous.length, current.length)
+            while (commonPrefixLength < limit && previous[commonPrefixLength] == current[commonPrefixLength]) {
+                commonPrefixLength++
+            }
+            if (commonPrefixLength > 0 &&
+                commonPrefixLength < previous.length &&
+                Character.isLowSurrogate(previous[commonPrefixLength])
+            ) {
+                commonPrefixLength--
+            }
+
+            val removed = previous.substring(commonPrefixLength)
+            sendTerminalBackspaces(removed.codePointCount(0, removed.length))
+            keyboardHandler.onCommittedText(current.substring(commonPrefixLength))
+        }
+
+        private fun committedEditableText(committedText: String, newCursorPosition: Int): Pair<String, Int> {
+            val buffer = editable ?: return committedText to committedText.length
+            val composingStart = BaseInputConnection.getComposingSpanStart(buffer)
+            val composingEnd = BaseInputConnection.getComposingSpanEnd(buffer)
+            val selectionStart = Selection.getSelectionStart(buffer)
+            val selectionEnd = Selection.getSelectionEnd(buffer)
+            val start: Int
+            val end: Int
+            if (composingStart >= 0 && composingEnd >= 0) {
+                start = minOf(composingStart, composingEnd)
+                end = maxOf(composingStart, composingEnd)
+            } else if (selectionStart >= 0 && selectionEnd >= 0) {
+                start = minOf(selectionStart, selectionEnd)
+                end = maxOf(selectionStart, selectionEnd)
+            } else {
+                start = buffer.length
+                end = buffer.length
+            }
+            return replacementEditableText(buffer.toString(), start, end, committedText, newCursorPosition)
+        }
+
+        private fun replacementEditableText(
+            previous: String,
+            replacementStart: Int,
+            replacementEnd: Int,
+            replacement: String,
+            newCursorPosition: Int,
+        ): Pair<String, Int> {
+            val start = minOf(replacementStart, replacementEnd).coerceIn(0, previous.length)
+            val end = maxOf(replacementStart, replacementEnd).coerceIn(start, previous.length)
+            val text = previous.replaceRange(start, end, replacement)
+            val cursor = if (newCursorPosition > 0) {
+                start + replacement.length + newCursorPosition - 1
+            } else {
+                start + newCursorPosition
+            }.coerceIn(0, text.length)
+            return text to cursor
+        }
+
+        private fun applyCommittedEditableText(edit: Pair<String, Int>) {
+            val buffer = editable ?: return
+            buffer.replace(0, buffer.length, edit.first)
+            BaseInputConnection.removeComposingSpans(buffer)
+            Selection.setSelection(buffer, edit.second)
+        }
+
+        private fun trimEditableContext() {
+            val buffer = editable ?: return
+            if (buffer.length <= MAX_EDITABLE_CONTEXT) return
+            var deleteEnd = buffer.length - MAX_EDITABLE_CONTEXT
+            if (deleteEnd < buffer.length && Character.isLowSurrogate(buffer[deleteEnd])) {
+                deleteEnd++
+            }
+            buffer.delete(0, deleteEnd)
+            Selection.setSelection(buffer, buffer.length)
+        }
+
+        private fun clearEditableContext() {
+            editable?.clear()
+            composingText = ""
+            committedContext = ""
+            committedContextConfirmed = false
+            onUpdateSelection(this@ImeInputView, 0, 0, -1, -1)
+        }
+
+        private fun scheduleSelectionUpdate() {
+            if (batchEditDepth > 0) {
+                selectionUpdatePending = true
+            } else {
+                reportSelectionToIme()
+            }
+        }
+
+        private fun reportSelectionToIme() {
+            val buffer = editable ?: return
+            onUpdateSelection(
+                this@ImeInputView,
+                Selection.getSelectionStart(buffer).coerceAtLeast(0),
+                Selection.getSelectionEnd(buffer).coerceAtLeast(0),
+                BaseInputConnection.getComposingSpanStart(buffer),
+                BaseInputConnection.getComposingSpanEnd(buffer),
+            )
+            // Keep a monitoring IME's mirror current: it will not re-poll, so every edit
+            // must be pushed. Plain text is enough — the IME only reads the characters.
+            if (extractedTextToken >= 0) {
+                inputMethodManager.updateExtractedText(
+                    this@ImeInputView,
+                    extractedTextToken,
+                    buildExtractedText(buffer, withStyles = false),
+                )
+            }
+        }
+
+        fun validateTerminalCursorContext(textBeforeCursor: String) {
+            if (committedContext.isEmpty()) return
+            if (textBeforeCursor.endsWith(committedContext)) {
+                committedContextConfirmed = true
+                return
+            }
+            if (!committedContextConfirmed && hasEchoedContextPrefix(textBeforeCursor)) return
+
+            if (composingText.isEmpty()) {
+                clearEditableContext()
+                restartInputSoon()
+            } else {
+                // Input may have started at the cursor's new location before the debounce
+                // expired. Keep that active composition, but detach it from committed text
+                // belonging to the old cursor (for example, keep "this" while dropping the
+                // tmux selector prefix from "1this").
+                val buffer = editable
+                if (buffer != null) {
+                    buffer.replace(0, buffer.length, composingText)
+                    BaseInputConnection.setComposingSpans(buffer)
+                    Selection.setSelection(buffer, buffer.length)
+                }
+                committedContext = ""
+                committedContextConfirmed = false
+                onUpdateSelection(
+                    this@ImeInputView,
+                    composingText.length,
+                    composingText.length,
+                    0,
+                    composingText.length,
+                )
+            }
+        }
+
+        private fun hasEchoedContextPrefix(textBeforeCursor: String): Boolean {
+            val maxLength = minOf(textBeforeCursor.length, committedContext.length)
+            for (length in maxLength downTo 1) {
+                if (textBeforeCursor.endsWith(committedContext.substring(0, length))) return true
+            }
+            return false
+        }
+
+        private fun sendBackspaces(count: Int) {
+            repeat(count.coerceAtLeast(0)) {
+                // This edits the projected terminal/compose buffer, not the IME's Editable.
+                // Routing through InputConnection.sendKeyEvent() would clear that Editable as
+                // though the user had pressed a standalone terminal key. In particular, an IME
+                // replacing the Korean composition "ㅂ" with "바" would then observe an empty
+                // editor and abandon its in-progress Hangul composition.
+                keyboardHandler.onKeyEvent(
+                    ComposeKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_DEL)),
+                )
+            }
+        }
+
+        private fun sendTerminalBackspaces(count: Int) {
+            repeat(count.coerceAtLeast(0)) {
+                keyboardHandler.onImeDeleteBackward()
+            }
+        }
+
+        private fun sendTextInput(text: String) {
+            if (text.isNotEmpty()) {
+                keyboardHandler.onTextInput(text.toByteArray(Charsets.UTF_8))
+            }
+        }
+
+        /**
+         * Drop in-flight composition tracking without touching the terminal
+         * output. Called from [ImeInputView.resetImeBuffer] so an interrupted
+         * composition (e.g. external hardware-key events, IME dismissal mid-
+         * conversion) doesn't leave stale length state that a subsequent
+         * [setComposingText] would compute its backspace count against.
+         */
+        fun resetComposition() {
+            composingText = ""
+            committedContext = ""
+            committedContextConfirmed = false
+        }
+    }
+
+    companion object {
+        /** Upper bound on [InputConnection.deleteSurroundingText]'s `leftLength`. */
+        private const val MAX_DELETE_SURROUNDING = 4096
+        private const val MAX_EDITABLE_CONTEXT = 1024
+    }
+}

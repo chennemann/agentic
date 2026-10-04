@@ -138,6 +138,7 @@ interface WorkspaceFilesRpcClient {
 }
 
 interface TerminalRpcClient {
+    suspend fun resizeTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cols: Int, rows: Int)
     fun terminalMetadata(baseUrl: String, bearerToken: String): Flow<TerminalMetadataEvent>
     fun attachTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String): Flow<TerminalAttachEvent>
     suspend fun openTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cwd: String, worktreePath: String?, env: Map<String, String>): TerminalSessionSnapshot

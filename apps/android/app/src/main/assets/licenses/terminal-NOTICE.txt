@@ -1,0 +1,10 @@
+ConnectBot terminal 0.3.10
+https://github.com/connectbot/termlib/tree/0.3.10
+Copyright 2025-2026 Kenny Root and contributors
+Apache License 2.0 (connectbot-terminal-Apache-2.0.txt)
+
+Includes libvterm by Paul Evans and contributors.
+MIT license (libvterm-MIT.txt).
+
+Kotlin/resources from tag 0.3.10 with Agentic's documented lifecycle patch.
+Native binaries are unmodified from org.connectbot:termlib:0.3.10 on Maven Central.

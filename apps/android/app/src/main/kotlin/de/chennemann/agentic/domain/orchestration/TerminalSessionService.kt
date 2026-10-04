@@ -27,6 +27,7 @@ data class ProjectScriptLaunch(
 )
 
 interface TerminalSessions {
+    suspend fun resize(context: TerminalContext, terminalId: String, cols: Int, rows: Int)
     suspend fun context(threadId: String): TerminalContext
     fun inventory(context: TerminalContext): Flow<TerminalMetadataEvent>
     fun attach(context: TerminalContext, terminalId: String): Flow<TerminalAttachEvent>
@@ -48,6 +49,8 @@ class TerminalSessionService(
     private val repository: OrchestrationRepository,
     private val rpc: TerminalRpcClient,
 ) : TerminalSessions {
+    override suspend fun resize(context: TerminalContext, terminalId: String, cols: Int, rows: Int) =
+        rpc.resizeTerminal(context.baseUrl, context.token, context.threadId, terminalId, cols, rows)
     override suspend fun context(threadId: String): TerminalContext {
         val environment = requireNotNull(environments.activeEnvironment.value) { "Select an environment first." }
         val config = repository.clientConfig.value.value

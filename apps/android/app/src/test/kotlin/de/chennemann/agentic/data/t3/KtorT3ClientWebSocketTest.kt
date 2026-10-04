@@ -125,6 +125,10 @@ class KtorT3ClientWebSocketTest {
                 ),
             )
         }
+        withTimeout(5_000) {
+            client.resizeTerminal(server.url("/").toString(), "access-token", "thread-1", "term-2", 93, 17)
+            client.writeTerminal(server.url("/").toString(), "access-token", "thread-1", "term-2", "\u0003\u001b[A\t")
+        }
         val item = withTimeout(5_000) {
             client.shellStream(
                 baseUrl = server.url("/").toString(),
@@ -143,13 +147,15 @@ class KtorT3ClientWebSocketTest {
         assertEquals("/api/auth/websocket-ticket", ticketRequest?.path)
         assertEquals("Bearer access-token", ticketRequest?.getHeader("authorization"))
         assertEquals("/ws?wsTicket=ticket-value", webSocketRequest?.path)
-        val rpcRequests = List(5) { requests.poll(1, TimeUnit.SECONDS) }
+        val rpcRequests = List(7) { requests.poll(1, TimeUnit.SECONDS) }
         assertEquals(
             listOf(
                 "server.getConfig",
                 "orchestration.dispatchCommand",
                 "server.reportClientActivity",
                 "terminal.open",
+                "terminal.resize",
+                "terminal.write",
                 "orchestration.subscribeShell",
             ),
             rpcRequests.map { it?.get("tag")?.jsonPrimitive?.content },
@@ -164,6 +170,11 @@ class KtorT3ClientWebSocketTest {
             },
         )
         val terminalPayload = rpcRequests[3]?.get("payload")?.jsonObject
+        val resizePayload = rpcRequests[4]?.get("payload")?.jsonObject
+        assertEquals("93", resizePayload?.get("cols")?.jsonPrimitive?.content)
+        assertEquals("17", resizePayload?.get("rows")?.jsonPrimitive?.content)
+        assertEquals("term-2", resizePayload?.get("terminalId")?.jsonPrimitive?.content)
+        assertEquals("\u0003\u001b[A\t", rpcRequests[5]?.get("payload")?.jsonObject?.get("data")?.jsonPrimitive?.content)
         assertEquals("/workspace/worktree", terminalPayload?.get("cwd")?.jsonPrimitive?.content)
         assertEquals(
             "/workspace",
@@ -211,7 +222,7 @@ class KtorT3ClientWebSocketTest {
                 """{"_tag":"Exit","requestId":"$requestId","exit":{"_tag":"Success","value":{"sequence":8}}}""",
             )
 
-            "server.reportClientActivity" -> webSocket.send(
+            "server.reportClientActivity", "terminal.resize", "terminal.write" -> webSocket.send(
                 """{"_tag":"Exit","requestId":"$requestId","exit":{"_tag":"Success","value":null}}""",
             )
 
