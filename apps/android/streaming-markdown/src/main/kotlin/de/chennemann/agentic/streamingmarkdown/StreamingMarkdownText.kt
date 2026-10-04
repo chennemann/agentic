@@ -91,7 +91,9 @@ fun StreamingMarkdownText(
                     link = markdownLink,
                     blockCode = markdownBlockCode,
                 )
-                is MarkdownBlock.Code -> MarkdownCodeBlock(
+                is MarkdownBlock.Code -> if (block.language.equals("mermaid", ignoreCase = true) && (block.closed || !streaming)) {
+                    MermaidBlock(block.content, onCopy = copyCode)
+                } else MarkdownCodeBlock(
                     block = block,
                     style = style,
                     codeLexerRegistry = codeLexerRegistry,

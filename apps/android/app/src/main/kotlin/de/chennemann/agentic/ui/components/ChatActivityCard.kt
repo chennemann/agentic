@@ -39,6 +39,7 @@ import androidx.compose.ui.unit.dp
 import de.chennemann.agentic.icons.Check
 import de.chennemann.agentic.icons.ChevronDown
 import de.chennemann.agentic.icons.ChevronUp
+import de.chennemann.agentic.icons.Brain
 import de.chennemann.agentic.icons.Icons
 import de.chennemann.agentic.icons.Terminal
 import de.chennemann.agentic.streamingmarkdown.StreamingMarkdownText
@@ -96,6 +97,7 @@ fun ChatActivityCard(
             onSubmit = {
                 onEvent(ChatUiEvent.UserInputSubmitted(activity.request.requestId))
             },
+            onDismiss = { onEvent(ChatUiEvent.UserInputDismissed(activity.request.requestId)) },
             modifier = modifier,
         )
 
@@ -169,15 +171,16 @@ fun ToolActivityGroup(
     onEvent: (ChatUiEvent) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val running = activities.lastOrNull {
-        it.status == ActivityStatusUi.RUNNING || it.status == ActivityStatusUi.PENDING
+    val activityLabel = if (activities.firstOrNull()?.isAgent == true) "agent" else "tool call"
+    val active = activities.filter {
+        it.status in setOf(ActivityStatusUi.RUNNING, ActivityStatusUi.PENDING, ActivityStatusUi.FAILED)
     }
-    val history = if (running == null) activities else activities.filterNot { it.id == running.id }
+    val history = activities.filterNot { it in active }
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
-        running?.let {
+        active.forEach {
             CompactToolActivityRow(
                 activity = it,
                 expanded = activityExpanded(it.id),
@@ -212,11 +215,11 @@ fun ToolActivityGroup(
                 )
                 Text(
                     text = if (expanded) {
-                        "Show fewer tool calls"
-                    } else if (running == null) {
-                        "Show ${history.size} tool ${if (history.size == 1) "call" else "calls"}"
+                        "Show fewer ${activityLabel}s"
+                    } else if (active.isEmpty()) {
+                        "Show ${history.size} $activityLabel${if (history.size == 1) "" else "s"}"
                     } else {
-                        "+${history.size} previous tool ${if (history.size == 1) "call" else "calls"}"
+                        "+${history.size} previous $activityLabel${if (history.size == 1) "" else "s"}"
                     },
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -257,8 +260,8 @@ private fun CompactToolActivityRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(
-                imageVector = Icons.Terminal,
-                contentDescription = null,
+                imageVector = if (activity.isAgent) Icons.Brain else Icons.Terminal,
+                contentDescription = if (activity.isAgent) "Agent" else "Tool call",
                 modifier = Modifier.size(16.dp),
                 tint = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -299,6 +302,7 @@ private fun CompactToolActivityRow(
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
 
+                ActivityStatusUi.STOPPED -> Text("Stopped", style = MaterialTheme.typography.labelSmall)
                 ActivityStatusUi.FAILED -> Text(
                     text = "×",
                     color = MaterialTheme.colorScheme.error,
@@ -450,6 +454,7 @@ private fun ApprovalCard(
                     )
                 }
             }
+            request.warning?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             request.decisions.forEach { decision ->
                 val emphasized = decision == ApprovalDecisionUi.ACCEPT ||
                     decision == ApprovalDecisionUi.ACCEPT_FOR_SESSION
@@ -459,7 +464,7 @@ private fun ApprovalCard(
                         enabled = !request.responseInFlight,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(decision.label)
+                        Text(request.optionLabels[decision] ?: decision.label)
                     }
                 } else {
                     OutlinedButton(
@@ -467,7 +472,7 @@ private fun ApprovalCard(
                         enabled = !request.responseInFlight,
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text(decision.label)
+                        Text(request.optionLabels[decision] ?: decision.label)
                     }
                 }
             }
@@ -488,6 +493,7 @@ private fun UserInputCard(
     onTextChanged: (questionId: String, value: String) -> Unit,
     onOptionToggled: (questionId: String, optionId: String) -> Unit,
     onSubmit: () -> Unit,
+    onDismiss: () -> Unit,
     modifier: Modifier,
 ) {
     Card(
@@ -512,6 +518,9 @@ private fun UserInputCard(
                         color = MaterialTheme.colorScheme.onTertiaryContainer,
                     )
                 }
+            }
+            if (request.canDismiss) {
+                OutlinedButton(onClick = onDismiss, enabled = !request.responseInFlight) { Text("Dismiss question") }
             }
             request.questions.forEach { question ->
                 UserInputQuestion(
@@ -552,15 +561,17 @@ private fun UserInputQuestion(
                 color = MaterialTheme.colorScheme.onTertiaryContainer,
             )
         }
-        if (question.options.isEmpty()) {
+        if (question.allowsCustomAnswer) {
             OutlinedTextField(
                 value = question.textAnswer,
                 onValueChange = onTextChanged,
                 enabled = enabled,
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2,
+                label = { Text(if (question.options.isEmpty()) "Your answer" else "Or write your own answer") },
             )
-        } else {
+        }
+        if (question.options.isNotEmpty()) {
             question.options.forEach { option ->
                 FilterChip(
                     selected = option.id in question.selectedOptionIds,
@@ -596,6 +607,7 @@ private fun ActivityStatusDot(status: ActivityStatusUi?) {
         ActivityStatusUi.COMPLETED -> Color(0xFF00E676)
         ActivityStatusUi.RUNNING -> Color(0xFFFFEA00)
         ActivityStatusUi.FAILED -> Color(0xFFFF1744)
+        ActivityStatusUi.STOPPED -> MaterialTheme.colorScheme.onSurfaceVariant
         ActivityStatusUi.PENDING -> MaterialTheme.colorScheme.onSurfaceVariant
         null -> MaterialTheme.colorScheme.onSurfaceVariant
     }

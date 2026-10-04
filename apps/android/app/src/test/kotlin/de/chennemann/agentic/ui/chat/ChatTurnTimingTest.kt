@@ -24,5 +24,6 @@ class ChatTurnTimingTest {
     @Test
     fun rejects_invalid_server_timestamps() {
         assertNull(formatTurnDuration("not-an-instant", null, 0L))
+        assertNull(formatTurnDuration("2026-08-28T12:00:00Z", "invalid-end", Long.MAX_VALUE))
     }
 }

@@ -8,9 +8,9 @@ internal fun formatTurnDuration(
     nowMillis: Long,
 ): String? {
     val startMillis = runCatching { Instant.parse(startedAt).toEpochMilli() }.getOrNull() ?: return null
-    val endMillis = completedAt
-        ?.let { runCatching { Instant.parse(it).toEpochMilli() }.getOrNull() }
-        ?: nowMillis
+    val endMillis = if (completedAt == null) nowMillis else {
+        runCatching { Instant.parse(completedAt).toEpochMilli() }.getOrNull() ?: return null
+    }
     val seconds = ((endMillis - startMillis).coerceAtLeast(0L) / 1_000L)
     if (seconds < 60) return "${seconds}s"
     val minutes = seconds / 60

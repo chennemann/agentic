@@ -97,6 +97,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.encodeToJsonElement
 import org.junit.jupiter.api.AfterEach
 import org.junit.jupiter.api.Assertions.assertEquals
+import org.junit.jupiter.api.Assertions.assertNull
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertSame
 import org.junit.jupiter.api.Assertions.assertTrue
@@ -1732,10 +1733,10 @@ class ChatViewModelIntentTest {
                                           "description": "Make no workflow changes."
                                         },
                                         {
-                                          "id": "replace",
+                                          "value": "replace",
                                           "label": "Replace it"
                                         },
-                                        "Decide later"
+                                        {"label": "Decide later", "description": ""}
                                       ]
                                     }
                                   ]
@@ -1748,13 +1749,14 @@ class ChatViewModelIntentTest {
                 ),
             ),
         )
+        val chat = NoOpChatActions()
         val viewModel = ChatViewModel(
             environments = FakeViewModelEnvironmentRepository(),
             repository = repository,
             connection = FakeConnectionController(),
             environmentService = EnvironmentSelector {},
             threads = RecordingThreadActions(repository),
-            chat = NoOpChatActions(),
+            chat = chat,
             mappingDispatcher = dispatcher,
         )
         advanceUntilIdle()
@@ -1771,10 +1773,30 @@ class ChatViewModelIntentTest {
                     description = "Make no workflow changes.",
                 ),
                 UserInputOptionUi(id = "replace", label = "Replace it"),
-                UserInputOptionUi(id = "Decide later", label = "Decide later"),
+                UserInputOptionUi(id = "Decide later", label = "Decide later", description = ""),
             ),
             question.options,
         )
+        assertFalse(input.request.canSubmit)
+        viewModel.onEvent(ChatUiEvent.UserInputOptionToggled("request-1", "approach", "Keep current behavior"))
+        viewModel.onEvent(ChatUiEvent.UserInputOptionToggled("request-1", "approach", "replace"))
+        advanceUntilIdle()
+        fun pending() = (viewModel.state.value.timeline.single() as ChatTimelineItemUi.Activity).value as ChatActivityUi.UserInput
+        assertEquals(setOf("replace"), pending().request.questions.single().selectedOptionIds)
+        viewModel.onEvent(ChatUiEvent.UserInputTextChanged("request-1", "approach", "Custom direction"))
+        advanceUntilIdle()
+        assertTrue(pending().request.questions.single().selectedOptionIds.isEmpty())
+        chat.userInputFailure = IllegalStateException("Retry this response")
+        viewModel.onEvent(ChatUiEvent.UserInputSubmitted("request-1"))
+        advanceUntilIdle()
+        assertFalse(pending().request.responseInFlight)
+        assertEquals("Custom direction", pending().request.questions.single().textAnswer)
+        chat.userInputFailure = null
+        viewModel.onEvent(ChatUiEvent.UserInputSubmitted("request-1"))
+        advanceUntilIdle()
+        assertEquals(JsonPrimitive("Custom direction"), chat.userInputResponses.single()["approach"])
+        assertTrue(pending().request.responseInFlight)
+        assertNull(viewModel.state.value.composer.errorMessage)
     }
 
     @Test
@@ -1928,8 +1950,9 @@ class ChatViewModelIntentTest {
         )
         advanceUntilIdle()
 
-        val group = viewModel.state.value.timeline.single() as ChatTimelineItemUi.ToolGroup
-        assertEquals(ActivityStatusUi.COMPLETED, group.activities.single().status)
+        val summary = viewModel.state.value.timeline.single() as ChatTimelineItemUi.WorkSummary
+        val group = summary.items.single() as ChatTimelineItemUi.ToolGroup
+        assertEquals(ActivityStatusUi.STOPPED, group.activities.single().status)
         assertEquals(
             ChatTurnTimingUi(
                 startedAt = "2026-07-29T10:00:00Z",
@@ -2032,21 +2055,15 @@ class ChatViewModelIntentTest {
             listOf(
                 "user-1",
                 "assistant-1",
-                "tool-group:turn-1-tool-a",
-                "assistant-2",
-                "tool-group:turn-1-tool-c",
+                "turn-1",
                 "assistant-final",
             ),
             viewModel.state.value.timeline.map { it.id },
         )
-        assertEquals(
-            2,
-            (viewModel.state.value.timeline[2] as ChatTimelineItemUi.ToolGroup).activities.size,
-        )
-        assertEquals(
-            2,
-            (viewModel.state.value.timeline[4] as ChatTimelineItemUi.ToolGroup).activities.size,
-        )
+        val summary = viewModel.state.value.timeline[2] as ChatTimelineItemUi.WorkSummary
+        assertEquals(2, (summary.items[0] as ChatTimelineItemUi.ToolGroup).activities.size)
+        assertEquals("assistant-2", summary.items[1].id)
+        assertEquals(2, (summary.items[2] as ChatTimelineItemUi.ToolGroup).activities.size)
         val messageCopyState = viewModel.state.value.timeline
             .filterIsInstance<ChatTimelineItemUi.Message>()
             .associate { it.value.id to it.value.canCopy }
@@ -2054,7 +2071,6 @@ class ChatViewModelIntentTest {
             mapOf(
                 "user-1" to false,
                 "assistant-1" to false,
-                "assistant-2" to false,
                 "assistant-final" to true,
             ),
             messageCopyState,
@@ -2650,6 +2666,8 @@ private class NoOpChatActions(
     val planContinuations = mutableListOf<Pair<String, String>>()
     val interruptedTurns = mutableListOf<Pair<String, String?>>()
     val terminatedSessions = mutableListOf<String>()
+    var userInputFailure: Throwable? = null
+    val userInputResponses = mutableListOf<JsonObject>()
 
     override suspend fun startTurn(
         threadId: String?,
@@ -2696,7 +2714,11 @@ private class NoOpChatActions(
         threadId: String,
         requestId: String,
         answers: JsonObject,
-    ) = DispatchResult(1)
+    ): DispatchResult {
+        userInputFailure?.let { throw it }
+        userInputResponses += answers
+        return DispatchResult(1)
+    }
 
     override suspend fun setRuntimeMode(
         threadId: String,

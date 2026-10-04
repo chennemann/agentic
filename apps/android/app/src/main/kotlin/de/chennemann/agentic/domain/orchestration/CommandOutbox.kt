@@ -82,6 +82,7 @@ private fun ClientOrchestrationCommand.threadTarget(): String? = when (this) {
     is ClientOrchestrationCommand.SetInteractionMode -> threadId
     is ClientOrchestrationCommand.RespondToApproval -> threadId
     is ClientOrchestrationCommand.RespondToUserInput -> threadId
+    is ClientOrchestrationCommand.DismissUserInput -> threadId
     is ClientOrchestrationCommand.CreateProject,
     is ClientOrchestrationCommand.UpdateProjectMetadata,
     is ClientOrchestrationCommand.DeleteProject,

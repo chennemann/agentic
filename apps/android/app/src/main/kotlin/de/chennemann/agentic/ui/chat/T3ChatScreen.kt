@@ -14,6 +14,9 @@ import androidx.compose.foundation.gestures.scrollBy
 import androidx.compose.foundation.gestures.ScrollableDefaults
 import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -78,6 +81,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.SpanStyle
@@ -127,6 +131,15 @@ fun T3ChatScreen(
     val scope = rememberCoroutineScope()
     val dragging by listState.interactionSource.collectIsDraggedAsState()
     val expandedActivities = remember(state.threadId) { mutableStateMapOf<String, Boolean>() }
+    val pendingRequests = state.timeline.filterIsInstance<ChatTimelineItemUi.Activity>().filter {
+        it.value is ChatActivityUi.Approval || it.value is ChatActivityUi.UserInput
+    }
+    var requestsExpanded by remember(state.threadId, pendingRequests.map { it.id }) { mutableStateOf(true) }
+    val timeline = remember(state.timeline, expandedActivities.toMap()) {
+        state.timeline.filterNot { it in pendingRequests }.flatMap { item ->
+            if (item is ChatTimelineItemUi.WorkSummary && expandedActivities[item.lazyKey] == true) listOf(item) + item.items else listOf(item)
+        }
+    }
     var followLatest by remember(state.threadId) { mutableStateOf(true) }
     var inputFocusRequested by remember(state.threadId) { mutableStateOf<Boolean?>(null) }
     var inputFocusedManually by remember(state.threadId) { mutableStateOf(false) }
@@ -180,10 +193,10 @@ fun T3ChatScreen(
     val imeHeightPx = imeInsets.getBottom(density)
     val composerHeight = with(density) { composerHeightPx.toDp() }
     val turnBoundaryFlingThresholdPx = with(density) { TurnBoundaryFlingThreshold.toPx() }
-    val lastItemSignature = state.timeline.lastOrNull().contentSignature()
-    val latestMessageId = state.timeline.latestMessageId()
-    val userMessageIndices = remember(state.timeline) {
-        state.timeline.mapIndexedNotNull { index, item ->
+    val lastItemSignature = timeline.lastOrNull().contentSignature()
+    val latestMessageId = timeline.latestMessageId()
+    val userMessageIndices = remember(timeline) {
+        timeline.mapIndexedNotNull { index, item ->
             index.takeIf {
                 (item as? ChatTimelineItemUi.Message)?.value?.author == ChatMessageAuthorUi.USER
             }
@@ -250,7 +263,7 @@ fun T3ChatScreen(
 
     LaunchedEffect(
         state.threadId,
-        state.timeline.size,
+        timeline.size,
         lastItemSignature,
         expandedActivities.toMap(),
         composerHeightPx,
@@ -343,7 +356,7 @@ fun T3ChatScreen(
                     ),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                if (state.timeline.isEmpty()) {
+                if (timeline.isEmpty()) {
                     item("empty-chat") {
                         EmptyChatState(
                             hasProject = state.projectLabel != null,
@@ -353,10 +366,15 @@ fun T3ChatScreen(
                 }
 
                 items(
-                    items = state.timeline,
+                    items = timeline,
                     key = { it.lazyKey },
                 ) { item ->
                     when (item) {
+                        is ChatTimelineItemUi.WorkSummary -> TextButton(
+                            onClick = { expandedActivities[item.lazyKey] = expandedActivities[item.lazyKey] != true },
+                        ) {
+                            Text(item.label + if (expandedActivities[item.lazyKey] == true) " - Hide work" else " - Show work")
+                        }
                         is ChatTimelineItemUi.Message -> MessageItem(item.value)
                         is ChatTimelineItemUi.Activity -> {
                             ChatActivityCard(
@@ -561,22 +579,44 @@ fun T3ChatScreen(
                 .fillMaxWidth()
                 .zIndex(2f),
         ) {
-            IsolatedDraftComposer(
-                state = state.composer,
-                draft = composerDraft,
-                turnRunning = state.isTurnRunning,
-                onEvent = onEvent,
-                onOpenProjectPickerPrototype = {
-                    projectPaneOpen = true
-                },
-                modifier = Modifier.onSizeChanged { composerHeightPx = it.height },
-                inputFocusRequested = inputFocusRequested,
-                onInputFocusedManually = {
-                    inputFocusedManually = true
-                    messageIdWhenKeyboardOpened = latestMessageId
-                    inputFocusRequested = true
-                },
-            )
+            Column(modifier = Modifier.onSizeChanged { composerHeightPx = it.height }) {
+                if (pendingRequests.isNotEmpty()) {
+                    Surface(color = MaterialTheme.colorScheme.surface) {
+                        Column {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                TextButton(onClick = { requestsExpanded = !requestsExpanded }, modifier = Modifier.weight(1f)) {
+                                    Text(if (requestsExpanded) "Hide pending requests" else "Response needed (${pendingRequests.size})")
+                                }
+                                if (state.isTurnRunning) TextButton(onClick = { onEvent(ChatUiEvent.TurnInterruptRequested) }) { Text("Stop") }
+                            }
+                            if (requestsExpanded) Column(
+                                modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                pendingRequests.forEach { request ->
+                                    ChatActivityCard(request.value, expanded = true, onEvent = onEvent)
+                                }
+                            }
+                            state.composer.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
+                        }
+                    }
+                } else IsolatedDraftComposer(
+                    state = state.composer,
+                    draft = composerDraft,
+                    turnRunning = state.isTurnRunning,
+                    onEvent = onEvent,
+                    onOpenProjectPickerPrototype = {
+                        projectPaneOpen = true
+                    },
+                    modifier = Modifier,
+                    inputFocusRequested = inputFocusRequested,
+                    onInputFocusedManually = {
+                        inputFocusedManually = true
+                        messageIdWhenKeyboardOpened = latestMessageId
+                        inputFocusRequested = true
+                    },
+                )
+            }
         }
         if (projectPaneProgress > 0f || projectPaneOpen || projectPaneDragging) {
             Box(
@@ -1032,76 +1072,96 @@ private fun MessageItem(message: ChatMessageUi) {
         clipboard.setPrimaryClip(ClipData.newPlainText("Message", message.content))
         copied = true
     }
-    when (message.author) {
-        ChatMessageAuthorUi.USER -> {
-            Column(horizontalAlignment = Alignment.End) {
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.primaryContainer,
-                    ),
-                ) {
-                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        MessageImages(message.attachments)
-                        if (message.content.isNotBlank()) SelectionContainer {
-                            StreamingMarkdownText(
-                                content = message.content,
-                                modifier = Modifier.fillMaxWidth(),
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                streaming = false,
-                                inlineCode = SpanStyle(color = MaterialTheme.colorScheme.onPrimaryContainer),
-                            )
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        when (message.author) {
+            ChatMessageAuthorUi.USER -> {
+                Column(horizontalAlignment = Alignment.End) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.primaryContainer,
+                        ),
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            MessageImages(message.attachments)
+                            if (message.content.isNotBlank()) SelectionContainer {
+                                StreamingMarkdownText(
+                                    content = message.content,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                    streaming = false,
+                                    inlineCode = SpanStyle(color = MaterialTheme.colorScheme.onPrimaryContainer),
+                                )
+                            }
                         }
                     }
                 }
             }
-        }
 
-        ChatMessageAuthorUi.ASSISTANT -> {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                MessageImages(message.attachments)
-                SelectionContainer {
-                    val codeScale = LocalCodeScale.current
-                    val localDensity = LocalDensity.current
-                    CompositionLocalProvider(
-                        LocalDensity provides Density(localDensity.density, localDensity.fontScale * codeScale),
-                    ) { StreamingMarkdownText(
-                        content = message.content,
-                        modifier = Modifier.fillMaxWidth(),
-                        style = MaterialTheme.typography.bodyLarge,
-                        inlineCode = SpanStyle(color = MaterialTheme.colorScheme.primary),
-                    ) }
+            ChatMessageAuthorUi.ASSISTANT -> {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    MessageImages(message.attachments)
+                    SelectionContainer {
+                        val codeScale = LocalCodeScale.current
+                        val localDensity = LocalDensity.current
+                        CompositionLocalProvider(
+                            LocalDensity provides Density(localDensity.density, localDensity.fontScale * codeScale),
+                        ) { StreamingMarkdownText(
+                            content = message.content,
+                            streaming = message.isStreaming,
+                            modifier = Modifier.fillMaxWidth(),
+                            style = MaterialTheme.typography.bodyLarge,
+                            inlineCode = SpanStyle(color = MaterialTheme.colorScheme.primary),
+                        ) }
+                    }
+                    if (message.isStreaming) {
+                        Text(
+                            text = "Responding…",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                    message.supportingText?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (message.canCopy) {
+                        MessageCopyButton(copied = copied, onCopy = copyMessage)
+                    }
                 }
-                if (message.isStreaming) {
-                    Text(
-                        text = "Responding…",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
-                    )
+            }
+
+            ChatMessageAuthorUi.REASONING -> {
+                var expanded by remember(message.id) { mutableStateOf(false) }
+                Column {
+                    TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) "Hide thought" else "Thought") }
+                    if (expanded) SelectionContainer {
+                        StreamingMarkdownText(message.content, streaming = message.isStreaming)
+                    }
                 }
-                message.supportingText?.let {
+            }
+            ChatMessageAuthorUi.SYSTEM -> {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    MessageImages(message.attachments)
                     Text(
-                        text = it,
-                        style = MaterialTheme.typography.labelSmall,
+                        text = message.content,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
-                if (message.canCopy) {
-                    MessageCopyButton(copied = copied, onCopy = copyMessage)
-                }
             }
         }
-
-        ChatMessageAuthorUi.SYSTEM -> {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                MessageImages(message.attachments)
-                Text(
-                    text = message.content,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+        message.timestamp?.let { timestamp ->
+            val label = remember(timestamp, LocalConfiguration.current) {
+                runCatching {
+                    android.text.format.DateFormat.getTimeFormat(context).format(java.util.Date.from(java.time.Instant.parse(timestamp)))
+                }.getOrNull()
             }
+            label?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         }
     }
 }
@@ -1236,6 +1296,7 @@ private fun ChatTimelineItemUi?.contentSignature(): Any? = when (this) {
         Triple(id, activities.size, last?.let { it.id to it.status })
     }
 
+    is ChatTimelineItemUi.WorkSummary -> id to items.size
     null -> null
 }
 

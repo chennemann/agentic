@@ -184,6 +184,7 @@ sealed interface ChatTimelineItemUi {
             is Message -> "message:$id"
             is Activity -> "activity:$id"
             is ToolGroup -> "tool-group:$id"
+            is WorkSummary -> "work-summary:$id"
         }
 
     data class Message(
@@ -202,6 +203,12 @@ sealed interface ChatTimelineItemUi {
         override val id: String,
         val activities: List<ChatActivityUi.Tool>,
     ) : ChatTimelineItemUi
+
+    data class WorkSummary(
+        override val id: String,
+        val label: String,
+        val items: List<ChatTimelineItemUi>,
+    ) : ChatTimelineItemUi
 }
 
 data class ChatMessageUi(
@@ -212,6 +219,7 @@ data class ChatMessageUi(
     val canCopy: Boolean = false,
     val supportingText: String? = null,
     val attachments: List<ChatImageAttachmentUi> = emptyList(),
+    val timestamp: String? = null,
 )
 
 data class ChatImageAttachmentUi(
@@ -226,6 +234,7 @@ enum class ChatMessageAuthorUi {
     USER,
     ASSISTANT,
     SYSTEM,
+    REASONING,
 }
 
 sealed interface ChatActivityUi {
@@ -236,6 +245,7 @@ sealed interface ChatActivityUi {
         override val id: String,
         override val summary: String,
         val detail: String? = null,
+        val keepVisible: Boolean = false,
     ) : ChatActivityUi
 
     data class Tool(
@@ -246,6 +256,11 @@ sealed interface ChatActivityUi {
         val detail: String? = null,
         val lifecycleKey: String? = null,
         val lifecycleFallbackKey: String? = null,
+        val command: String? = null,
+        val output: String? = null,
+        val changedFiles: List<String> = emptyList(),
+        val turnId: String? = null,
+        val isAgent: Boolean = false,
     ) : ChatActivityUi
 
     data class Approval(
@@ -291,6 +306,7 @@ enum class ActivityStatusUi {
     RUNNING,
     COMPLETED,
     FAILED,
+    STOPPED,
 }
 
 data class PendingApprovalUi(
@@ -299,6 +315,8 @@ data class PendingApprovalUi(
     val description: String?,
     val decisions: List<ApprovalDecisionUi>,
     val responseInFlight: Boolean = false,
+    val optionLabels: Map<ApprovalDecisionUi, String> = emptyMap(),
+    val warning: String? = null,
 )
 
 enum class ApprovalDecisionUi(
@@ -317,6 +335,7 @@ data class PendingUserInputUi(
     val questions: List<UserInputQuestionUi>,
     val responseInFlight: Boolean = false,
     val canSubmit: Boolean = true,
+    val canDismiss: Boolean = false,
 )
 
 data class UserInputQuestionUi(
@@ -328,6 +347,7 @@ data class UserInputQuestionUi(
     val options: List<UserInputOptionUi> = emptyList(),
     val textAnswer: String = "",
     val selectedOptionIds: Set<String> = emptySet(),
+    val allowsCustomAnswer: Boolean = true,
 )
 
 data class UserInputOptionUi(
@@ -780,6 +800,8 @@ sealed interface ChatUiEvent {
     data class UserInputSubmitted(
         val requestId: String,
     ) : ChatUiEvent
+
+    data class UserInputDismissed(val requestId: String) : ChatUiEvent
 
     data class ActivityRetryRequested(
         val activityId: String,

@@ -132,6 +132,9 @@ interface ChatActions {
         answers: JsonObject,
     ): DispatchResult
 
+    suspend fun dismissUserInput(threadId: String, requestId: String): DispatchResult =
+        error("Question dismissal is not supported.")
+
     suspend fun setRuntimeMode(
         threadId: String,
         runtimeMode: String,
@@ -308,6 +311,12 @@ class ChatService(
             requestId = requestId,
             answers = answers,
             createdAt = Instant.now().toString(),
+        ),
+    )
+
+    override suspend fun dismissUserInput(threadId: String, requestId: String): DispatchResult = dispatch(
+        ClientOrchestrationCommand.DismissUserInput(
+            commandId = uuid(), threadId = threadId, requestId = requestId, createdAt = Instant.now().toString(),
         ),
     )
 

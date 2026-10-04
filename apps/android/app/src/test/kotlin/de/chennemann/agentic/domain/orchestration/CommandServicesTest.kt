@@ -164,6 +164,10 @@ class CommandServicesTest {
         val input = commands.recorded[1] as ClientOrchestrationCommand.RespondToUserInput
         assertEquals("acceptForSession", approval.decision)
         assertEquals("debug", input.answers.getValue("target").toString().trim('"'))
+        service.dismissUserInput("thread", "async-input")
+        val dismissal = commands.recorded[2] as ClientOrchestrationCommand.DismissUserInput
+        assertEquals("thread", dismissal.threadId)
+        assertEquals("async-input", dismissal.requestId)
     }
 
     @Test

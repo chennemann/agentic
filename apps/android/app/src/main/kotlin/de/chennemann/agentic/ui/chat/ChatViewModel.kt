@@ -189,6 +189,23 @@ class ChatViewModel(
                 update { copy(historyLoading = false, historyError = null) }
             }
         }
+        viewModelScope.launch {
+            val handledFailures = mutableSetOf<String>()
+            repository.focusedThread.collect { state ->
+                val activities = state.value?.thread?.activities.orEmpty()
+                val failures = activities.filter {
+                    it.kind in setOf("provider.approval.respond.failed", "provider.user-input.respond.failed") && handledFailures.add(it.id)
+                }
+                val closed = activities.closedRequestIds("approval") + activities.closedRequestIds("user-input")
+                val retryable = failures.mapNotNull { it.payload.string("requestId") }.toSet()
+                if ((closed + retryable).any { it in local.value.inFlightRequests }) {
+                    update { copy(
+                        inFlightRequests = inFlightRequests - closed - retryable,
+                        commandError = failures.lastOrNull()?.let { it.payload.string("detail") ?: it.summary } ?: commandError,
+                    ) }
+                }
+            }
+        }
         projectWorkflow?.let { workflow ->
             viewModelScope.launch {
                 workflow.state.map { it.selectedProjectId }.distinctUntilChanged().collect { selectedProjectId ->
@@ -722,17 +739,26 @@ class ChatViewModel(
                     textAnswers = textAnswers + (
                         answerKey(event.requestId, event.questionId) to event.value
                         ),
+                    optionAnswers = if (event.value.isNotBlank()) optionAnswers - answerKey(event.requestId, event.questionId) else optionAnswers,
                 )
             }
 
             is ChatUiEvent.UserInputOptionToggled -> update {
                 val key = answerKey(event.requestId, event.questionId)
                 val current = optionAnswers[key].orEmpty()
-                val next = if (event.optionId in current) current - event.optionId else current + event.optionId
-                copy(optionAnswers = optionAnswers + (key to next))
+                val question = repository.focusedThread.value.value?.thread?.activities
+                    ?.firstOrNull { it.kind == "user-input.requested" && it.payload.string("requestId") == event.requestId }
+                    ?.payload?.inputQuestions()?.firstOrNull { it.id == event.questionId }
+                val next = if (question?.allowsMultiple == true) {
+                    if (event.optionId in current) current - event.optionId else current + event.optionId
+                } else {
+                    setOf(event.optionId)
+                }
+                copy(optionAnswers = optionAnswers + (key to next), textAnswers = textAnswers - key)
             }
 
             is ChatUiEvent.UserInputSubmitted -> respondToUserInput(event.requestId)
+            is ChatUiEvent.UserInputDismissed -> dismissUserInput(event.requestId)
             is ChatUiEvent.ActivityExpansionChanged,
             is ChatUiEvent.ActivityRetryRequested,
             -> Unit
@@ -1230,13 +1256,33 @@ class ChatViewModel(
 
     private fun respondToApproval(event: ChatUiEvent.ApprovalDecisionSelected) {
         val threadId = repository.focusedThreadId.value ?: return
-        update { copy(inFlightRequests = inFlightRequests + event.requestId) }
+        if (event.requestId in local.value.inFlightRequests) return
+        update { copy(inFlightRequests = inFlightRequests + event.requestId, commandError = null) }
         launchCommand {
-            chat.respondToApproval(
-                threadId,
-                event.requestId,
-                event.decision.contractValue(),
-            )
+            try {
+                chat.respondToApproval(threadId, event.requestId, event.decision.contractValue())
+            } catch (error: Exception) {
+                update { copy(inFlightRequests = inFlightRequests - event.requestId) }
+                throw error
+            }
+        }
+    }
+
+    private fun dismissUserInput(requestId: String) {
+        val thread = repository.focusedThread.value.value?.thread ?: return
+        if (requestId in local.value.inFlightRequests) return
+        val request = thread.activities.firstOrNull {
+            it.kind == "user-input.requested" && it.payload.string("requestId") == requestId
+        } ?: return
+        if (request.payload.string("responseMode") != "message") return
+        update { copy(inFlightRequests = inFlightRequests + requestId, commandError = null) }
+        launchCommand {
+            try {
+                chat.dismissUserInput(thread.id, requestId)
+            } catch (error: Exception) {
+                update { copy(inFlightRequests = inFlightRequests - requestId) }
+                throw error
+            }
         }
     }
 
@@ -1247,24 +1293,21 @@ class ChatViewModel(
                 it.kind == "user-input.requested" &&
                     it.payload["requestId"]?.jsonPrimitive?.content == requestId
             } ?: return
-        val answers = buildMap {
-            activity.payload["questions"]?.jsonArray.orEmpty().forEach { element ->
-                val question = element.jsonObject
-                val questionId = question["id"]?.jsonPrimitive?.content ?: return@forEach
-                val key = answerKey(requestId, questionId)
-                val selected = local.value.optionAnswers[key].orEmpty()
-                put(
-                    questionId,
-                    if (selected.size <= 1) {
-                        JsonPrimitive(selected.firstOrNull() ?: local.value.textAnswers[key].orEmpty())
-                    } else {
-                        JsonArray(selected.sorted().map(::JsonPrimitive))
-                    },
-                )
+        if (requestId in local.value.inFlightRequests) return
+        val questions = activity.payload.inputQuestions(
+            textAnswer = { local.value.textAnswers[answerKey(requestId, it)].orEmpty() },
+            selectedOptions = { local.value.optionAnswers[answerKey(requestId, it)].orEmpty() },
+        )
+        val answers = questions.resolvedAnswers() ?: return
+        update { copy(inFlightRequests = inFlightRequests + requestId, commandError = null) }
+        launchCommand {
+            try {
+                chat.respondToUserInput(threadId, requestId, answers)
+            } catch (error: Exception) {
+                update { copy(inFlightRequests = inFlightRequests - requestId) }
+                throw error
             }
         }
-        update { copy(inFlightRequests = inFlightRequests + requestId) }
-        launchCommand { chat.respondToUserInput(threadId, requestId, JsonObject(answers)) }
     }
 
     private fun selectedModel(): ModelSelection? {
@@ -1730,7 +1773,7 @@ class ChatViewModel(
             .groupBy { it.turnId ?: it.id }
             .values
             .mapNotNull { messages ->
-                messages.maxWithOrNull(compareBy({ it.updatedAt }, { it.id }))?.id
+                messages.maxWithOrNull(compareBy({ timelineInstant(it.updatedAt) }, { it.id }))?.id
             }
             .toSet()
         val messages = detail.messages.map {
@@ -1742,11 +1785,13 @@ class ChatViewModel(
                         author = when (it.role) {
                             "user" -> ChatMessageAuthorUi.USER
                             "assistant" -> ChatMessageAuthorUi.ASSISTANT
+                            "reasoning" -> ChatMessageAuthorUi.REASONING
                             else -> ChatMessageAuthorUi.SYSTEM
                         },
                         content = it.text,
                         isStreaming = it.streaming,
                         canCopy = it.id in copyableAssistantMessageIds,
+                        timestamp = if (it.role == "user") it.createdAt else it.updatedAt,
                         attachments = it.attachments.map { attachment ->
                             ChatImageAttachmentUi(
                                 id = attachment.id,
@@ -1775,12 +1820,8 @@ class ChatViewModel(
             .filter { it.kind == "user-input.requested" && it.payload.string("requestId") !in closedUserInputs }
             .minWithOrNull(activityOrder)
             ?.id
-        val finishedTurnId = detail.latestTurn
-            ?.takeIf { it.state !in ActiveSessionStatuses }
-            ?.turnId
         val activities = detail.activities.filter {
             if (
-                it.kind == "task.started" ||
                 it.kind == "context-window.updated" ||
                 it.summary == "Checkpoint captured"
             ) {
@@ -1792,9 +1833,7 @@ class ChatViewModel(
                 else -> true
             }
         }.map {
-            val activity = it.toUi(local).completeIfTurnFinished(
-                finished = finishedTurnId != null && it.turnId == finishedTurnId,
-            )
+            val activity = it.toUi(local)
             TimedItem(
                 at = it.createdAt,
                 item = ChatTimelineItemUi.Activity(activity),
@@ -1833,34 +1872,53 @@ class ChatViewModel(
         val turnStartedAt = items
             .filter { it.turnId != null }
             .groupBy { requireNotNull(it.turnId) }
-            .mapValues { (_, turnItems) -> turnItems.minOf { it.at } }
+            .mapValues { (_, turnItems) -> turnItems.minOf { timelineInstant(it.at) } }
         val sorted = items
             .sortedWith(
-                compareBy<TimedItem> { it.turnId?.let(turnStartedAt::get) ?: it.at }
+                compareBy<TimedItem> { it.turnId?.let(turnStartedAt::get) ?: timelineInstant(it.at) }
                     .thenBy { it.turnId.orEmpty() }
-                    .thenBy { it.at }
+                    .thenBy { timelineInstant(it.at) }
                     .thenBy { it.turnPhase }
                     .thenBy { it.sequence }
                     .thenBy { it.lifecycleRank }
                     .thenBy { it.item.id },
             )
-            .map { it.item }
-        return groupToolActivities(sorted)
+        val collapsed = collapseToolLifecycles(sorted)
+        return foldSettledTurns(collapsed, detail.latestTurn?.turnId, runningTurnId,
+            detail.latestTurn?.let { it.startedAt ?: it.requestedAt }, detail.latestTurn?.completedAt,
+            detail.latestTurn?.state == "interrupted")
     }
 
     private fun OrchestrationActivity.toUi(local: LocalState): ChatActivityUi {
         val requestId = payload.string("requestId") ?: id
         val inFlight = requestId in local.inFlightRequests
         return when (kind) {
+            "user-input.answer-submitted" -> ChatActivityUi.Information(
+                id = id,
+                summary = "Answers submitted",
+                keepVisible = true,
+                detail = (payload["answers"] as? JsonObject)?.entries?.joinToString("\n\n") { (questionId, answer) ->
+                    val question = (payload["questionTextById"] as? JsonObject)?.string(questionId) ?: questionId
+                    val response = if (answer is JsonArray) answer.mapNotNull { (it as? JsonPrimitive)?.content }.joinToString(", ")
+                        else (answer as? JsonPrimitive)?.content.orEmpty()
+                    "$question\n$response"
+                } ?: payload.pretty(),
+            )
             "approval.requested" -> ChatActivityUi.Approval(
                 id,
                 PendingApprovalUi(
                     requestId = requestId,
                     title = summary,
-                    description = payload.string("command"),
-                    decisions = (payload["decisions"] as? JsonArray).orEmpty().mapNotNull {
-                        (it as? JsonPrimitive)?.content?.let(::approvalDecisionFromContract)
-                    },
+                    description = payload.string("detail") ?: payload.string("command"),
+                    decisions = (payload["options"] as? JsonArray)?.mapNotNull {
+                        (it as? JsonObject)?.string("decision")?.let(::approvalDecisionFromContract)
+                    } ?: listOf(ApprovalDecisionUi.ACCEPT, ApprovalDecisionUi.ACCEPT_FOR_SESSION, ApprovalDecisionUi.DECLINE),
+                    optionLabels = (payload["options"] as? JsonArray).orEmpty().mapNotNull {
+                        val option = it as? JsonObject ?: return@mapNotNull null
+                        val decision = option.string("decision")?.let(::approvalDecisionFromContract) ?: return@mapNotNull null
+                        decision to (option.string("label") ?: decision.label)
+                    }.toMap(),
+                    warning = (payload["options"] as? JsonArray).orEmpty().firstNotNullOfOrNull { (it as? JsonObject)?.string("warning") },
                     responseInFlight = inFlight,
                 ),
             )
@@ -1871,25 +1929,15 @@ class ChatViewModel(
                     requestId = requestId,
                     title = summary,
                     description = payload.string("description"),
-                    questions = (payload["questions"] as? JsonArray).orEmpty().mapNotNull { element ->
-                        val question = element as? JsonObject ?: return@mapNotNull null
-                        val questionId = question.string("id") ?: return@mapNotNull null
-                        val key = answerKey(requestId, questionId)
-                        UserInputQuestionUi(
-                            id = questionId,
-                            label = question.string("prompt")
-                                ?: question.string("question")
-                                ?: questionId,
-                            description = question.string("description"),
-                            required = question.string("required")?.toBooleanStrictOrNull() ?: true,
-                            allowsMultiple = question.string("multiple") == "true",
-                            options = (question["options"] as? JsonArray)
-                                .orEmpty()
-                                .mapNotNull(JsonElement::toUserInputOptionUi),
-                            textAnswer = local.textAnswers[key].orEmpty(),
-                            selectedOptionIds = local.optionAnswers[key].orEmpty(),
-                        )
-                    },
+                    canDismiss = payload.string("responseMode") == "message",
+                    questions = payload.inputQuestions(
+                        textAnswer = { local.textAnswers[answerKey(requestId, it)].orEmpty() },
+                        selectedOptions = { local.optionAnswers[answerKey(requestId, it)].orEmpty() },
+                    ),
+                    canSubmit = payload.inputQuestions(
+                        textAnswer = { local.textAnswers[answerKey(requestId, it)].orEmpty() },
+                        selectedOptions = { local.optionAnswers[answerKey(requestId, it)].orEmpty() },
+                    ).resolvedAnswers() != null,
                     responseInFlight = inFlight,
                 ),
             )
@@ -1898,7 +1946,7 @@ class ChatViewModel(
                 summary.equals("Plan updated", ignoreCase = true) ->
                     payload.toToolUi(this).copy(status = ActivityStatusUi.COMPLETED)
 
-                tone == "tool" -> payload.toToolUi(this)
+                tone == "tool" || kind.startsWith("tool.") || kind.startsWith("task.") -> payload.toToolUi(this)
 
                 tone == "error" -> ChatActivityUi.Error(id, summary, payload.pretty())
                 tone == "info" && kind.startsWith("status.") ->
@@ -1910,25 +1958,20 @@ class ChatViewModel(
         }
     }
 
-    private fun ChatActivityUi.completeIfTurnFinished(finished: Boolean): ChatActivityUi =
-        if (
-            finished &&
-            this is ChatActivityUi.Tool &&
-            status in setOf(ActivityStatusUi.PENDING, ActivityStatusUi.RUNNING)
-        ) {
-            copy(status = ActivityStatusUi.COMPLETED)
-        } else {
-            this
-        }
-
     private fun JsonObject.toToolUi(activity: OrchestrationActivity): ChatActivityUi.Tool {
         val command = toolCommand()
-        val output = string("detail")?.stripTrailingExitCode()
+        val data = this["data"] as? JsonObject
+        val itemData = data?.get("item") as? JsonObject
+        val output = (itemData?.string("aggregatedOutput") ?: itemData?.string("output")
+            ?: data?.string("output") ?: string("detail"))?.stripTrailingExitCode()
         val changedFiles = changedFiles()
         val title = (string("title") ?: activity.summary)
             .replace(Regex("\\s+(started|complete|completed)$", RegexOption.IGNORE_CASE), "")
             .replaceFirstChar(Char::uppercase)
-        val preview = command ?: output ?: changedFiles.firstOrNull() ?: string("toolName")
+        val isAgent = activity.kind.startsWith("task.") && string("agentKind") == "agent"
+        val preview = if (isAgent) {
+            listOfNotNull(string("role"), string("model"), string("summary") ?: output).joinToString(" - ").ifBlank { null }
+        } else command ?: output ?: changedFiles.firstOrNull() ?: string("toolName")
         val fullDetail = listOfNotNull(
             command,
             output?.takeUnless { it == command },
@@ -1936,22 +1979,30 @@ class ChatViewModel(
         ).distinct().joinToString("\n\n").ifBlank {
             pretty().takeUnless { it == "{}" }
         }
-        val lifecycleStatus = string("status")
+        val lifecycleStatus = string("status") ?: itemData?.string("status") ?: data?.string("status")
+        val exitCode = (itemData?.get("exitCode") as? JsonPrimitive)?.intOrNull
+            ?: (data?.get("exitCode") as? JsonPrimitive)?.intOrNull
+        val failedExit = exitCode?.let { it != 0 } == true ||
+            Regex("<exited with exit code (-?\\d+)>").find(string("detail").orEmpty())?.groupValues?.get(1)?.toIntOrNull()?.let { it != 0 } == true
         val status = when {
-            lifecycleStatus == "failed" || lifecycleStatus == "declined" -> ActivityStatusUi.FAILED
-            lifecycleStatus == "completed" || activity.kind.endsWith(".completed") -> ActivityStatusUi.COMPLETED
-            lifecycleStatus == "inProgress" ||
+            lifecycleStatus in setOf("stopped", "cancelled", "interrupted") -> ActivityStatusUi.STOPPED
+            failedExit || activity.tone == "error" || lifecycleStatus in setOf("failed", "declined", "error") || activity.kind.endsWith(".failed") -> ActivityStatusUi.FAILED
+            lifecycleStatus in setOf("completed", "idle") || activity.kind.endsWith(".completed") -> ActivityStatusUi.COMPLETED
+            lifecycleStatus in setOf("inProgress", "in_progress", "running") ||
                 activity.kind.endsWith(".started") ||
                 activity.kind.endsWith(".updated") -> ActivityStatusUi.RUNNING
-            lifecycleStatus == "stopped" -> ActivityStatusUi.FAILED
             else -> ActivityStatusUi.PENDING
         }
         val item = (this["data"] as? JsonObject)?.get("item") as? JsonObject
-        val lifecycleId = item?.string("id")
-            ?: item?.string("callId")
+        val lifecycleId = string("toolCallId")
+            ?: data?.string("toolCallId")
+            ?: string("taskId")
             ?: string("callId")
-            ?: string("toolCallId")
+            ?: item?.string("callId")
+            ?: string("itemId")
+            ?: item?.string("id")
         val lifecycleFallbackKey = listOf(
+            activity.turnId.orEmpty(),
             string("itemType").orEmpty(),
             title,
             command.orEmpty(),
@@ -1962,7 +2013,12 @@ class ChatViewModel(
             subtitle = preview?.replace(Regex("\\s+"), " ")?.trim(),
             status = status,
             detail = fullDetail,
-            lifecycleKey = lifecycleId,
+            command = command,
+            output = output,
+            changedFiles = changedFiles,
+            turnId = activity.turnId,
+            isAgent = isAgent,
+            lifecycleKey = lifecycleId?.let { "${activity.turnId.orEmpty()}:$it" },
             lifecycleFallbackKey = lifecycleFallbackKey,
         )
     }
@@ -2093,13 +2149,14 @@ private data class EnvironmentBundle(
     val connection: ConnectionState,
 )
 
-private data class TimedItem(
+internal data class TimedItem(
     val at: String,
     val item: ChatTimelineItemUi,
     val sequence: Long = Long.MIN_VALUE,
     val lifecycleRank: Int = 0,
     val turnId: String? = null,
     val turnPhase: Int = TurnPhaseActivity,
+    val endedAt: String = at,
 )
 
 private fun activityLifecycleRank(kind: String): Int = when {
@@ -2109,7 +2166,7 @@ private fun activityLifecycleRank(kind: String): Int = when {
     else -> 1
 }
 
-private fun groupToolActivities(items: List<ChatTimelineItemUi>): List<ChatTimelineItemUi> {
+internal fun groupToolActivities(items: List<ChatTimelineItemUi>): List<ChatTimelineItemUi> {
     val grouped = mutableListOf<ChatTimelineItemUi>()
     items.forEach { item ->
         val tool = (item as? ChatTimelineItemUi.Activity)?.value as? ChatActivityUi.Tool
@@ -2118,7 +2175,7 @@ private fun groupToolActivities(items: List<ChatTimelineItemUi>): List<ChatTimel
             return@forEach
         }
         val previous = grouped.lastOrNull() as? ChatTimelineItemUi.ToolGroup
-        if (previous == null) {
+        if (previous == null || previous.activities.firstOrNull()?.let { it.turnId != tool.turnId || it.isAgent != tool.isAgent } == true) {
             grouped += ChatTimelineItemUi.ToolGroup(
                 id = "tool-group:${tool.id}",
                 activities = listOf(tool),
@@ -2129,13 +2186,14 @@ private fun groupToolActivities(items: List<ChatTimelineItemUi>): List<ChatTimel
             (
                 it.lifecycleKey != null && it.lifecycleKey == tool.lifecycleKey ||
                     (it.lifecycleKey == null || tool.lifecycleKey == null) &&
-                    it.lifecycleFallbackKey == tool.lifecycleFallbackKey
+                    it.lifecycleFallbackKey != null && it.lifecycleFallbackKey == tool.lifecycleFallbackKey
             ) &&
                 it.status != ActivityStatusUi.COMPLETED &&
-                it.status != ActivityStatusUi.FAILED
+                it.status != ActivityStatusUi.FAILED &&
+                it.status != ActivityStatusUi.STOPPED
         }
         val nextActivities = if (replaceIndex >= 0) {
-            previous.activities.toMutableList().apply { this[replaceIndex] = tool }
+            previous.activities.toMutableList().apply { this[replaceIndex] = tool.copy(id = this[replaceIndex].id) }
         } else {
             previous.activities + tool
         }
@@ -2146,23 +2204,6 @@ private fun groupToolActivities(items: List<ChatTimelineItemUi>): List<ChatTimel
 
 private fun JsonObject.string(key: String): String? =
     (this[key] as? JsonPrimitive)?.content?.trim()?.takeIf { it.isNotEmpty() }
-
-private fun JsonElement.toUserInputOptionUi(): UserInputOptionUi? = when (this) {
-    is JsonPrimitive -> content.trim().takeIf(String::isNotEmpty)?.let {
-        UserInputOptionUi(id = it, label = it)
-    }
-
-    is JsonObject -> {
-        val id = string("id") ?: string("value") ?: string("label") ?: return null
-        UserInputOptionUi(
-            id = id,
-            label = string("label") ?: string("value") ?: id,
-            description = string("description"),
-        )
-    }
-
-    else -> null
-}
 
 private fun JsonObject.toolCommand(): String? {
     val data = this["data"] as? JsonObject
@@ -2245,7 +2286,8 @@ private fun JsonObject.changedFiles(): List<String> {
 // terminal activity also closes a request loaded later from history, regardless of event order.
 private fun List<OrchestrationActivity>.closedRequestIds(kind: String): Set<String> = asSequence()
     .filter { activity ->
-        activity.kind == "$kind.resolved" || (
+        activity.kind == "$kind.resolved" || activity.kind == "$kind.dismissed" ||
+            activity.kind == "$kind.answer-submitted" || (
             activity.kind == "provider.$kind.respond.failed" &&
                 StaleRequestFailureFragments[activity.kind].orEmpty().any { fragment ->
                     activity.payload.string("detail")?.contains(fragment, ignoreCase = true) == true

@@ -747,4 +747,13 @@ sealed interface ClientOrchestrationCommand {
         val answers: JsonObject,
         val createdAt: String
     ) : ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("thread.user-input.dismiss")
+    data class DismissUserInput(
+        override val commandId: String,
+        val threadId: String,
+        val requestId: String,
+        val createdAt: String
+    ) : ClientOrchestrationCommand
 }

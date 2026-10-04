@@ -8,6 +8,7 @@ sealed interface MarkdownBlock {
     data class Code(
         val language: String?,
         val content: String,
+        val closed: Boolean = true,
     ) : MarkdownBlock
 
     data class ListBlock(
@@ -48,10 +49,12 @@ fun parseMarkdownBlocks(content: String): List<MarkdownBlock> {
                 code += lines[index]
                 index += 1
             }
-            if (index < lines.size) index += 1
+            val closed = index < lines.size
+            if (closed) index += 1
             blocks += MarkdownBlock.Code(
                 language = fence.language,
                 content = code.joinToString("\n"),
+                closed = closed,
             )
             continue
         }
