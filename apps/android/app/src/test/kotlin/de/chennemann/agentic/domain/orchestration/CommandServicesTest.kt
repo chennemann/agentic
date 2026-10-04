@@ -41,6 +41,15 @@ class CommandServicesTest {
     private val service = ChatService(commands)
 
     @Test
+    fun `startup interrupt omits unknown turn id from wire command`() = runTest {
+        service.interrupt("thread", null)
+        val encoded = T3CommandJson.encodeToJsonElement(ClientOrchestrationCommand.serializer(), commands.recorded.single()).jsonObject
+        assertEquals(JsonPrimitive("thread.turn.interrupt"), encoded["type"])
+        assertEquals(JsonPrimitive("thread"), encoded["threadId"])
+        assertTrue("turnId" !in encoded)
+    }
+
+    @Test
     fun `image attachments remain inline on the durable start-turn command`() = runTest {
         val image = UploadChatAttachment(
             name = "diagram.png",

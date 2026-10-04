@@ -10,6 +10,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onRoot
@@ -29,6 +31,26 @@ import org.junit.Test
 class T3MessageComposerTest {
     @get:Rule
     val compose = createAndroidComposeRule<MainActivity>()
+
+    @Test
+    fun runningComposerOffersTapLongPressAndSeparateStop() {
+        val events = mutableListOf<ChatUiEvent>()
+        compose.activity.runOnUiThread {
+            compose.activity.setContent {
+                MobileTheme {
+                    T3MessageComposer(
+                        ComposerUiState(draft = "Follow up", enabled = true),
+                        turnRunning = true,
+                        onEvent = events::add,
+                    )
+                }
+            }
+        }
+        compose.onNodeWithContentDescription("Steer message").performClick()
+        compose.onNodeWithContentDescription("Steer message").performTouchInput { longClick() }
+        compose.onNodeWithContentDescription("Stop turn").performClick()
+        org.junit.Assert.assertEquals(listOf(ChatUiEvent.MessageSubmitted, ChatUiEvent.AlternateMessageSubmitted, ChatUiEvent.TurnInterruptRequested), events)
+    }
 
     @Test
     fun summary_reveals_controls_and_input_collapses_them() {
@@ -217,3 +239,4 @@ class T3MessageComposerTest {
         assertEquals(first.center.y, picker.center.y, 1f)
     }
 }
+

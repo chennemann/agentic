@@ -1,5 +1,7 @@
 package de.chennemann.agentic.ui.chat
 
+import de.chennemann.agentic.domain.preferences.FollowUpBehavior
+import de.chennemann.agentic.domain.orchestration.MessageQueueService
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import de.chennemann.agentic.domain.connection.ConnectionState
@@ -107,6 +109,7 @@ class ChatViewModel(
     private val attachmentAssets: AttachmentAssetClient? = null,
     private val credentials: CredentialStore? = null,
     private val threadHistory: ThreadHistory? = null,
+    private val messageQueue: MessageQueueService? = null,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
     private var historyJob: Job? = null
@@ -340,14 +343,22 @@ class ChatViewModel(
         local,
         groqApiKeys?.configured ?: flowOf(false),
         workflowPresentation,
-        displayAndWork,
-    ) { mapped, local, groqConfigured, workflows, displayAndWork ->
+        combine(displayAndWork, messageQueue?.messages ?: flowOf(emptyList())) { display, queue -> display to queue },
+    ) { mapped, local, groqConfigured, workflows, displayAndQueue ->
+        val (displayAndWork, queued) = displayAndQueue
         val display = displayAndWork.first
         val shared = workflows.shared
         val project = workflows.project
         val cache = workflows.cache
         mapped.copy(
             composer = mapped.composer.copy(
+                followUpBehavior = display.followUpBehavior,
+                queuedMessages = queued.filter {
+                    it.environmentId == environments.activeEnvironment.value?.id &&
+                        it.threadId == repository.focusedThreadId.value
+                }.map {
+                    QueuedMessageUi(it.id, it.command.message.text.ifBlank { "Image message" }, it.paused, it.error)
+                },
                 sending = local.sending,
                 errorMessage = local.commandError,
                 voiceInputAvailable = groqConfigured && voiceInput != null,
@@ -401,6 +412,7 @@ class ChatViewModel(
                 accent = display.accent,
                 interfaceScale = display.interfaceScale,
                 codeScale = display.codeScale,
+                followUpBehavior = display.followUpBehavior,
             ),
             cacheClearance = cache.environmentId?.let {
                 CacheClearanceUi(it, cache.categories, cache.clearableBytes, cache.busy, cache.cleared, cache.error)
@@ -433,6 +445,10 @@ class ChatViewModel(
             ).also { update { copy(draftImages = emptyList()) } }
             is ChatUiEvent.ProposedPlanContinueRequested -> continueProposedPlan(event.planId)
             ChatUiEvent.MessageSubmitted -> submitMessage()
+            ChatUiEvent.AlternateMessageSubmitted -> submitMessage(alternate = true)
+            is ChatUiEvent.FollowUpBehaviorSelected -> viewModelScope.launch { interfacePreferences?.setFollowUpBehavior(event.value) }
+            is ChatUiEvent.QueuedMessageSendRequested -> messageQueue?.sendNow(event.id)
+            is ChatUiEvent.QueuedMessageRemoved -> messageQueue?.remove(event.id)
             is ChatUiEvent.ImagesSelected -> addImages(event.uris)
             is ChatUiEvent.ImageRemoved -> update {
                 copy(draftImages = draftImages.filterNot { it.dataUrl.hashCode().toString() == event.id })
@@ -459,7 +475,9 @@ class ChatViewModel(
             ChatUiEvent.GroqApiKeyRemoved -> removeGroqApiKey()
             ChatUiEvent.TurnInterruptRequested -> launchCommand {
                 val detail = repository.focusedThread.value.value?.thread ?: return@launchCommand
-                chat.interrupt(detail.id, detail.latestTurn?.turnId ?: return@launchCommand)
+                if (detail.id != repository.focusedThreadId.value || detail.session?.status !in ActiveSessionStatuses) return@launchCommand
+                environments.activeEnvironment.value?.id?.let { messageQueue?.pause(it, detail.id) }
+                chat.interrupt(detail.id, detail.session?.activeTurnId)
             }
             ChatUiEvent.SessionTerminationRequested -> terminateSession()
 
@@ -856,7 +874,7 @@ class ChatViewModel(
         }
     }
 
-    private fun submitMessage() {
+    private fun submitMessage(alternate: Boolean = false) {
         if (local.value.sending) return
         val draftKey = displayedDraftKey
         val prompt = mutableDraft.value.trim()
@@ -875,6 +893,15 @@ class ChatViewModel(
         val runtimeMode = local.value.runtimeModeId
             ?: detail?.runtimeMode
             ?: DefaultRuntimeMode
+        val behavior = state.value.composer.followUpBehavior.let { if (alternate) it.alternate() else it }
+        if (threadId != null && detail?.session?.status in ActiveSessionStatuses && behavior == FollowUpBehavior.QUEUE) {
+            val queue = messageQueue ?: return submissionUnavailable("Message queuing is unavailable.")
+            val environmentId = environments.activeEnvironment.value?.id ?: return
+            queue.enqueue(environmentId, threadId, prompt, selection, runtimeMode, attachments)
+            setDraft(draftKey, "", persistImmediately = true)
+            update { copy(draftImages = emptyList(), commandError = null) }
+            return
+        }
         update { copy(sending = true, commandError = null) }
         launchCommand {
             val result = chat.startTurn(
@@ -1444,7 +1471,7 @@ class ChatViewModel(
             .filter { it.projectId == pickerProjectId && (local.showArchived || it.archivedAt == null) }
             .sortedByDescending { it.updatedAt }
         val activeTurnId = detail?.session?.activeTurnId
-        val isTurnRunning = detail?.session?.status in ActiveSessionStatuses && activeTurnId != null
+        val isTurnRunning = detail?.session?.status in ActiveSessionStatuses
         val hasEnvironmentConfig = environment.active != null &&
             orchestration.config.value?.environment?.environmentId == environment.active.id
 

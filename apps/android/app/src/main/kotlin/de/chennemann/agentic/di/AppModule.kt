@@ -1,5 +1,6 @@
 package de.chennemann.agentic.di
 
+import de.chennemann.agentic.domain.orchestration.MessageQueueService
 import app.cash.sqldelight.driver.android.AndroidSqliteDriver
 import de.chennemann.agentic.data.AndroidNetworkMonitor
 import de.chennemann.agentic.data.AndroidClientInstallationId
@@ -252,6 +253,7 @@ val appModule = module {
         ChatService(get())
     }
     single<ChatActions> { get<ChatService>() }
+    single { MessageQueueService(get(), get(), get(), get(), get(named(AppScopeName))) }
     single { ProjectService(get(), get()) }
     single<ProjectActions> { get<ProjectService>() }
     single<ProjectStarter> {
@@ -323,6 +325,7 @@ val appModule = module {
             attachmentAssets = get(),
             credentials = get(),
             threadHistory = get(),
+            messageQueue = get(),
         )
     }
 }

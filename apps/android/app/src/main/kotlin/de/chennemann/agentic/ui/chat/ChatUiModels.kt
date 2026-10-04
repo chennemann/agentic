@@ -1,4 +1,6 @@
 package de.chennemann.agentic.ui.chat
+
+import de.chennemann.agentic.domain.preferences.FollowUpBehavior
 import de.chennemann.agentic.domain.preferences.AccentPreference
 import de.chennemann.agentic.domain.preferences.ThemePreference
 
@@ -104,6 +106,7 @@ data class InterfaceSettingsUi(
     val accent: AccentPreference = AccentPreference.DEFAULT,
     val interfaceScale: Float = 1f,
     val codeScale: Float = 1f,
+    val followUpBehavior: FollowUpBehavior = FollowUpBehavior.STEER,
 )
 data class CacheClearanceUi(val environmentId: String, val categories: List<String> = emptyList(), val clearableBytes: Long = 0, val clearing: Boolean = false, val success: Boolean = false, val errorMessage: String? = null)
 data class DurableWorkUi(val commandId: String, val label: String, val threadId: String?, val failed: Boolean, val attemptCount: Long, val errorMessage: String?, val awaitsReplay: Boolean)
@@ -384,7 +387,11 @@ enum class EnvironmentConnectionIndicatorUi {
     BLOCKED,
 }
 
+data class QueuedMessageUi(val id: String, val text: String, val paused: Boolean, val error: String?)
+
 data class ComposerUiState(
+    val followUpBehavior: FollowUpBehavior = FollowUpBehavior.STEER,
+    val queuedMessages: List<QueuedMessageUi> = emptyList(),
     val draft: String = "",
     val selectedProviderModelId: String? = null,
     val providerModels: List<ProviderModelOptionUi> = emptyList(),
@@ -550,6 +557,10 @@ sealed interface ChatUiEvent {
     data class ProposedPlanContinueRequested(val planId: String) : ChatUiEvent
 
     data object MessageSubmitted : ChatUiEvent
+    data object AlternateMessageSubmitted : ChatUiEvent
+    data class FollowUpBehaviorSelected(val value: FollowUpBehavior) : ChatUiEvent
+    data class QueuedMessageSendRequested(val id: String) : ChatUiEvent
+    data class QueuedMessageRemoved(val id: String) : ChatUiEvent
 
     data class ImagesSelected(val uris: List<String>) : ChatUiEvent
 

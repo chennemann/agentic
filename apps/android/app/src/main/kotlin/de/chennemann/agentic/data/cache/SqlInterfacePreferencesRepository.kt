@@ -1,5 +1,6 @@
 package de.chennemann.agentic.data.cache
 
+import de.chennemann.agentic.domain.preferences.FollowUpBehavior
 import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import de.chennemann.agentic.db.AgenticDb
@@ -22,6 +23,7 @@ class SqlInterfacePreferencesRepository(private val database: AgenticDb, private
         .selectPreference(GlobalScope, PreferenceKey).asFlow().mapToOneOrNull(dispatcher)
         .map { raw -> raw?.let { runCatching { T3Json.decodeFromString<InterfacePreferences>(it) }.getOrNull() }?.validated() ?: InterfacePreferences() }
 
+    override suspend fun setFollowUpBehavior(behavior: FollowUpBehavior) = update { copy(followUpBehavior = behavior) }
     override suspend fun setTheme(theme: ThemePreference) = update { copy(theme = theme) }
     override suspend fun setAccent(accent: AccentPreference) = update { copy(accent = accent) }
     override suspend fun setInterfaceScale(scale: Float) = update { copy(interfaceScale = scale).validated() }

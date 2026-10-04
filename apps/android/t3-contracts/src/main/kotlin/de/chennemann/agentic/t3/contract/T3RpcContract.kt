@@ -653,7 +653,7 @@ sealed interface ClientOrchestrationCommand {
     data class InterruptTurn(
         override val commandId: String,
         val threadId: String,
-        val turnId: String,
+        val turnId: String? = null,
         val createdAt: String
     ) : ClientOrchestrationCommand
 

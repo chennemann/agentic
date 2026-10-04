@@ -10,11 +10,20 @@ enum class ThemePreference { SYSTEM, LIGHT, DARK }
 enum class AccentPreference { DEFAULT, BLUE, PURPLE, ORANGE, PINK, TEAL }
 
 @Serializable
+enum class FollowUpBehavior {
+    STEER,
+    QUEUE;
+
+    fun alternate() = if (this == STEER) QUEUE else STEER
+}
+
+@Serializable
 data class InterfacePreferences(
     val theme: ThemePreference = ThemePreference.SYSTEM,
     val accent: AccentPreference = AccentPreference.DEFAULT,
     val interfaceScale: Float = 1f,
     val codeScale: Float = 1f,
+    val followUpBehavior: FollowUpBehavior = FollowUpBehavior.STEER,
 )
 
 interface InterfacePreferencesRepository {
@@ -22,6 +31,7 @@ interface InterfacePreferencesRepository {
     suspend fun setTheme(theme: ThemePreference)
     suspend fun setAccent(accent: AccentPreference)
     suspend fun setInterfaceScale(scale: Float)
+    suspend fun setFollowUpBehavior(behavior: FollowUpBehavior)
     suspend fun setCodeScale(scale: Float)
 }
 

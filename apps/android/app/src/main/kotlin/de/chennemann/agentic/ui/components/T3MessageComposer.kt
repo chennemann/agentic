@@ -1,5 +1,6 @@
 package de.chennemann.agentic.ui.components
 
+import de.chennemann.agentic.domain.preferences.FollowUpBehavior
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -120,6 +121,7 @@ private val ComposerDisabled = Color(0xFF686868)
 private val ComposerSelected = Color(0xFF202020)
 private val SectionContentIndent = 14.dp
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun T3MessageComposer(
     state: ComposerUiState,
@@ -161,6 +163,8 @@ fun T3MessageComposer(
     } else {
         state.slashCommands.filter { it.name.startsWith(commandQuery, ignoreCase = true) }
     }
+    val hasMessage = state.draft.isNotBlank() || state.imageAttachments.isNotEmpty()
+    val showStop = turnRunning && !hasMessage
     val voiceControlVisible = state.voiceInputAvailable &&
         (state.draft.isBlank() && state.imageAttachments.isEmpty() || state.voiceInputStatus != VoiceInputStatusUi.IDLE)
 
@@ -221,6 +225,32 @@ fun T3MessageComposer(
                 }
             }
 
+            Column(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) {
+                state.queuedMessages.forEach { message ->
+                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        Text(
+                            if (message.paused) "Queued (paused)" else "Queued",
+                            style = MaterialTheme.typography.labelSmall,
+                        )
+                        Text(message.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        if (message.error != null) {
+                            Text(message.error, color = MaterialTheme.colorScheme.error)
+                            TextButton(onClick = { onEvent(ChatUiEvent.QueuedMessageRemoved(message.id)) }) {
+                                Text("Dismiss")
+                            }
+                        } else {
+                            Row {
+                                TextButton(onClick = { onEvent(ChatUiEvent.QueuedMessageSendRequested(message.id)) }) {
+                                    Text("Send now")
+                                }
+                                TextButton(onClick = { onEvent(ChatUiEvent.QueuedMessageRemoved(message.id)) }) {
+                                    Text("Remove")
+                                }
+                            }
+                        }
+                    }
+                }
+            }
             Box(modifier = Modifier.fillMaxWidth()) {
                 TextField(
                     value = state.draft,
@@ -230,7 +260,7 @@ fun T3MessageComposer(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(end = 88.dp)
+                        .padding(end = if (turnRunning && hasMessage) 136.dp else 88.dp)
                         .focusRequester(inputFocusRequester)
                         .testTag(ComposerInputTestTag)
                         .onPreviewKeyEvent { keyEvent ->
@@ -323,71 +353,64 @@ fun T3MessageComposer(
                             modifier = Modifier.size(22.dp),
                         )
                     }
-                    IconButton(
-                        onClick = {
-                            if (turnRunning) {
-                                onEvent(ChatUiEvent.TurnInterruptRequested)
-                            } else if (!voiceControlVisible) {
-                                onEvent(ChatUiEvent.MessageSubmitted)
-                            } else if (state.voiceInputStatus == VoiceInputStatusUi.RECORDING) {
-                                onEvent(ChatUiEvent.VoiceInputPressed)
-                            } else {
-                                requestMicrophonePermission()
-                            }
-                        },
-                        enabled = state.enabled &&
-                            !state.sending &&
-                            if (turnRunning) {
-                                true
-                            } else if (voiceControlVisible) {
-                                state.voiceInputStatus != VoiceInputStatusUi.TRANSCRIBING
-                            } else {
-                                state.draft.isNotBlank() || state.imageAttachments.isNotEmpty()
-                            },
-                        modifier = Modifier.size(48.dp),
-                        colors = IconButtonDefaults.iconButtonColors(
-                            contentColor = if (state.voiceInputStatus == VoiceInputStatusUi.RECORDING) {
-                                MaterialTheme.colorScheme.error
-                            } else {
-                                MaterialTheme.colorScheme.primary
-                            },
-                            disabledContentColor = ComposerDisabled,
-                        ),
+                    if (turnRunning && hasMessage) {
+                        IconButton(onClick = { onEvent(ChatUiEvent.TurnInterruptRequested) }, enabled = state.enabled) {
+                            Icon(Icons.Stop, contentDescription = "Stop turn", modifier = Modifier.size(24.dp))
+                        }
+                    }
+                    val actionEnabled = state.enabled && (showStop || !state.sending &&
+                        if (voiceControlVisible) state.voiceInputStatus != VoiceInputStatusUi.TRANSCRIBING else hasMessage)
+                    val steerDefault = state.followUpBehavior == FollowUpBehavior.STEER
+                    val actionLabel = when {
+                        showStop -> "Stop turn"
+                        hasMessage && turnRunning -> if (steerDefault) "Steer message" else "Queue message"
+                        hasMessage -> "Send message"
+                        state.voiceInputStatus == VoiceInputStatusUi.RECORDING -> "Stop recording and transcribe"
+                        else -> "Start voice input"
+                    }
+                    val actionColor = when {
+                        !actionEnabled -> ComposerDisabled
+                        state.voiceInputStatus == VoiceInputStatusUi.RECORDING -> MaterialTheme.colorScheme.error
+                        else -> MaterialTheme.colorScheme.primary
+                    }
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier
+                            .size(48.dp)
+                            .semantics { contentDescription = actionLabel }
+                            .combinedClickable(
+                                enabled = actionEnabled,
+                                role = Role.Button,
+                                onLongClickLabel = if (turnRunning && hasMessage) {
+                                    if (steerDefault) "Queue message" else "Steer message"
+                                } else null,
+                                onLongClick = if (turnRunning && hasMessage) {
+                                    { onEvent(ChatUiEvent.AlternateMessageSubmitted) }
+                                } else null,
+                                onClick = {
+                                    when {
+                                        showStop -> onEvent(ChatUiEvent.TurnInterruptRequested)
+                                        !voiceControlVisible -> onEvent(ChatUiEvent.MessageSubmitted)
+                                        state.voiceInputStatus == VoiceInputStatusUi.RECORDING ->
+                                            onEvent(ChatUiEvent.VoiceInputPressed)
+                                        else -> requestMicrophonePermission()
+                                    }
+                                },
+                            ),
                     ) {
-                        if (turnRunning) {
-                            Icon(
-                                imageVector = Icons.Stop,
-                                contentDescription = "Stop turn",
-                                modifier = Modifier.size(28.dp),
-                            )
-                        } else if (
-                            state.sending ||
-                            state.voiceInputStatus == VoiceInputStatusUi.TRANSCRIBING
-                        ) {
-                            CircularProgressIndicator(
-                                modifier = Modifier.size(20.dp),
-                                strokeWidth = 2.dp,
-                            )
-                        } else if (voiceControlVisible) {
-                            Icon(
+                        when {
+                            showStop -> Icon(Icons.Stop, null, Modifier.size(28.dp), tint = actionColor)
+                            state.sending || state.voiceInputStatus == VoiceInputStatusUi.TRANSCRIBING ->
+                                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            voiceControlVisible -> Icon(
                                 imageVector = if (state.voiceInputStatus == VoiceInputStatusUi.RECORDING) {
                                     Icons.Stop
-                                } else {
-                                    Icons.Microphone
-                                },
-                                contentDescription = if (state.voiceInputStatus == VoiceInputStatusUi.RECORDING) {
-                                    "Stop recording and transcribe"
-                                } else {
-                                    "Start voice input"
-                                },
+                                } else Icons.Microphone,
+                                contentDescription = null,
                                 modifier = Modifier.size(28.dp),
+                                tint = actionColor,
                             )
-                        } else {
-                            Icon(
-                                imageVector = Icons.Send,
-                                contentDescription = "Send message",
-                                modifier = Modifier.size(24.dp),
-                            )
+                            else -> Icon(Icons.Send, null, Modifier.size(24.dp), tint = actionColor)
                         }
                     }
                 }

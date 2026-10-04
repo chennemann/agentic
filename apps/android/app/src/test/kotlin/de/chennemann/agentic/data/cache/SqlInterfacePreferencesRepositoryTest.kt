@@ -18,12 +18,14 @@ class SqlInterfacePreferencesRepositoryTest {
         val database = AgenticDb(driver)
         val first = SqlInterfacePreferencesRepository(database, Dispatchers.Unconfined)
 
+        first.setFollowUpBehavior(de.chennemann.agentic.domain.preferences.FollowUpBehavior.QUEUE)
         first.setTheme(ThemePreference.LIGHT)
         first.setAccent(AccentPreference.BLUE)
         first.setInterfaceScale(9f)
         first.setCodeScale(1.15f)
 
         val recreated = SqlInterfacePreferencesRepository(database, Dispatchers.Unconfined).preferences.first()
+        assertEquals(de.chennemann.agentic.domain.preferences.FollowUpBehavior.QUEUE, recreated.followUpBehavior)
         assertEquals(ThemePreference.LIGHT, recreated.theme)
         assertEquals(AccentPreference.BLUE, recreated.accent)
         assertEquals(1f, recreated.interfaceScale)
@@ -44,6 +46,7 @@ class SqlInterfacePreferencesRepositoryTest {
 
         val preferences = SqlInterfacePreferencesRepository(database, Dispatchers.Unconfined).preferences.first()
 
+        assertEquals(de.chennemann.agentic.domain.preferences.FollowUpBehavior.STEER, preferences.followUpBehavior)
         assertEquals(ThemePreference.DARK, preferences.theme)
         assertEquals(AccentPreference.DEFAULT, preferences.accent)
         driver.close()

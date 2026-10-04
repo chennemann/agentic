@@ -117,7 +117,7 @@ interface ChatActions {
 
     suspend fun interrupt(
         threadId: String,
-        turnId: String,
+        turnId: String?,
     ): DispatchResult
 
     suspend fun respondToApproval(
@@ -273,7 +273,7 @@ class ChatService(
 
     override suspend fun interrupt(
         threadId: String,
-        turnId: String,
+        turnId: String?,
     ): DispatchResult = dispatch(
         ClientOrchestrationCommand.InterruptTurn(
             commandId = uuid(),

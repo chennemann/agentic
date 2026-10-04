@@ -1,5 +1,6 @@
 package de.chennemann.agentic.ui.chat
 
+import de.chennemann.agentic.domain.preferences.FollowUpBehavior
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
@@ -248,6 +249,17 @@ fun ChatSelectionSheets(
                                 )
                             }
                         }
+                        Text("Send while running", style = MaterialTheme.typography.bodySmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            FollowUpBehavior.entries.forEach { behavior ->
+                                FilterChip(
+                                    selected = state.interfaceSettings.followUpBehavior == behavior,
+                                    onClick = { onEvent(ChatUiEvent.FollowUpBehaviorSelected(behavior)) },
+                                    label = { Text(behavior.name.lowercase().replaceFirstChar(Char::uppercase)) },
+                                )
+                            }
+                        }
+                        Text("Long-press send for the other action.", style = MaterialTheme.typography.bodySmall)
                         Text("Interface size", style = MaterialTheme.typography.bodySmall)
                         LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             items(listOf(0.9f, 1f, 1.15f)) { scale ->

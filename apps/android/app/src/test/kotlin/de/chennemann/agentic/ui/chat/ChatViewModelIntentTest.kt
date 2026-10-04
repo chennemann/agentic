@@ -106,6 +106,160 @@ import org.junit.jupiter.api.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModelIntentTest {
     @Test
+    fun `follow up tap steers by default and long press queues with reversed configuration`() = runTest(dispatcher) {
+        for (behavior in de.chennemann.agentic.domain.preferences.FollowUpBehavior.entries) {
+            val fixture = QueueFixture(backgroundScope)
+            fixture.setRunning(true, 7)
+            val snapshot = requireNotNull(fixture.repository.focusedThread.value.value)
+            fixture.repository.focusedThread.value = fixture.repository.focusedThread.value.copy(value = snapshot.copy(
+                thread = snapshot.thread.copy(session = ThreadSession("thread-1", "running", activeTurnId = "active", updatedAt = "now")),
+            ))
+            val chat = NoOpChatActions()
+            val preferences = RecordingInterfacePreferencesRepository(InterfacePreferences(followUpBehavior = behavior))
+            val viewModel = ChatViewModel(
+                environments = fixture.environments, repository = fixture.repository,
+                connection = fixture.connection, environmentService = EnvironmentSelector {},
+                threads = RecordingThreadActions(fixture.repository), chat = chat, mappingDispatcher = dispatcher,
+                interfacePreferences = preferences, messageQueue = fixture.queue,
+            )
+            runCurrent()
+            viewModel.onEvent(ChatUiEvent.DraftChanged("tap"))
+            runCurrent()
+            viewModel.onEvent(ChatUiEvent.MessageSubmitted)
+            runCurrent()
+            viewModel.onEvent(ChatUiEvent.DraftChanged("hold"))
+            runCurrent()
+            viewModel.onEvent(ChatUiEvent.AlternateMessageSubmitted)
+            runCurrent()
+            val steerDefault = behavior == de.chennemann.agentic.domain.preferences.FollowUpBehavior.STEER
+            assertEquals(listOf(if (steerDefault) "tap" else "hold"), chat.startTurnCalls.map { it.prompt })
+            assertEquals(listOf(if (steerDefault) "hold" else "tap"), fixture.queue.messages.value.map { it.command.message.text })
+            assertEquals("", viewModel.draft.value)
+            viewModel.onEvent(ChatUiEvent.TurnInterruptRequested)
+            runCurrent()
+            assertTrue(fixture.queue.messages.value.single().paused)
+            assertEquals(listOf("thread-1" to "active"), chat.interruptedTurns)
+        }
+    }
+
+    @Test
+    fun `queued messages wait for completion and projection acknowledgement in FIFO order off screen`() = runTest(dispatcher) {
+        val fixture = QueueFixture(backgroundScope)
+        fixture.setRunning(true, 7)
+        fixture.enqueue("first")
+        fixture.enqueue("second")
+        fixture.repository.focusedThreadId.value = "thread-2"
+        runCurrent()
+        assertTrue(fixture.sent.isEmpty())
+        fixture.setRunning(false, 8)
+        runCurrent()
+        assertEquals(listOf("first"), fixture.sent.map { it.message.text })
+        fixture.setRunning(true, 9)
+        runCurrent()
+        assertEquals(1, fixture.sent.size)
+        fixture.setRunning(false, 10)
+        runCurrent()
+        assertEquals(listOf("first", "second"), fixture.sent.map { it.message.text })
+        assertTrue(fixture.queue.messages.value.isEmpty())
+    }
+
+    @Test
+    fun `queue holds for offline cache environment mismatch approvals and stop`() = runTest(dispatcher) {
+        val fixture = QueueFixture(backgroundScope)
+        fixture.setRunning(true, 7)
+        fixture.enqueue("pending")
+        runCurrent()
+        fixture.connectionState.value = ConnectionState.Cached
+        fixture.setRunning(false, 8)
+        runCurrent()
+        assertTrue(fixture.sent.isEmpty())
+        fixture.connectionState.value = ConnectionState.Live
+        fixture.repository.shell.value = fixture.repository.shell.value.copy(source = ProjectionSource.CACHE)
+        runCurrent()
+        assertTrue(fixture.sent.isEmpty())
+        fixture.repository.shell.value = fixture.repository.shell.value.copy(source = ProjectionSource.LIVE)
+        val config = fixture.repository.clientConfig.value
+        fixture.repository.clientConfig.value = config.copy(value = config.value?.copy(environment = config.value.environment.copy(environmentId = "other")))
+        runCurrent()
+        assertTrue(fixture.sent.isEmpty())
+        fixture.repository.clientConfig.value = config
+        fixture.setRunning(false, 9, approval = true)
+        fixture.queue.sendNow(fixture.queue.messages.value.single().id)
+        runCurrent()
+        assertTrue(fixture.sent.isEmpty())
+        fixture.queue.pause("environment", "thread-1")
+        fixture.setRunning(false, 10)
+        runCurrent()
+        assertTrue(fixture.sent.isEmpty())
+        fixture.queue.sendNow(fixture.queue.messages.value.single().id)
+        runCurrent()
+        assertEquals(1, fixture.sent.size)
+    }
+
+    @Test
+    fun `queue failure retains message without resubmitting an outbox owned command`() = runTest(dispatcher) {
+        val fixture = QueueFixture(backgroundScope)
+        fixture.failure = IllegalStateException("Offline")
+        fixture.enqueue("keep me")
+        fixture.setRunning(false, 8)
+        runCurrent()
+        val failed = fixture.queue.messages.value.single()
+        assertEquals("keep me", failed.command.message.text)
+        assertTrue(failed.paused)
+        assertTrue(failed.error != null)
+        fixture.queue.sendNow(failed.id)
+        fixture.setRunning(false, 10)
+        runCurrent()
+        assertEquals(1, fixture.sent.size)
+        fixture.queue.remove(failed.id)
+        assertTrue(fixture.queue.messages.value.isEmpty())
+    }
+
+    @Test
+    fun `stop during startup omits turn id instead of using a stale completed turn`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val snapshot = requireNotNull(repository.focusedThread.value.value)
+        repository.focusedThread.value = repository.focusedThread.value.copy(value = snapshot.copy(thread = snapshot.thread.copy(
+            latestTurn = LatestTurn("old", "completed", requestedAt = "now", completedAt = "now"),
+            session = ThreadSession("thread-1", "starting", updatedAt = "now"),
+        )))
+        val chat = NoOpChatActions()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository), chat = chat, mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.isTurnRunning)
+        viewModel.onEvent(ChatUiEvent.TurnInterruptRequested)
+        advanceUntilIdle()
+        assertEquals(listOf("thread-1" to null), chat.interruptedTurns)
+    }
+
+    @Test
+    fun `stop interrupts active session even before latest turn arrives`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val snapshot = requireNotNull(repository.focusedThread.value.value)
+        repository.focusedThread.value = repository.focusedThread.value.copy(
+            value = snapshot.copy(thread = snapshot.thread.copy(
+                latestTurn = null,
+                session = ThreadSession("thread-1", "running", activeTurnId = "active-turn", updatedAt = "2026-10-04T10:00:00Z"),
+            )),
+        )
+        val chat = NoOpChatActions()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository), chat = chat, mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.isTurnRunning)
+        viewModel.onEvent(ChatUiEvent.TurnInterruptRequested)
+        advanceUntilIdle()
+        assertEquals(listOf("thread-1" to "active-turn"), chat.interruptedTurns)
+    }
+
+    @Test
     fun `native request closures clear prompts even when older requests load afterward`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model"))
         val current = requireNotNull(repository.focusedThread.value.value)
@@ -2320,6 +2474,7 @@ private class RecordingInterfacePreferencesRepository(initial: InterfacePreferen
         mutablePreferences.value = mutablePreferences.value.copy(interfaceScale = scale)
     }
 
+    override suspend fun setFollowUpBehavior(behavior: de.chennemann.agentic.domain.preferences.FollowUpBehavior) { mutablePreferences.value = mutablePreferences.value.copy(followUpBehavior = behavior) }
     override suspend fun setCodeScale(scale: Float) {
         codeScales += scale
         mutablePreferences.value = mutablePreferences.value.copy(codeScale = scale)
@@ -2493,7 +2648,7 @@ private class NoOpChatActions(
 ) : ChatActions {
     val startTurnCalls = mutableListOf<StartTurnCall>()
     val planContinuations = mutableListOf<Pair<String, String>>()
-    val interruptedTurns = mutableListOf<Pair<String, String>>()
+    val interruptedTurns = mutableListOf<Pair<String, String?>>()
     val terminatedSessions = mutableListOf<String>()
 
     override suspend fun startTurn(
@@ -2519,7 +2674,7 @@ private class NoOpChatActions(
 
     override suspend fun interrupt(
         threadId: String,
-        turnId: String,
+        turnId: String?,
     ): DispatchResult {
         interruptedTurns += threadId to turnId
         return DispatchResult(1)
@@ -2945,5 +3100,40 @@ private class FakeVoiceInputService(
 
     override fun cancelRecording() {
         cancellations += 1
+    }
+}
+
+private class QueueFixture(scope: CoroutineScope) {
+    val repository = submissionRepository(ModelSelection("provider", "model"))
+    val environments = FakeViewModelEnvironmentRepository()
+    val connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Live)
+    val connection = object : ConnectionController {
+        override val state = connectionState
+        override fun wake() = Unit
+        override fun retryPendingCommands() = Unit
+    }
+    val sent = mutableListOf<de.chennemann.agentic.t3.contract.ClientOrchestrationCommand.StartTurn>()
+    var failure: Exception? = null
+    val queue = de.chennemann.agentic.domain.orchestration.MessageQueueService(
+        repository, environments, connection,
+        object : de.chennemann.agentic.domain.orchestration.CommandDispatcher {
+            override suspend fun dispatch(command: de.chennemann.agentic.t3.contract.ClientOrchestrationCommand): DispatchResult {
+                sent += command as de.chennemann.agentic.t3.contract.ClientOrchestrationCommand.StartTurn
+                failure?.let { throw it }
+                return DispatchResult(requireNotNull(repository.shell.value.sequence) + 1)
+            }
+        }, scope,
+    )
+    fun enqueue(text: String) = queue.enqueue("environment", "thread-1", text, ModelSelection("provider", "model"), "full-access", emptyList())
+    fun setRunning(running: Boolean, sequence: Long, approval: Boolean = false) {
+        val current = repository.shell.value
+        repository.shell.value = current.copy(sequence = sequence, value = current.value?.copy(
+            threads = current.value.threads.map { thread ->
+                if (thread.id == "thread-1") thread.copy(
+                    session = ThreadSession("thread-1", if (running) "running" else "ready", activeTurnId = if (running) "active" else null, updatedAt = "now"),
+                    hasPendingApprovals = approval,
+                ) else thread
+            },
+        ))
     }
 }
