@@ -28,11 +28,17 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -523,12 +529,14 @@ private fun UserInputCard(
                 OutlinedButton(onClick = onDismiss, enabled = !request.responseInFlight) { Text("Dismiss question") }
             }
             request.questions.forEach { question ->
-                UserInputQuestion(
-                    question = question,
-                    enabled = !request.responseInFlight,
-                    onTextChanged = { onTextChanged(question.id, it) },
-                    onOptionToggled = { onOptionToggled(question.id, it) },
-                )
+                key(request.requestId, question.id) {
+                    UserInputQuestion(
+                        question = question,
+                        enabled = !request.responseInFlight,
+                        onTextChanged = { onTextChanged(question.id, it) },
+                        onOptionToggled = { onOptionToggled(question.id, it) },
+                    )
+                }
             }
             Button(
                 onClick = onSubmit,
@@ -548,6 +556,11 @@ private fun UserInputQuestion(
     onTextChanged: (String) -> Unit,
     onOptionToggled: (String) -> Unit,
 ) {
+    // Timeline mappings can arrive after the next frame, or echo an older answer.
+    // Seed the editor once; keep text, selection, and composition synchronous with the IME.
+    var answer by remember {
+        mutableStateOf(TextFieldValue(question.textAnswer))
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = if (question.required) "${question.label} *" else question.label,
@@ -563,8 +576,12 @@ private fun UserInputQuestion(
         }
         if (question.allowsCustomAnswer) {
             OutlinedTextField(
-                value = question.textAnswer,
-                onValueChange = onTextChanged,
+                value = answer,
+                onValueChange = {
+                    val textChanged = answer.text != it.text
+                    answer = it
+                    if (textChanged) onTextChanged(it.text)
+                },
                 enabled = enabled,
                 modifier = Modifier.fillMaxWidth(),
                 minLines = 2,
@@ -575,7 +592,11 @@ private fun UserInputQuestion(
             question.options.forEach { option ->
                 FilterChip(
                     selected = option.id in question.selectedOptionIds,
-                    onClick = { onOptionToggled(option.id) },
+                    onClick = {
+                        // Choosing an option clears the custom answer in the ViewModel too.
+                        answer = TextFieldValue()
+                        onOptionToggled(option.id)
+                    },
                     enabled = enabled,
                     label = {
                         Column {
