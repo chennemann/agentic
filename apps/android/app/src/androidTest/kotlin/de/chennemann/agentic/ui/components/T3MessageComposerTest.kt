@@ -13,7 +13,6 @@ import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.onRoot
 import de.chennemann.agentic.MainActivity
 import de.chennemann.agentic.ui.chat.ChatUiEvent
@@ -115,23 +114,18 @@ class T3MessageComposerTest {
             }
         }
 
-        compose.onAllNodesWithText("Model Selection").assertCountEquals(0)
+        compose.onAllNodesWithText("Done").assertCountEquals(0)
         compose.onNodeWithText("Message").performClick().assertIsFocused()
         compose.onNodeWithContentDescription(
             "Open model, reasoning, and access controls",
         ).performClick()
         compose.onNodeWithText("Message").assertIsNotFocused()
-        compose.onNodeWithText("Model Selection").assertIsDisplayed()
-        compose.onNodeWithText("Reasoning").assertIsDisplayed()
+        compose.onNodeWithText("Done").assertIsDisplayed()
         compose.onNodeWithText("xhigh").assertIsDisplayed()
         compose.onAllNodesWithText("Extra high").assertCountEquals(0)
-        compose.onNodeWithText("Service mode").assertIsDisplayed()
-        compose.onNodeWithText("Fast").assertIsDisplayed()
-        compose.onNodeWithText("Fast Mode").assertIsDisplayed()
-        compose.onNodeWithContentDescription("Service mode: Fast").performClick()
-        compose.onNodeWithContentDescription("Fast Mode: Enabled")
-            .performScrollTo()
-            .performClick()
+        compose.onNodeWithContentDescription("Service mode: Default").performClick()
+        compose.onNodeWithText("Fast").performClick()
+        compose.onNodeWithContentDescription("Fast Mode: Off").performClick()
         assertEquals(
             listOf(
                 ChatUiEvent.ProviderSelectOptionSelected("service-tier", "fast"),
@@ -139,13 +133,14 @@ class T3MessageComposerTest {
             ),
             receivedEvents,
         )
-        compose.onNodeWithText("Allow all supported actions without approval.")
-            .performScrollTo()
-            .assertIsDisplayed()
-        compose.onAllNodesWithText("Ask before changes.").assertCountEquals(0)
+        compose.onNodeWithContentDescription("Access: Full access").performClick()
+        compose.onNodeWithText("Allow all supported actions without approval.").assertIsDisplayed()
+        compose.onNodeWithText("Ask before changes.").assertIsDisplayed()
+        compose.onNodeWithText("Supervised").performClick()
+        assertEquals(ChatUiEvent.RuntimeModeSelected("approval-required"), receivedEvents.last())
 
         compose.onNodeWithText("Message").performClick()
-        compose.onAllNodesWithText("Model Selection").assertCountEquals(0)
+        compose.onAllNodesWithText("Done").assertCountEquals(0)
         compose.onNodeWithContentDescription("Access: Full access").assertIsDisplayed()
     }
 

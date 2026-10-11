@@ -10,6 +10,7 @@ data class ChatUiState(
     val projectLabel: String?,
     val threadId: String?,
     val timeline: List<ChatTimelineItemUi>,
+    val projectId: String? = null,
     val connection: ChatConnectionUi,
     val composer: ComposerUiState,
     val environmentPicker: EnvironmentPickerUiState = EnvironmentPickerUiState(),

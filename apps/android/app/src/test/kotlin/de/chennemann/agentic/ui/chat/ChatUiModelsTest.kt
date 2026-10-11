@@ -1,7 +1,6 @@
 package de.chennemann.agentic.ui.chat
 
 import org.junit.jupiter.api.Assertions.assertEquals
-import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Test
 
@@ -76,21 +75,5 @@ class ChatUiModelsTest {
 
         assertEquals("instance-7", option.providerInstanceId)
         assertTrue(option.id.startsWith(option.providerInstanceId))
-    }
-
-    @Test
-    fun `project pane drag follows distance in both directions`() {
-        assertEquals(0.25f, draggedProjectPaneProgress(current = 0f, dragAmount = 250f, width = 1_000f))
-        assertEquals(0.6f, draggedProjectPaneProgress(current = 1f, dragAmount = -400f, width = 1_000f))
-        assertEquals(0f, draggedProjectPaneProgress(current = 0.1f, dragAmount = -500f, width = 1_000f))
-        assertEquals(1f, draggedProjectPaneProgress(current = 0.9f, dragAmount = 500f, width = 1_000f))
-    }
-
-    @Test
-    fun `project pane settles in the direction of a deliberate drag`() {
-        assertTrue(projectPaneShouldOpen(startProgress = 0f, endProgress = 0.1f))
-        assertFalse(projectPaneShouldOpen(startProgress = 1f, endProgress = 0.9f))
-        assertTrue(projectPaneShouldOpen(startProgress = 0.6f, endProgress = 0.55f))
-        assertFalse(projectPaneShouldOpen(startProgress = 0.4f, endProgress = 0.45f))
     }
 }

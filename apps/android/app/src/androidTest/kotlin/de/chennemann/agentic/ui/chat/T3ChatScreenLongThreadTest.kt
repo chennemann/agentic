@@ -27,33 +27,6 @@ class T3ChatScreenLongThreadTest {
     val compose = createComposeRule()
 
     @Test
-    fun first_message_starts_below_the_overlay_controls() {
-        compose.setContent {
-            MobileTheme {
-                T3ChatScreen(
-                    state = longThreadState().copy(
-                        timeline = listOf(
-                            ChatTimelineItemUi.Message(
-                                ChatMessageUi(
-                                    id = "first-message",
-                                    author = ChatMessageAuthorUi.USER,
-                                    content = "First visible message",
-                                ),
-                            ),
-                        ),
-                    ),
-                    onEvent = {},
-                )
-            }
-        }
-
-        val messageTop = compose.onNodeWithText("First visible message").fetchSemanticsNode().boundsInRoot.top
-        val controlsBottom = compose.onNodeWithTag(NavigationControlTestTag).fetchSemanticsNode().boundsInRoot.bottom
-
-        assertTrue("First message starts beneath the overlay controls", messageTop >= controlsBottom)
-    }
-
-    @Test
     fun long_thread_pauses_following_and_recovers_to_streaming_tail_after_reconnect() {
         lateinit var updateState: ((ChatUiState) -> ChatUiState) -> Unit
         compose.setContent {

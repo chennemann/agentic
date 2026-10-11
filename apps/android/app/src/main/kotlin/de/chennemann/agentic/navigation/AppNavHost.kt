@@ -21,6 +21,7 @@ import de.chennemann.agentic.t3.contract.ProjectScript
 import de.chennemann.agentic.t3.contract.ProjectScriptIcon
 import de.chennemann.agentic.ui.chat.ChatViewModel
 import de.chennemann.agentic.ui.chat.ChatUiEvent
+import de.chennemann.agentic.ui.chat.ProjectScriptUi
 import de.chennemann.agentic.ui.chat.T3ChatScreen
 import de.chennemann.agentic.ui.files.WorkspaceFilesScreen
 import de.chennemann.agentic.ui.files.WorkspaceFilesViewModel
@@ -82,34 +83,40 @@ fun AppNavHost() {
                 ChatRoute -> NavEntry(route) {
                     val viewModel: ChatViewModel = koinViewModel()
                     val state by viewModel.state.collectAsStateWithLifecycle()
+                    val onEvent: (ChatUiEvent) -> Unit = {
+                        if (it == ChatUiEvent.PairEnvironmentRequested) {
+                            manualOnboarding = true
+                        } else {
+                            viewModel.onEvent(it)
+                        }
+                    }
+                    val onOpenFiles: (String) -> Unit = { threadId -> stack.add(WorkspaceFilesRoute(threadId)) }
+                    val onOpenUpdater: () -> Unit = { stack.add(StorUpdaterRoute) }
+                    val onOpenUsage: () -> Unit = { viewModel.onEvent(ChatUiEvent.PickerDismissed); stack.add(UsageRoute) }
+                    val onOpenTerminal: (String) -> Unit = { threadId -> stack.add(TerminalRoute(threadId)) }
+                    val onRunProjectScript: (String, ProjectScriptUi) -> Unit = { threadId, script ->
+                        stack.add(
+                            TerminalRoute(
+                                threadId,
+                                ProjectScript(
+                                    id = script.id,
+                                    name = script.name,
+                                    command = script.command,
+                                    icon = ProjectScriptIcon.PLAY,
+                                    runOnWorktreeCreate = script.setup,
+                                ),
+                            ),
+                        )
+                    }
                     T3ChatScreen(
                         state = state,
                         composerDraft = viewModel.draft,
-                        onEvent = {
-                            if (it == ChatUiEvent.PairEnvironmentRequested) {
-                                manualOnboarding = true
-                            } else {
-                                viewModel.onEvent(it)
-                            }
-                        },
-                        onOpenFiles = { threadId -> stack.add(WorkspaceFilesRoute(threadId)) },
-                        onOpenUpdater = { stack.add(StorUpdaterRoute) },
-                        onOpenUsage = { viewModel.onEvent(ChatUiEvent.PickerDismissed); stack.add(UsageRoute) },
-                        onOpenTerminal = { threadId -> stack.add(TerminalRoute(threadId)) },
-                        onRunProjectScript = { threadId, script ->
-                            stack.add(
-                                TerminalRoute(
-                                    threadId,
-                                    ProjectScript(
-                                        id = script.id,
-                                        name = script.name,
-                                        command = script.command,
-                                        icon = ProjectScriptIcon.PLAY,
-                                        runOnWorktreeCreate = script.setup,
-                                    ),
-                                ),
-                            )
-                        },
+                        onEvent = onEvent,
+                        onOpenFiles = onOpenFiles,
+                        onOpenUpdater = onOpenUpdater,
+                        onOpenUsage = onOpenUsage,
+                        onOpenTerminal = onOpenTerminal,
+                        onRunProjectScript = onRunProjectScript,
                     )
                 }
 

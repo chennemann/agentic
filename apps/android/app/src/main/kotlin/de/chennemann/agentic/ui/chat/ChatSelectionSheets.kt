@@ -24,10 +24,19 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -56,256 +65,13 @@ fun ChatSelectionSheets(
 ) {
     when (state.activePicker) {
         ChatPickerUi.NAVIGATION -> {
-            PickerSheet(
-                title = "Navigation and settings",
+            SettingsSheet(
+                state = state,
+                onEvent = onEvent,
+                onOpenUpdater = onOpenUpdater,
+                onOpenUsage = onOpenUsage,
                 onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
-            ) {
-                item("environment-heading") {
-                    Text("Environment", style = MaterialTheme.typography.labelLarge)
-                }
-                item("environment") {
-                    PickerRow(
-                        label = state.environmentLabel,
-                        supportingText = "Change active environment",
-                        selected = false,
-                        trailingText = state.environmentPicker.environments
-                            .firstOrNull { it.id == state.environmentPicker.selectedEnvironmentId }
-                            ?.connection
-                            ?.label(),
-                        onClick = {
-                            onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.ENVIRONMENT))
-                        },
-                    )
-                }
-                item("manage-environments") {
-                    TextButton(onClick = { onEvent(ChatUiEvent.PairEnvironmentRequested) }) {
-                        Text("Manage environments")
-                    }
-                }
-                state.environmentPicker.selectedEnvironmentId?.let { environmentId ->
-                    item("inspect-cache") {
-                        TextButton(onClick = { onEvent(ChatUiEvent.CacheInspectionRequested(environmentId)) }) { Text("Storage and cache") }
-                    }
-                }
-                item("usage") { TextButton(onClick = onOpenUsage) { Text("Usage") } }
-                StorUpdaterSettingsEntry(onClick = onOpenUpdater)
-                if (state.durableWork.isNotEmpty()) {
-                    item("durable-work") {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("Pending sync", style = MaterialTheme.typography.labelLarge)
-                            state.durableWork.forEach { work ->
-                                Text(
-                                    buildString {
-                                        append(work.label)
-                                        work.threadId?.let { append(" · thread ").append(it) }
-                                        append(if (work.failed) " · failed" else " · pending")
-                                        if (work.attemptCount > 0) append(" · attempts ").append(work.attemptCount)
-                                    },
-                                    style = MaterialTheme.typography.bodySmall,
-                                )
-                                work.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                            }
-                            if (state.durableWork.any(DurableWorkUi::awaitsReplay)) {
-                                TextButton(onClick = { onEvent(ChatUiEvent.DurableWorkRetryRequested) }) {
-                                    Text("Reconnect and retry")
-                                }
-                            }
-                        }
-                    }
-                }
-                item("conversation-heading") {
-                    Text(
-                        "Conversation",
-                        style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
-                item("conversation") {
-                    PickerRow(
-                        label = state.projectLabel ?: "Choose project",
-                        supportingText = state.title,
-                        selected = state.threadId != null,
-                        onClick = {
-                            onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
-                        },
-                    )
-                }
-                item("conversation-actions") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    ) {
-                        TextButton(onClick = { onEvent(ChatUiEvent.NewThreadRequested) }) {
-                            Text("New thread")
-                        }
-                        if (state.canRenameThread) {
-                            TextButton(onClick = { onEvent(ChatUiEvent.RenameThreadRequested) }) {
-                                Text("Rename")
-                            }
-                        }
-                        if (state.isThreadArchived) {
-                            TextButton(onClick = { onEvent(ChatUiEvent.UnarchiveThreadRequested) }) {
-                                Text("Unarchive")
-                            }
-                        } else if (state.canArchiveThread) {
-                            TextButton(onClick = { onEvent(ChatUiEvent.ArchiveThreadRequested) }) {
-                                Text("Archive")
-                            }
-                        }
-                        if (state.threadSnooze.supported) {
-                            if (state.threadSnooze.isSnoozed) {
-                                TextButton(
-                                    enabled = state.threadSnooze.canWake,
-                                    onClick = { onEvent(ChatUiEvent.ThreadWakeRequested) },
-                                ) {
-                                    Text(if (state.threadSnooze.actionInProgress) "Waking…" else "Wake")
-                                }
-                            } else {
-                                TextButton(
-                                    enabled = state.threadSnooze.canSnooze,
-                                    onClick = {
-                                        onEvent(
-                                            ChatUiEvent.ThreadSnoozeRequested(
-                                                Instant.now().plus(1, ChronoUnit.HOURS).toString(),
-                                            ),
-                                        )
-                                    },
-                                ) {
-                                    Text(if (state.threadSnooze.actionInProgress) "Snoozing…" else "Snooze 1h")
-                                }
-                            }
-                        }
-                        if (state.canDeleteThread) {
-                            TextButton(onClick = { onEvent(ChatUiEvent.DeleteThreadRequested) }) {
-                                Text("Delete permanently", color = MaterialTheme.colorScheme.error)
-                            }
-                        }
-                    }
-                }
-                if (state.threadSnooze.isSnoozed) {
-                    item("snooze-status") {
-                        Text(
-                            text = "Snoozed until ${state.threadSnooze.snoozedUntil}",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                } else if (state.threadSnooze.wakeReason != null) {
-                    item("wake-status") {
-                        Text(
-                            text = "Woke because of ${state.threadSnooze.wakeReason}",
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                    }
-                }
-                state.threadSnooze.errorMessage?.let { error ->
-                    item("snooze-error") {
-                        Text(error, color = MaterialTheme.colorScheme.error)
-                    }
-                }
-                item("models-heading") {
-                    Text(
-                        "Models",
-                        style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
-                item("keyboard-shortcuts") {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text("Hardware keyboard", style = MaterialTheme.typography.labelLarge)
-                        Text(
-                            "Ctrl/⌘+Enter send · Shift+Enter newline · Esc stop · Ctrl/⌘+N new task · Ctrl/⌘+K navigation",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                item("appearance") {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("Appearance", style = MaterialTheme.typography.labelLarge)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(ThemePreference.entries) { theme ->
-                                FilterChip(
-                                    selected = state.interfaceSettings.theme == theme,
-                                    onClick = { onEvent(ChatUiEvent.ThemeSelected(theme)) },
-                                    label = { Text(theme.name.lowercase().replaceFirstChar(Char::uppercase)) },
-                                )
-                            }
-                        }
-                        Text("Accent color", style = MaterialTheme.typography.bodySmall)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(AccentPreference.entries) { accent ->
-                                FilterChip(
-                                    selected = state.interfaceSettings.accent == accent,
-                                    onClick = { onEvent(ChatUiEvent.AccentSelected(accent)) },
-                                    label = {
-                                        Text(accent.name.lowercase().replaceFirstChar(Char::uppercase))
-                                    },
-                                    leadingIcon = {
-                                        Box(
-                                            Modifier
-                                                .size(12.dp)
-                                                .clip(CircleShape)
-                                                .background(accent.previewColor()),
-                                        )
-                                    },
-                                )
-                            }
-                        }
-                        Text("Send while running", style = MaterialTheme.typography.bodySmall)
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            FollowUpBehavior.entries.forEach { behavior ->
-                                FilterChip(
-                                    selected = state.interfaceSettings.followUpBehavior == behavior,
-                                    onClick = { onEvent(ChatUiEvent.FollowUpBehaviorSelected(behavior)) },
-                                    label = { Text(behavior.name.lowercase().replaceFirstChar(Char::uppercase)) },
-                                )
-                            }
-                        }
-                        Text("Long-press send for the other action.", style = MaterialTheme.typography.bodySmall)
-                        Text("Interface size", style = MaterialTheme.typography.bodySmall)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(listOf(0.9f, 1f, 1.15f)) { scale ->
-                                FilterChip(state.interfaceSettings.interfaceScale == scale, { onEvent(ChatUiEvent.InterfaceScaleSelected(scale)) }, { Text("${(scale * 100).toInt()}%") })
-                            }
-                        }
-                        Text("Code and Markdown size", style = MaterialTheme.typography.bodySmall)
-                        LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            items(listOf(0.9f, 1f, 1.15f)) { scale ->
-                                FilterChip(state.interfaceSettings.codeScale == scale, { onEvent(ChatUiEvent.CodeScaleSelected(scale)) }, { Text("${(scale * 100).toInt()}%") })
-                            }
-                        }
-                    }
-                }
-                item("models") {
-                    PickerRow(
-                        label = "Models and favorites",
-                        supportingText = "Choose models and manage composer shortcuts",
-                        selected = false,
-                        onClick = {
-                            onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROVIDER_MODEL))
-                        },
-                    )
-                }
-                item("voice-input-heading") {
-                    Text(
-                        "Voice input",
-                        style = MaterialTheme.typography.labelLarge,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
-                item("voice-input") {
-                    PickerRow(
-                        label = "Groq transcription",
-                        supportingText = if (state.groqSettings.apiKeyConfigured) {
-                            "API key configured"
-                        } else {
-                            "Set up an API key to enable the microphone"
-                        },
-                        selected = state.groqSettings.apiKeyConfigured,
-                        onClick = { onEvent(ChatUiEvent.GroqSettingsRequested) },
-                    )
-                }
-            }
+            )
         }
 
         ChatPickerUi.ENVIRONMENT -> {
@@ -359,189 +125,11 @@ fun ChatSelectionSheets(
         }
 
         ChatPickerUi.PROJECT_THREAD -> {
-            PickerSheet(
-                title = "Project and thread",
+            ProjectThreadsSheet(
+                state = state,
+                onEvent = onEvent,
                 onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
-                expanded = true,
-            ) {
-                item("project-heading") {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text("Project", style = MaterialTheme.typography.labelLarge)
-                        TextButton(onClick = { onEvent(ChatUiEvent.ProjectCreationRequested) }) {
-                            Text("Add project")
-                        }
-                    }
-                }
-                item("project-carousel") {
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        items(
-                            items = state.threadPicker.projects,
-                            key = { "project:${it.id}" },
-                        ) { project ->
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                FilterChip(
-                                    selected = project.id == state.threadPicker.selectedProjectId,
-                                    onClick = { onEvent(ChatUiEvent.ProjectSelected(project.id)) },
-                                    label = {
-                                        Text(
-                                            text = project.label,
-                                            maxLines = 1,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    },
-                                )
-                                TextButton(onClick = { onEvent(ChatUiEvent.ProjectRenameRequested(project.id)) }) {
-                                    Text("Rename")
-                                }
-                                TextButton(onClick = { onEvent(ChatUiEvent.ProjectRemovalRequested(project.id)) }) {
-                                    Text("Remove")
-                                }
-                            }
-                        }
-                    }
-                }
-                state.threadPicker.projects
-                    .firstOrNull { it.id == state.threadPicker.selectedProjectId }
-                    ?.supportingText
-                    ?.let { workspaceRoot ->
-                        item("selected-project-path") {
-                            Text(
-                                text = workspaceRoot,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
-                if (state.threadPicker.projects.isEmpty()) {
-                    item("no-projects") {
-                        Text(
-                            text = "No projects available",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                }
-                item("thread-heading") {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Text(
-                            text = if (state.threadPicker.showArchived) {
-                                "Active threads, including archived"
-                            } else {
-                                "Active threads"
-                            },
-                            style = MaterialTheme.typography.labelLarge,
-                        )
-                        TextButton(onClick = { onEvent(ChatUiEvent.NewThreadRequested) }) {
-                            Icon(
-                                imageVector = Icons.Add,
-                                contentDescription = null,
-                            )
-                            Text("New thread")
-                        }
-                    }
-                }
-                item("archived-filter") {
-                    FilterChip(
-                        selected = state.threadPicker.showArchived,
-                        onClick = {
-                            onEvent(
-                                ChatUiEvent.ArchivedThreadsVisibilityChanged(
-                                    visible = !state.threadPicker.showArchived,
-                                ),
-                            )
-                        },
-                        label = { Text("Show archived") },
-                    )
-                }
-                if (state.threadPicker.threads.isEmpty()) {
-                    item("no-threads") {
-                        Text(
-                            text = "No active threads in this project",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 8.dp),
-                        )
-                    }
-                }
-                items(
-                    items = state.threadPicker.threads,
-                    key = { "thread:${it.id}" },
-                ) { thread ->
-                    ThreadPickerRow(
-                        thread = thread,
-                        selected = thread.id == state.threadPicker.selectedThreadId,
-                        onClick = { onEvent(ChatUiEvent.ThreadSelected(thread.id)) },
-                        onLifecycleClick = {
-                            onEvent(
-                                if (thread.archived) {
-                                    ChatUiEvent.PickerThreadUnarchiveRequested(thread.id)
-                                } else {
-                                    ChatUiEvent.ThreadSettleRequested(thread.id)
-                                },
-                            )
-                        },
-                    )
-                }
-                item("settled-thread-heading") {
-                    TextButton(
-                        onClick = {
-                            onEvent(
-                                ChatUiEvent.SettledThreadsVisibilityChanged(
-                                    visible = !state.threadPicker.showSettled,
-                                ),
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text("Settled threads (${state.threadPicker.settledThreads.size})")
-                            Text(if (state.threadPicker.showSettled) "Hide" else "Show")
-                        }
-                    }
-                }
-                if (state.threadPicker.showSettled && state.threadPicker.settledThreads.isEmpty()) {
-                    item("no-settled-threads") {
-                        Text(
-                            text = "No settled threads in this project",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(vertical = 8.dp),
-                        )
-                    }
-                }
-                if (state.threadPicker.showSettled) {
-                    items(
-                        items = state.threadPicker.settledThreads,
-                        key = { "settled-thread:${it.id}" },
-                    ) { thread ->
-                        ThreadPickerRow(
-                            thread = thread,
-                            selected = thread.id == state.threadPicker.selectedThreadId,
-                            onClick = { onEvent(ChatUiEvent.ThreadSelected(thread.id)) },
-                            onLifecycleClick = {
-                                onEvent(ChatUiEvent.ThreadUnsettleRequested(thread.id))
-                            },
-                            settled = true,
-                        )
-                    }
-                }
-            }
+            )
         }
 
         ChatPickerUi.PROVIDER_MODEL -> {
@@ -966,12 +554,316 @@ private fun PickerRow(
     }
 }
 
-private fun EnvironmentConnectionIndicatorUi.label(): String = when (this) {
-    EnvironmentConnectionIndicatorUi.LIVE -> "Live"
-    EnvironmentConnectionIndicatorUi.CONNECTING -> "Connecting"
-    EnvironmentConnectionIndicatorUi.CACHED -> "Cached"
-    EnvironmentConnectionIndicatorUi.OFFLINE -> "Offline"
-    EnvironmentConnectionIndicatorUi.BLOCKED -> "Blocked"
+/** Threads of the picker project, with thread and project actions behind a single menu. */
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun ProjectThreadsSheet(
+    state: ChatUiState,
+    onEvent: (ChatUiEvent) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val picker = state.threadPicker
+    val project = picker.projects.firstOrNull { it.id == picker.selectedProjectId }
+    val isCurrentProject = project != null && project.id == state.projectId
+    var menuOpen by remember { mutableStateOf(false) }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Column(Modifier.weight(1f)) {
+                Text(project?.label ?: "Threads", style = MaterialTheme.typography.titleLarge)
+                project?.supportingText?.let {
+                    Text(
+                        it,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+            if (project != null) {
+                Box {
+                    IconButton(onClick = { menuOpen = true }) {
+                        Text("⋯", style = MaterialTheme.typography.titleLarge)
+                    }
+                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                        val close = { menuOpen = false }
+                        if (isCurrentProject && state.threadId != null) {
+                            ThreadActionMenuItems(state, onEvent, onDone = { close(); onDismiss() })
+                            HorizontalDivider()
+                        }
+                        DropdownMenuItem(
+                            text = { Text(if (picker.showArchived) "Hide archived threads" else "Show archived threads") },
+                            onClick = { close(); onEvent(ChatUiEvent.ArchivedThreadsVisibilityChanged(!picker.showArchived)) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Rename project") },
+                            onClick = { close(); onEvent(ChatUiEvent.ProjectRenameRequested(project.id)) },
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Remove project", color = MaterialTheme.colorScheme.error) },
+                            onClick = { close(); onEvent(ChatUiEvent.ProjectRemovalRequested(project.id)) },
+                        )
+                    }
+                }
+            }
+        }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = 520.dp)
+                .verticalScroll(rememberScrollState())
+                .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 28.dp),
+        ) {
+            ProjectThreads(
+                picker = picker,
+                onEvent = onEvent,
+                onThreadChosen = { onEvent(ChatUiEvent.ThreadSelected(it)) },
+                onNewThread = { onEvent(ChatUiEvent.NewThreadRequested) },
+            )
+        }
+    }
+}
+
+/** Actions on the current thread. Callers decide where the menu is anchored. */
+@Composable
+fun ThreadActionMenuItems(
+    state: ChatUiState,
+    onEvent: (ChatUiEvent) -> Unit,
+    onDone: () -> Unit,
+) {
+    fun run(block: () -> Unit) {
+        onDone()
+        block()
+    }
+    if (state.canRenameThread) {
+        DropdownMenuItem(text = { Text("Rename thread") }, onClick = { run { onEvent(ChatUiEvent.RenameThreadRequested) } })
+    }
+    if (state.isThreadArchived) {
+        DropdownMenuItem(text = { Text("Unarchive") }, onClick = { run { onEvent(ChatUiEvent.UnarchiveThreadRequested) } })
+    } else if (state.canArchiveThread) {
+        DropdownMenuItem(text = { Text("Archive") }, onClick = { run { onEvent(ChatUiEvent.ArchiveThreadRequested) } })
+    }
+    if (state.threadSnooze.supported) {
+        if (state.threadSnooze.isSnoozed) {
+            DropdownMenuItem(
+                text = { Text(if (state.threadSnooze.actionInProgress) "Waking…" else "Wake") },
+                enabled = state.threadSnooze.canWake,
+                onClick = { run { onEvent(ChatUiEvent.ThreadWakeRequested) } },
+            )
+        } else {
+            DropdownMenuItem(
+                text = { Text(if (state.threadSnooze.actionInProgress) "Snoozing…" else "Snooze 1h") },
+                enabled = state.threadSnooze.canSnooze,
+                onClick = {
+                    run { onEvent(ChatUiEvent.ThreadSnoozeRequested(Instant.now().plus(1, ChronoUnit.HOURS).toString())) }
+                },
+            )
+        }
+    }
+    if (state.canDeleteThread) {
+        DropdownMenuItem(
+            text = { Text("Delete permanently", color = MaterialTheme.colorScheme.error) },
+            onClick = { run { onEvent(ChatUiEvent.DeleteThreadRequested) } },
+        )
+    }
+}
+
+/** App-level settings only; thread and project actions live with the thread list. */
+@Composable
+@OptIn(ExperimentalMaterial3Api::class)
+private fun SettingsSheet(
+    state: ChatUiState,
+    onEvent: (ChatUiEvent) -> Unit,
+    onOpenUpdater: () -> Unit,
+    onOpenUsage: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val environment = state.environmentPicker.environments
+        .firstOrNull { it.id == state.environmentPicker.selectedEnvironmentId }
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    ) {
+        LazyColumn(contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 32.dp)) {
+            item { Text("Settings", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(bottom = 12.dp)) }
+
+            item { SettingsSectionLabel("Environment") }
+            item {
+                SettingsRow(
+                    title = state.environmentLabel,
+                    subtitle = environment?.supportingText,
+                    trailing = { environment?.let { EnvironmentConnectionDot(it.connection, withLabel = true) } },
+                    onClick = { onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.ENVIRONMENT)) },
+                )
+            }
+            item { SettingsRow("Pair or manage environments", onClick = { onEvent(ChatUiEvent.PairEnvironmentRequested) }) }
+
+            item { SettingsSectionLabel("Appearance") }
+            item {
+                SettingsChipRow(ThemePreference.entries, state.interfaceSettings.theme, { it.name.lowercase().replaceFirstChar(Char::uppercase) }) {
+                    onEvent(ChatUiEvent.ThemeSelected(it))
+                }
+            }
+            item {
+                LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(vertical = 4.dp)) {
+                    items(AccentPreference.entries) { accent ->
+                        FilterChip(
+                            selected = state.interfaceSettings.accent == accent,
+                            onClick = { onEvent(ChatUiEvent.AccentSelected(accent)) },
+                            label = { Text(accent.name.lowercase().replaceFirstChar(Char::uppercase)) },
+                            leadingIcon = {
+                                Box(
+                                    Modifier
+                                        .size(12.dp)
+                                        .clip(CircleShape)
+                                        .background(accent.previewColor()),
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
+                    Text("Interface size", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    SettingsChipRow(listOf(0.9f, 1f, 1.15f), state.interfaceSettings.interfaceScale, { "${(it * 100).toInt()}%" }) {
+                        onEvent(ChatUiEvent.InterfaceScaleSelected(it))
+                    }
+                }
+            }
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Code and Markdown size", modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
+                    SettingsChipRow(listOf(0.9f, 1f, 1.15f), state.interfaceSettings.codeScale, { "${(it * 100).toInt()}%" }) {
+                        onEvent(ChatUiEvent.CodeScaleSelected(it))
+                    }
+                }
+            }
+
+            item { SettingsSectionLabel("Composer") }
+            item {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Send while running", style = MaterialTheme.typography.bodyMedium)
+                        Text(
+                            "Long-press send for the other action",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    SettingsChipRow(FollowUpBehavior.entries, state.interfaceSettings.followUpBehavior, { it.name.lowercase().replaceFirstChar(Char::uppercase) }) {
+                        onEvent(ChatUiEvent.FollowUpBehaviorSelected(it))
+                    }
+                }
+            }
+            item {
+                SettingsRow(
+                    title = "Voice input",
+                    subtitle = if (state.groqSettings.apiKeyConfigured) "Groq API key configured" else "Add a Groq API key to enable the microphone",
+                    onClick = { onEvent(ChatUiEvent.GroqSettingsRequested) },
+                )
+            }
+            item {
+                SettingsRow(
+                    title = "Models and favorites",
+                    subtitle = "Choose models and manage composer shortcuts",
+                    onClick = { onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROVIDER_MODEL)) },
+                )
+            }
+
+            item { SettingsSectionLabel("More") }
+            item { SettingsRow("Usage", onClick = onOpenUsage) }
+            state.environmentPicker.selectedEnvironmentId?.let { id ->
+                item { SettingsRow("Storage and cache", onClick = { onEvent(ChatUiEvent.CacheInspectionRequested(id)) }) }
+            }
+            StorUpdaterSettingsEntry(onClick = onOpenUpdater)
+            if (state.durableWork.isNotEmpty()) {
+                item {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 8.dp)) {
+                        Text("Pending sync", style = MaterialTheme.typography.labelLarge)
+                        state.durableWork.forEach { work ->
+                            Text(
+                                buildString {
+                                    append(work.label)
+                                    work.threadId?.let { append(" · thread ").append(it) }
+                                    append(if (work.failed) " · failed" else " · pending")
+                                    if (work.attemptCount > 0) append(" · attempts ").append(work.attemptCount)
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                            work.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                        }
+                        if (state.durableWork.any(DurableWorkUi::awaitsReplay)) {
+                            TextButton(onClick = { onEvent(ChatUiEvent.DurableWorkRetryRequested) }) {
+                                Text("Reconnect and retry")
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                Text(
+                    "Hardware keyboard: Ctrl/⌘+Enter send · Shift+Enter newline · Esc stop · Ctrl/⌘+N new thread · Ctrl/⌘+K settings",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 20.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsSectionLabel(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.labelLarge,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(top = 20.dp, bottom = 6.dp),
+    )
+}
+
+@Composable
+private fun SettingsRow(
+    title: String,
+    subtitle: String? = null,
+    trailing: @Composable () -> Unit = {},
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge)
+            subtitle?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        trailing()
+        Text("›", color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 12.dp))
+    }
+}
+
+@Composable
+private fun <T> SettingsChipRow(values: List<T>, selected: T, label: (T) -> String, onSelect: (T) -> Unit) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        values.forEach { value ->
+            FilterChip(selected = value == selected, onClick = { onSelect(value) }, label = { Text(label(value)) })
+        }
+    }
 }
 
 private fun fileCountLabel(count: Int): String = "$count changed ${if (count == 1) "file" else "files"}"

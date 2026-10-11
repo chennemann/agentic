@@ -1522,6 +1522,7 @@ class ChatViewModel(
             title = detail?.title ?: shellThread?.title ?: "New thread",
             environmentLabel = environment.active?.label ?: "T3",
             projectLabel = project?.title,
+            projectId = projectId,
             canCreateNewProject = hasEnvironmentConfig && orchestration.config.value.newProjectsRoot != null,
             canUseScratchProject = hasEnvironmentConfig && orchestration.config.value.scratchWorkspaceRoot != null,
             threadId = orchestration.threadId,
