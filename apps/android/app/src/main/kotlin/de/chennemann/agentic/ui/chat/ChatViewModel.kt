@@ -916,9 +916,7 @@ class ChatViewModel(
         val threadId = repository.focusedThreadId.value
         val detail = repository.focusedThread.value.value?.thread
             ?.takeIf { it.id == threadId }
-        val runtimeMode = local.value.runtimeModeId
-            ?: detail?.runtimeMode
-            ?: DefaultRuntimeMode
+        val runtimeMode = local.value.runtimeModeId ?: DefaultRuntimeMode
         val behavior = state.value.composer.followUpBehavior.let { if (alternate) it.alternate() else it }
         if (threadId != null && detail?.session?.status in ActiveSessionStatuses && behavior == FollowUpBehavior.QUEUE) {
             val queue = messageQueue ?: return submissionUnavailable("Message queuing is unavailable.")
@@ -1005,7 +1003,7 @@ class ChatViewModel(
             ?.takeIf { it.id == planId }
             ?: return
         val selection = selectedModel() ?: return
-        val runtimeMode = local.value.runtimeModeId ?: detail.runtimeMode ?: DefaultRuntimeMode
+        val runtimeMode = local.value.runtimeModeId ?: DefaultRuntimeMode
         update {
             copy(
                 planContinuationId = actionable.id,
@@ -1494,7 +1492,7 @@ class ChatViewModel(
             ?: detail?.modelSelection?.optionId()
             ?: project?.defaultModelSelection?.optionId()
             ?: modelOptions.firstOrNull()?.id
-        val runtime = local.runtimeModeId ?: detail?.runtimeMode ?: DefaultRuntimeMode
+        val runtime = local.runtimeModeId ?: DefaultRuntimeMode
         val inheritedOptions = listOfNotNull(
             detail?.modelSelection?.takeIf { it.optionId() == selectedModelId },
             project?.defaultModelSelection?.takeIf { it.optionId() == selectedModelId },

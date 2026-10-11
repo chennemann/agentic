@@ -57,6 +57,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -77,16 +79,12 @@ import de.chennemann.agentic.icons.Brain
 import de.chennemann.agentic.icons.ChevronDown
 import de.chennemann.agentic.icons.Flame
 import de.chennemann.agentic.icons.Icons
-import de.chennemann.agentic.icons.Lock
 import de.chennemann.agentic.icons.Microphone
 import de.chennemann.agentic.icons.Paperclip
-import de.chennemann.agentic.icons.Pencil
 import de.chennemann.agentic.icons.Send
-import de.chennemann.agentic.icons.Sparkles
 import de.chennemann.agentic.icons.Stop
 import de.chennemann.agentic.icons.TextAlignStart
 import de.chennemann.agentic.icons.Tune
-import de.chennemann.agentic.icons.Unlock
 import de.chennemann.agentic.ui.chat.ChatPickerUi
 import de.chennemann.agentic.ui.chat.ChatUiEvent
 import de.chennemann.agentic.ui.chat.HardwareKeyboardBindings
@@ -100,7 +98,6 @@ import de.chennemann.agentic.ui.chat.ProjectQuickSwitchUi
 import de.chennemann.agentic.ui.chat.ProviderModelOptionUi
 import de.chennemann.agentic.ui.chat.ProviderOptionUi
 import de.chennemann.agentic.ui.chat.ProviderOptionValueUi
-import de.chennemann.agentic.ui.chat.RuntimeModeOptionUi
 import de.chennemann.agentic.ui.chat.VoiceInputStatusUi
 import android.graphics.BitmapFactory
 import android.util.Base64
@@ -112,9 +109,9 @@ private val ComposerDisabled = Color(0xFF686868)
 private val ComposerSelected = Color(0xFF202020)
 
 /**
- * The composer is the navigation hub of the chat screen. Top to bottom: message input, run
- * controls summary (model / options / access), the project › thread context line, and the
- * project quick-switch row with the project drawer handle at its start.
+ * The composer is the navigation hub of the chat screen. Top to bottom: the project › thread
+ * context line, message input with bottom-aligned actions, run controls summary (model and
+ * provider options), and the project quick-switch row framed by the drawer handle and new thread.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -125,6 +122,7 @@ fun T3MessageComposer(
     modifier: Modifier = Modifier,
     projectLabel: String? = null,
     threadTitle: String? = null,
+    threadsOpen: Boolean = false,
     onOpenProjectPicker: () -> Unit = {
         onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
     },
@@ -149,9 +147,6 @@ fun T3MessageComposer(
     }
     val selectedModel = state.providerModels.firstOrNull {
         it.id == state.selectedProviderModelId
-    }
-    val selectedRuntimeMode = state.runtimeModes.firstOrNull {
-        it.id == state.selectedRuntimeModeId
     }
     val commandQuery = state.draft
         .takeIf { it.startsWith("/") }
@@ -201,7 +196,12 @@ fun T3MessageComposer(
         contentColor = ComposerContent,
     ) {
         Column {
-            Spacer(modifier = Modifier.height(6.dp))
+            ContextLine(
+                projectLabel = projectLabel,
+                threadTitle = threadTitle,
+                open = threadsOpen,
+                onToggleThreads = onOpenThreads,
+            )
             if (state.imageAttachments.isNotEmpty()) {
                 LazyRow(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
@@ -244,7 +244,11 @@ fun T3MessageComposer(
                     }
                 }
             }
-            Box(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(end = 12.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                Box(modifier = Modifier.weight(1f)) {
                 TextField(
                     value = state.draft,
                     onValueChange = {
@@ -253,7 +257,6 @@ fun T3MessageComposer(
                     },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(end = if (turnRunning && hasMessage) 136.dp else 88.dp)
                         .focusRequester(inputFocusRequester)
                         .testTag(ComposerInputTestTag)
                         .onPreviewKeyEvent { keyEvent ->
@@ -330,11 +333,10 @@ fun T3MessageComposer(
                     }
                 }
 
+                }
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = 6.dp, end = 12.dp),
-                    horizontalArrangement = Arrangement.End,
+                    modifier = Modifier.padding(bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(
                         onClick = { imagePicker.launch("image/*") },
@@ -414,7 +416,6 @@ fun T3MessageComposer(
                     RunControlStrip(
                         state = state,
                         selectedModel = selectedModel,
-                        selectedRuntimeMode = selectedRuntimeMode,
                         onEvent = onEvent,
                         onClose = { controlsOpen = false },
                     )
@@ -422,7 +423,6 @@ fun T3MessageComposer(
                     ComposerSummary(
                         selectedModel = selectedModel,
                         providerOptions = state.providerOptions,
-                        selectedRuntimeMode = selectedRuntimeMode,
                         enabled = state.enabled,
                         onExpand = {
                             focusManager.clearFocus(force = true)
@@ -442,13 +442,7 @@ fun T3MessageComposer(
                 )
             }
 
-            ContextLine(
-                projectLabel = projectLabel,
-                threadTitle = threadTitle,
-                onOpenThreads = onOpenThreads,
-                onNewThread = { onEvent(ChatUiEvent.NewThreadRequested) },
-            )
-
+            Spacer(modifier = Modifier.height(12.dp))
             Box(
                 modifier = Modifier.fillMaxWidth(),
             ) {
@@ -486,32 +480,41 @@ fun T3MessageComposer(
                         contentDescription = "Open project picker",
                     )
                 }
+                IconButton(
+                    onClick = { onEvent(ChatUiEvent.NewThreadRequested) },
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .offset(y = (-1.5).dp),
+                ) {
+                    Icon(Icons.Add, contentDescription = "New thread", tint = MaterialTheme.colorScheme.primary)
+                }
             }
         }
     }
 }
 
-/** `project › thread ▾` with a new-thread action; tapping the line lists the project's threads. */
+/** `project › thread ▾`; tapping it toggles the thread panel that slides out of the composer. */
 @Composable
 private fun ContextLine(
     projectLabel: String?,
     threadTitle: String?,
-    onOpenThreads: () -> Unit,
-    onNewThread: () -> Unit,
+    open: Boolean,
+    onToggleThreads: () -> Unit,
 ) {
+    val chevronRotation by animateFloatAsState(if (open) 180f else 0f, label = "threads chevron")
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(start = 10.dp, end = 4.dp, top = 2.dp, bottom = 2.dp),
+            .padding(start = 10.dp, end = 10.dp, top = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Row(
             modifier = Modifier
                 .weight(1f)
                 .clip(RoundedCornerShape(8.dp))
-                .clickable(onClick = onOpenThreads)
-                .semantics { contentDescription = "Open threads" }
-                .padding(horizontal = 6.dp, vertical = 8.dp),
+                .clickable(onClick = onToggleThreads)
+                .semantics { contentDescription = if (open) "Close threads" else "Open threads" }
+                .padding(horizontal = 6.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
@@ -534,11 +537,8 @@ private fun ContextLine(
                 imageVector = Icons.ChevronDown,
                 contentDescription = null,
                 tint = ComposerMuted,
-                modifier = Modifier.padding(start = 4.dp).size(16.dp),
+                modifier = Modifier.padding(start = 4.dp).size(16.dp).rotate(chevronRotation),
             )
-        }
-        IconButton(onClick = onNewThread) {
-            Icon(Icons.Add, contentDescription = "New thread", tint = MaterialTheme.colorScheme.primary)
         }
     }
 }
@@ -566,7 +566,6 @@ const val ComposerInputTestTag = "composer-input"
 private fun ComposerSummary(
     selectedModel: ProviderModelOptionUi?,
     providerOptions: List<ProviderOptionUi>,
-    selectedRuntimeMode: RuntimeModeOptionUi?,
     enabled: Boolean,
     onExpand: () -> Unit,
 ) {
@@ -574,9 +573,9 @@ private fun ComposerSummary(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(enabled = enabled, onClick = onExpand)
-            .semantics { contentDescription = "Open model, reasoning, and access controls" }
+            .semantics { contentDescription = "Open model controls" }
             .padding(horizontal = 16.dp, vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(14.dp, Alignment.End),
+        horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         SummaryItem(
@@ -594,10 +593,6 @@ private fun ComposerSummary(
                 contentDescription = "${option.label}: $valueLabel",
             )
         }
-        SummaryItem(
-            icon = selectedRuntimeMode?.icon() ?: Icons.Lock,
-            contentDescription = "Access: ${selectedRuntimeMode?.label ?: "not selected"}",
-        )
     }
 }
 
@@ -638,7 +633,6 @@ private fun SummaryItem(
 private fun RunControlStrip(
     state: ComposerUiState,
     selectedModel: ProviderModelOptionUi?,
-    selectedRuntimeMode: RuntimeModeOptionUi?,
     onEvent: (ChatUiEvent) -> Unit,
     onClose: () -> Unit,
 ) {
@@ -724,27 +718,6 @@ private fun RunControlStrip(
                 }
             }
         }
-        StripChip(
-            icon = selectedRuntimeMode?.icon() ?: Icons.Lock,
-            label = selectedRuntimeMode?.label ?: "Access",
-            contentDescription = "Access: ${selectedRuntimeMode?.label ?: "not selected"}",
-            enabled = state.enabled && state.runtimeModes.isNotEmpty(),
-        ) { close ->
-            state.runtimeModes.forEach { mode ->
-                DropdownMenuItem(
-                    text = {
-                        Column {
-                            Text(mode.label)
-                            mode.description?.let {
-                                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                        }
-                    },
-                    leadingIcon = { Icon(mode.icon(), contentDescription = null, modifier = Modifier.size(18.dp)) },
-                    onClick = { close(); onEvent(ChatUiEvent.RuntimeModeSelected(mode.id)) },
-                )
-            }
-        }
         if (state.workspaceChoices.isNotEmpty()) {
             val workspace = state.workspaceChoices.firstOrNull { it.id == state.selectedWorkspaceId }
             StripChip(
@@ -803,14 +776,6 @@ private fun ProviderOptionValueUi.displayLabel(): String =
 
 private fun ProviderOptionUi.icon(): ImageVector =
     if (label.trim().lowercase().contains("reason")) Icons.Flame else Icons.Tune
-
-private fun RuntimeModeOptionUi.icon(): ImageVector = when (id) {
-    "approval-required" -> Icons.Lock
-    "auto-accept-edits" -> Icons.Pencil
-    "auto" -> Icons.Sparkles
-    "full-access" -> Icons.Unlock
-    else -> Icons.Lock
-}
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable

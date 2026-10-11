@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -21,6 +22,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.Text
@@ -220,7 +222,7 @@ fun ProjectThreads(
         Text(
             "No threads yet",
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = LocalContentColor.current.copy(alpha = 0.6f),
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
         )
     }
@@ -300,11 +302,15 @@ private fun NewThreadRow(onClick: () -> Unit) {
     }
 }
 
+/** Fixed-height row so callers can size a list from the number of threads. */
+internal val ThreadRowHeight = 40.dp
+
 @Composable
-private fun ThreadRow(thread: ThreadPickerItemUi, selected: Boolean, settled: Boolean = false, onClick: () -> Unit) {
+internal fun ThreadRow(thread: ThreadPickerItemUi, selected: Boolean, settled: Boolean = false, onClick: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
+            .height(ThreadRowHeight)
             .clip(RoundedCornerShape(10.dp))
             .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
             .clickable(onClick = onClick)
@@ -317,28 +323,29 @@ private fun ThreadRow(thread: ThreadPickerItemUi, selected: Boolean, settled: Bo
                 when {
                     thread.active -> MaterialTheme.colorScheme.primary
                     settled || thread.archived -> Color.Transparent
-                    else -> MaterialTheme.colorScheme.outline
+                    else -> LocalContentColor.current.copy(alpha = 0.4f)
                 },
             ),
         )
-        Column(Modifier.weight(1f)) {
-            Text(
-                thread.title,
-                style = MaterialTheme.typography.bodyMedium,
-                color = when {
-                    selected -> MaterialTheme.colorScheme.onPrimaryContainer
-                    settled || thread.archived -> MaterialTheme.colorScheme.onSurfaceVariant
-                    else -> MaterialTheme.colorScheme.onSurface
-                },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            thread.snoozedUntil?.let {
-                Text("Snoozed until $it", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
-            }
+        Text(
+            thread.title,
+            style = MaterialTheme.typography.bodyMedium,
+            color = when {
+                selected -> MaterialTheme.colorScheme.onPrimaryContainer
+                settled || thread.archived -> LocalContentColor.current.copy(alpha = 0.6f)
+                else -> LocalContentColor.current
+            },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+        )
+        val badge = when {
+            thread.archived -> "Archived"
+            thread.snoozedUntil != null -> "Snoozed"
+            else -> null
         }
-        if (thread.archived) {
-            Text("Archived", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        badge?.let {
+            Text(it, style = MaterialTheme.typography.labelSmall, color = LocalContentColor.current.copy(alpha = 0.6f))
         }
     }
 }

@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -23,6 +24,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -32,6 +34,31 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.Velocity
+import androidx.compose.material3.Surface
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Dp
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -124,13 +151,8 @@ fun ChatSelectionSheets(
             }
         }
 
-        ChatPickerUi.PROJECT_THREAD -> {
-            ProjectThreadsSheet(
-                state = state,
-                onEvent = onEvent,
-                onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
-            )
-        }
+        // Rendered by the chat screen as a panel sliding down from the top.
+        ChatPickerUi.PROJECT_THREAD -> Unit
 
         ChatPickerUi.PROVIDER_MODEL -> {
             PickerSheet(
@@ -554,81 +576,231 @@ private fun PickerRow(
     }
 }
 
-/** Threads of the picker project, with thread and project actions behind a single menu. */
+/**
+ * Threads of the picker project, sliding up from behind the composer. One continuous reveal
+ * distance drives everything: opening animates to the "active threads" stop, scrolling up grows
+ * the panel until it fills [maxHeight] and only then scrolls the list, scrolling down shrinks it
+ * again and, released below the stop, it falls back behind the composer. The project header is
+ * the first list item so it drags along with everything else.
+ */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
-@OptIn(ExperimentalMaterial3Api::class)
-private fun ProjectThreadsSheet(
+fun ThreadPanel(
+    visible: Boolean,
     state: ChatUiState,
     onEvent: (ChatUiEvent) -> Unit,
     onDismiss: () -> Unit,
+    maxHeight: Dp,
+    onRevealProgress: (Float) -> Unit = {},
 ) {
     val picker = state.threadPicker
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    val revealed = remember { Animatable(0f) }
+    var headerHeightPx by remember { mutableIntStateOf(with(density) { 64.dp.roundToPx() }) }
+    val hasSettled = picker.settledThreads.isNotEmpty()
+    val activeRows = picker.threads.size.coerceAtLeast(1)
+    val listPaddingPx = with(density) { 4.dp.toPx() }
+    val headingPx = if (hasSettled) with(density) { SettledHeadingHeight.toPx() } else 0f
+    // The first stage shows the active threads plus the settled heading, which doubles as the
+    // "scroll up for more" hint.
+    val stopPx = headerHeightPx + with(density) { (ThreadRowHeight * activeRows).toPx() } + headingPx + listPaddingPx
+    val contentPx = headerHeightPx + listPaddingPx + headingPx + with(density) {
+        (ThreadRowHeight * (activeRows + picker.settledThreads.size)).toPx()
+    }
+    val maxHeightPx = with(density) { maxHeight.toPx() }
+    val currentStop by rememberUpdatedState(stopPx.coerceAtMost(maxHeightPx))
+    val currentMax by rememberUpdatedState(contentPx.coerceAtMost(maxHeightPx))
+    val currentOnDismiss by rememberUpdatedState(onDismiss)
+    val settle = spring<Float>(stiffness = Spring.StiffnessMediumLow)
+
+    LaunchedEffect(visible, currentStop) {
+        if (visible) {
+            if (revealed.value < currentStop) revealed.animateTo(currentStop, settle)
+        } else if (revealed.value > 0f) {
+            revealed.animateTo(0f, settle)
+        }
+    }
+    val currentOnRevealProgress by rememberUpdatedState(onRevealProgress)
+    LaunchedEffect(Unit) {
+        snapshotFlow { if (currentStop > 0f) (revealed.value / currentStop).coerceIn(0f, 1f) else 0f }
+            .collect { currentOnRevealProgress(it) }
+    }
+    if (!visible && revealed.value <= 0f) return
+
+    val listState = rememberLazyListState()
+    val revealConnection = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (available.y >= 0f || revealed.value >= currentMax) return Offset.Zero
+                val grow = minOf(-available.y, currentMax - revealed.value)
+                scope.launch { revealed.snapTo(revealed.value + grow) }
+                return Offset(0f, -grow)
+            }
+
+            override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+                if (available.y <= 0f || revealed.value <= 0f) return Offset.Zero
+                // Only a finger drag may pull the panel below the stop; fling momentum stops there.
+                val floor = if (source == NestedScrollSource.UserInput) 0f else currentStop
+                val shrink = minOf(available.y, revealed.value - floor).coerceAtLeast(0f)
+                if (shrink <= 0f) return Offset.Zero
+                scope.launch {
+                    revealed.snapTo(revealed.value - shrink)
+                    if (revealed.value <= 0f) currentOnDismiss()
+                }
+                return Offset(0f, shrink)
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                val value = revealed.value
+                val stop = currentStop
+                return when {
+                    // Below the stop: fall back behind the composer or return to the stop.
+                    value < stop -> {
+                        if (available.y > 0f || value < stop / 2f) {
+                            revealed.animateTo(0f, settle)
+                            currentOnDismiss()
+                        } else {
+                            revealed.animateTo(stop, settle)
+                        }
+                        available
+                    }
+                    // Above the stop with the list at its top: a downward fling returns to the stop.
+                    value > stop && available.y > 0f && listState.isAtTop() -> {
+                        revealed.animateTo(stop, settle)
+                        available
+                    }
+                    else -> Velocity.Zero
+                }
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                // Leftover downward momentum after the list reached its top settles at the stop.
+                if (available.y > 0f && revealed.value > currentStop) {
+                    revealed.animateTo(currentStop, settle)
+                    return available
+                }
+                return Velocity.Zero
+            }
+        }
+    }
+
     val project = picker.projects.firstOrNull { it.id == picker.selectedProjectId }
     val isCurrentProject = project != null && project.id == state.projectId
     var menuOpen by remember { mutableStateOf(false) }
-    ModalBottomSheet(
-        onDismissRequest = onDismiss,
-        sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true),
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(with(density) { revealed.value.toDp() })
+            .clipToBounds(),
+        color = Color.Black,
+        contentColor = Color.White,
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(project?.label ?: "Threads", style = MaterialTheme.typography.titleLarge)
-                project?.supportingText?.let {
-                    Text(
-                        it,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-            }
-            if (project != null) {
-                Box {
-                    IconButton(onClick = { menuOpen = true }) {
-                        Text("⋯", style = MaterialTheme.typography.titleLarge)
-                    }
-                    DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
-                        val close = { menuOpen = false }
-                        if (isCurrentProject && state.threadId != null) {
-                            ThreadActionMenuItems(state, onEvent, onDone = { close(); onDismiss() })
-                            HorizontalDivider()
+        Box(Modifier.fillMaxSize()) {
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .nestedScroll(revealConnection),
+                contentPadding = PaddingValues(bottom = 4.dp),
+            ) {
+                stickyHeader("header") {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.Black)
+                            .padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 4.dp)
+                            .onSizeChanged { headerHeightPx = it.height + with(density) { 12.dp.roundToPx() } },
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(project?.label ?: "Threads", style = MaterialTheme.typography.titleMedium)
+                            project?.supportingText?.let {
+                                Text(
+                                    it,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = LocalContentColor.current.copy(alpha = 0.6f),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
                         }
-                        DropdownMenuItem(
-                            text = { Text(if (picker.showArchived) "Hide archived threads" else "Show archived threads") },
-                            onClick = { close(); onEvent(ChatUiEvent.ArchivedThreadsVisibilityChanged(!picker.showArchived)) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Rename project") },
-                            onClick = { close(); onEvent(ChatUiEvent.ProjectRenameRequested(project.id)) },
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Remove project", color = MaterialTheme.colorScheme.error) },
-                            onClick = { close(); onEvent(ChatUiEvent.ProjectRemovalRequested(project.id)) },
-                        )
+                        if (project != null) {
+                            Box {
+                                IconButton(onClick = { menuOpen = true }) {
+                                    Text("⋯", style = MaterialTheme.typography.titleLarge)
+                                }
+                                DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                                    val close = { menuOpen = false }
+                                    if (isCurrentProject && state.threadId != null) {
+                                        ThreadActionMenuItems(state, onEvent, onDone = { close(); onDismiss() })
+                                        HorizontalDivider()
+                                    }
+                                    DropdownMenuItem(
+                                        text = { Text(if (picker.showArchived) "Hide archived threads" else "Show archived threads") },
+                                        onClick = { close(); onEvent(ChatUiEvent.ArchivedThreadsVisibilityChanged(!picker.showArchived)) },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Rename project") },
+                                        onClick = { close(); onEvent(ChatUiEvent.ProjectRenameRequested(project.id)) },
+                                    )
+                                    DropdownMenuItem(
+                                        text = { Text("Remove project", color = MaterialTheme.colorScheme.error) },
+                                        onClick = { close(); onEvent(ChatUiEvent.ProjectRemovalRequested(project.id)) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+                if (picker.threads.isEmpty()) {
+                    item("no-active") {
+                        Box(Modifier.height(ThreadRowHeight).padding(horizontal = 24.dp), contentAlignment = Alignment.CenterStart) {
+                            Text(
+                                "No active threads",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = LocalContentColor.current.copy(alpha = 0.6f),
+                            )
+                        }
+                    }
+                }
+                items(picker.threads, key = { "active:${it.id}" }) { thread ->
+                    Box(Modifier.padding(horizontal = 12.dp)) {
+                        ThreadRow(thread, thread.id == picker.selectedThreadId) { onEvent(ChatUiEvent.ThreadSelected(thread.id)) }
+                    }
+                }
+                if (hasSettled) {
+                    item("settled-heading") {
+                        SettledHeading(picker.settledThreads.size, Modifier.height(SettledHeadingHeight))
+                    }
+                    items(picker.settledThreads, key = { "settled:${it.id}" }) { thread ->
+                        Box(Modifier.padding(horizontal = 12.dp)) {
+                            ThreadRow(thread, thread.id == picker.selectedThreadId, settled = true) {
+                                onEvent(ChatUiEvent.ThreadSelected(thread.id))
+                            }
+                        }
                     }
                 }
             }
-        }
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(max = 520.dp)
-                .verticalScroll(rememberScrollState())
-                .padding(start = 12.dp, end = 12.dp, top = 4.dp, bottom = 28.dp),
-        ) {
-            ProjectThreads(
-                picker = picker,
-                onEvent = onEvent,
-                onThreadChosen = { onEvent(ChatUiEvent.ThreadSelected(it)) },
-                onNewThread = { onEvent(ChatUiEvent.NewThreadRequested) },
-            )
         }
     }
 }
+
+@Composable
+private fun SettledHeading(count: Int, modifier: Modifier = Modifier) {
+    Box(modifier.fillMaxWidth().padding(start = 24.dp), contentAlignment = Alignment.BottomStart) {
+        Text(
+            "$count settled · scroll up for more",
+            style = MaterialTheme.typography.labelMedium,
+            color = LocalContentColor.current.copy(alpha = 0.6f),
+            modifier = Modifier.padding(bottom = 8.dp),
+        )
+    }
+}
+
+private fun LazyListState.isAtTop(): Boolean = firstVisibleItemIndex == 0 && firstVisibleItemScrollOffset == 0
+
+private val SettledHeadingHeight = 36.dp
 
 /** Actions on the current thread. Callers decide where the menu is anchored. */
 @Composable

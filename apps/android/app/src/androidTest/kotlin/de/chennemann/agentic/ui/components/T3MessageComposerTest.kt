@@ -117,7 +117,7 @@ class T3MessageComposerTest {
         compose.onAllNodesWithText("Done").assertCountEquals(0)
         compose.onNodeWithText("Message").performClick().assertIsFocused()
         compose.onNodeWithContentDescription(
-            "Open model, reasoning, and access controls",
+            "Open model controls",
         ).performClick()
         compose.onNodeWithText("Message").assertIsNotFocused()
         compose.onNodeWithText("Done").assertIsDisplayed()
@@ -133,15 +133,11 @@ class T3MessageComposerTest {
             ),
             receivedEvents,
         )
-        compose.onNodeWithContentDescription("Access: Full access").performClick()
-        compose.onNodeWithText("Allow all supported actions without approval.").assertIsDisplayed()
-        compose.onNodeWithText("Ask before changes.").assertIsDisplayed()
-        compose.onNodeWithText("Supervised").performClick()
-        assertEquals(ChatUiEvent.RuntimeModeSelected("approval-required"), receivedEvents.last())
+        compose.onAllNodesWithContentDescription("Access: Full access").assertCountEquals(0)
 
         compose.onNodeWithText("Message").performClick()
         compose.onAllNodesWithText("Done").assertCountEquals(0)
-        compose.onNodeWithContentDescription("Access: Full access").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Model Model").assertIsDisplayed()
     }
 
     @Test

@@ -11,7 +11,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.graphics.Color
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -52,6 +58,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateMapOf
@@ -80,6 +87,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -398,12 +406,32 @@ fun T3ChatScreen(
                 }
             }
 
-            Box(
+            val threadPanelVisible = state.activePicker == ChatPickerUi.PROJECT_THREAD
+            var threadPanelProgress by remember { mutableFloatStateOf(0f) }
+            ThreadPanelScrim(
+                visible = threadPanelVisible,
+                progress = threadPanelProgress,
+                onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
+            )
+            Column(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .zIndex(2f),
+                verticalArrangement = Arrangement.Bottom,
             ) {
+                // Weighted slot: the composer below is measured first and keeps its size; the panel
+                // may only grow into what is left above it.
+                BoxWithConstraints(modifier = Modifier.weight(1f, fill = false)) {
+                    ThreadPanel(
+                        visible = threadPanelVisible,
+                        state = state,
+                        onEvent = onEvent,
+                        onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
+                        maxHeight = maxHeight,
+                        onRevealProgress = { threadPanelProgress = it },
+                    )
+                }
                 Column(modifier = Modifier.onSizeChanged { composerHeightPx = it.height }) {
                     if (pendingRequests.isNotEmpty()) {
                         Surface(color = MaterialTheme.colorScheme.surface) {
@@ -433,6 +461,12 @@ fun T3ChatScreen(
                         projectLabel = state.projectLabel,
                         threadTitle = state.title.takeIf { state.threadId != null },
                         onOpenProjectPicker = { scope.launch { drawerState.open() } },
+                    threadsOpen = threadPanelVisible,
+                    onOpenThreads = {
+                        onEvent(
+                            if (threadPanelVisible) ChatUiEvent.PickerDismissed else ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD),
+                        )
+                    },
                         modifier = Modifier,
                         inputFocusRequested = inputFocusRequested,
                         onInputFocusedManually = {
@@ -706,6 +740,25 @@ fun T3ChatScreen(
     }
 }
 
+/** Dims the conversation in step with how far the thread panel is revealed. */
+@Composable
+private fun ThreadPanelScrim(visible: Boolean, progress: Float, onDismiss: () -> Unit) {
+    BackHandler(enabled = visible, onBack = onDismiss)
+    if (progress <= 0f) return
+    Box(
+        Modifier
+            .fillMaxSize()
+            .zIndex(1f)
+            .background(Color.Black.copy(alpha = 0.55f * progress))
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                enabled = visible,
+                onClick = onDismiss,
+            ),
+    )
+}
+
 @Composable
 private fun IsolatedDraftComposer(
     state: ComposerUiState,
@@ -715,6 +768,8 @@ private fun IsolatedDraftComposer(
     projectLabel: String?,
     threadTitle: String?,
     onOpenProjectPicker: () -> Unit,
+    threadsOpen: Boolean,
+    onOpenThreads: () -> Unit,
     modifier: Modifier = Modifier,
     inputFocusRequested: Boolean? = null,
     onInputFocusedManually: () -> Unit = {},
@@ -727,6 +782,8 @@ private fun IsolatedDraftComposer(
             projectLabel = projectLabel,
             threadTitle = threadTitle,
             onOpenProjectPicker = onOpenProjectPicker,
+            threadsOpen = threadsOpen,
+            onOpenThreads = onOpenThreads,
             modifier = modifier,
             inputFocusRequested = inputFocusRequested,
             onInputFocusedManually = onInputFocusedManually,
@@ -740,6 +797,8 @@ private fun IsolatedDraftComposer(
             projectLabel = projectLabel,
             threadTitle = threadTitle,
             onOpenProjectPicker = onOpenProjectPicker,
+            threadsOpen = threadsOpen,
+            onOpenThreads = onOpenThreads,
             modifier = modifier,
             inputFocusRequested = inputFocusRequested,
             onInputFocusedManually = onInputFocusedManually,
