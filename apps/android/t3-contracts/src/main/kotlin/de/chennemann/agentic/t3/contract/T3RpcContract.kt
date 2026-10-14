@@ -465,7 +465,8 @@ data class OrchestrationMessage(
     val streaming: Boolean = false,
     val createdAt: String,
     val updatedAt: String,
-    val attachments: List<ChatAttachment> = emptyList()
+    val attachments: List<ChatAttachment> = emptyList(),
+    val context: JsonObject? = null
 )
 
 @Serializable
@@ -480,6 +481,8 @@ data class ChatAttachment(
 @Serializable
 data class UploadChatAttachment(
     @EncodeDefault val type: String = "image",
+    /** Client-side id so message context records can bind to the attachment before upload. */
+    val id: String? = null,
     val name: String,
     val mimeType: String,
     val sizeBytes: Long,
@@ -554,7 +557,9 @@ data class TurnMessageInput(
     val role: String = "user",
     val text: String,
     @EncodeDefault
-    val attachments: List<UploadChatAttachment> = emptyList()
+    val attachments: List<UploadChatAttachment> = emptyList(),
+    /** Structured message context (`{ version: 1, records: [...] }`), e.g. image annotations. */
+    val context: JsonObject? = null
 )
 
 @Serializable

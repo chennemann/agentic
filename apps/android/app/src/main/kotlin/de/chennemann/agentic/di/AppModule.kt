@@ -165,6 +165,9 @@ val appModule = module {
             ioDispatcher = get<DispatcherProvider>().io,
         )
     }
+    single<de.chennemann.agentic.domain.attachments.AnnotatedImageRenderer> {
+        de.chennemann.agentic.data.attachments.AndroidAnnotatedImageRenderer(get<DispatcherProvider>().default)
+    }
     single<NetworkMonitor> { AndroidNetworkMonitor(get()) }
     single<ClientInstallationId> { AndroidClientInstallationId(get()) }
     single {
@@ -331,6 +334,8 @@ val appModule = module {
             credentials = get(),
             threadHistory = get(),
             messageQueue = get(),
+            annotatedImages = get(),
+            workspaceFiles = get(),
         )
     }
 }

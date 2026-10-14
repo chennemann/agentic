@@ -7,6 +7,7 @@ import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.ModelSelection
 import de.chennemann.agentic.t3.contract.TurnMessageInput
 import de.chennemann.agentic.t3.contract.UploadChatAttachment
+import kotlinx.serialization.json.JsonObject
 import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
@@ -57,6 +58,7 @@ class MessageQueueService(
         model: ModelSelection,
         runtimeMode: String,
         attachments: List<UploadChatAttachment>,
+        context: JsonObject? = null,
     ) {
         val command = ClientOrchestrationCommand.StartTurn(
             commandId = UUID.randomUUID().toString(),
@@ -65,6 +67,7 @@ class MessageQueueService(
                 messageId = UUID.randomUUID().toString(),
                 text = prompt,
                 attachments = attachments,
+                context = context,
             ),
             modelSelection = model,
             runtimeMode = runtimeMode,

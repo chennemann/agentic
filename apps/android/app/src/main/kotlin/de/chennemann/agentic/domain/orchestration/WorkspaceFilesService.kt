@@ -35,6 +35,9 @@ sealed interface WorkspaceFilePreview {
 interface WorkspaceFilesBrowser {
     suspend fun list(threadId: String): WorkspaceFileListing
     suspend fun preview(threadId: String, relativePath: String): WorkspaceFilePreview
+
+    /** Loads an image a message refers to: an absolute path on the environment or one relative to the workspace. */
+    suspend fun image(threadId: String, path: String): WorkspaceFilePreview.Image
 }
 
 class WorkspaceFilesService(
@@ -77,6 +80,20 @@ class WorkspaceFilesService(
         )
     }
 
+    override suspend fun image(threadId: String, path: String): WorkspaceFilePreview.Image {
+        val local = path.removePrefix("file://").let { java.net.URLDecoder.decode(it, Charsets.UTF_8) }
+            .let { if (it.startsWith("/") && WindowsDrivePath.matches(it.drop(1))) it.drop(1) else it }
+        val type = previewType(local.substringBefore('?').substringBefore('#'))
+        require(type is PreviewType.Image) { "This image type cannot be previewed." }
+        require(isAbsoluteEnvironmentPath(local) || isSafeRelativePath(local)) { "This image path is invalid." }
+        val context = context(threadId)
+        return WorkspaceFilePreview.Image(
+            path = path,
+            dataUrl = rpc.loadMediaFile(context.baseUrl, context.token, threadId, local, type.mimeType),
+            mimeType = type.mimeType,
+        )
+    }
+
     private suspend fun context(threadId: String): WorkspaceContext {
         val environment = requireNotNull(environments.activeEnvironment.value) { "Select an environment first." }
         val config = repository.clientConfig.value.value
@@ -94,6 +111,11 @@ class WorkspaceFilesService(
 }
 
 private data class WorkspaceContext(val baseUrl: String, val token: String, val cwd: String)
+
+private val WindowsDrivePath = Regex("^[A-Za-z]:[\\\\/].*")
+
+internal fun isAbsoluteEnvironmentPath(path: String): Boolean =
+    path.startsWith("/") || path.startsWith("\\\\") || WindowsDrivePath.matches(path)
 
 private sealed interface PreviewType {
     data class Image(val mimeType: String) : PreviewType

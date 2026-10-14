@@ -17,6 +17,10 @@ enum class FollowUpBehavior {
     fun alternate() = if (this == STEER) QUEUE else STEER
 }
 
+/** Whether opening an image starts in zoom or annotation mode. */
+@Serializable
+enum class ImageOpenAction { ZOOM, ANNOTATE }
+
 @Serializable
 data class InterfacePreferences(
     val theme: ThemePreference = ThemePreference.SYSTEM,
@@ -24,6 +28,7 @@ data class InterfacePreferences(
     val interfaceScale: Float = 1f,
     val codeScale: Float = 1f,
     val followUpBehavior: FollowUpBehavior = FollowUpBehavior.STEER,
+    val imageOpenAction: ImageOpenAction = ImageOpenAction.ZOOM,
 )
 
 interface InterfacePreferencesRepository {
@@ -33,6 +38,7 @@ interface InterfacePreferencesRepository {
     suspend fun setInterfaceScale(scale: Float)
     suspend fun setFollowUpBehavior(behavior: FollowUpBehavior)
     suspend fun setCodeScale(scale: Float)
+    suspend fun setImageOpenAction(action: ImageOpenAction)
 }
 
 val SupportedDisplayScales = listOf(0.9f, 1f, 1.15f)

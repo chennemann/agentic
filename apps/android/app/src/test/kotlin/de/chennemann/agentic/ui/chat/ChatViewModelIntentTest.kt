@@ -93,6 +93,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.encodeToJsonElement
 import org.junit.jupiter.api.AfterEach
@@ -1636,10 +1637,74 @@ class ChatViewModelIntentTest {
         assertEquals("Unreadable image", viewModel.state.value.composer.errorMessage)
         assertEquals(1, viewModel.state.value.composer.imageAttachments.size)
 
+        val draftId = viewModel.state.value.composer.imageAttachments.single().id
         viewModel.onEvent(ChatUiEvent.MessageSubmitted)
         advanceUntilIdle()
-        assertEquals(listOf(image), chat.startTurnCalls.single().attachments)
+        assertEquals(listOf(image.copy(id = draftId)), chat.startTurnCalls.single().attachments)
+        assertNull(chat.startTurnCalls.single().context)
         assertTrue(viewModel.state.value.composer.imageAttachments.isEmpty())
+    }
+
+    @Test
+    fun `annotated image is rendered and sent with comments and context records`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val chat = NoOpChatActions()
+        val image = de.chennemann.agentic.t3.contract.UploadChatAttachment(
+            name = "shot.png",
+            mimeType = "image/png",
+            sizeBytes = 3,
+            dataUrl = "data:image/png;base64,AQID",
+        )
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository), chat = chat, mappingDispatcher = dispatcher,
+            imageAttachments = { image },
+            annotatedImages = { source, marks, offset ->
+                source.copy(name = "shot-annotated.png", dataUrl = "data:image/png;base64,${marks.size}$offset")
+            },
+        )
+        advanceUntilIdle()
+        viewModel.onEvent(ChatUiEvent.ImagesSelected(listOf("good")))
+        advanceUntilIdle()
+        val draftId = viewModel.state.value.composer.imageAttachments.single().id
+        val mark = de.chennemann.agentic.domain.attachments.ImageAnnotation("m1", 0.1f, 0.1f, 0.2f, 0.2f, "Make this bigger")
+        viewModel.onEvent(ChatUiEvent.ImageAnnotationsSaved(draftId, listOf(mark)))
+        advanceUntilIdle()
+        assertEquals(listOf(mark), viewModel.state.value.composer.imageAttachments.single().annotations)
+
+        viewModel.onEvent(ChatUiEvent.DraftChanged("Please fix"))
+        viewModel.onEvent(ChatUiEvent.MessageSubmitted)
+        advanceUntilIdle()
+
+        val call = chat.startTurnCalls.single()
+        assertEquals("Please fix\n\nannotations for shot.png:\n1. Make this bigger", call.prompt)
+        assertEquals("shot-annotated.png", call.attachments.single().name)
+        assertEquals("data:image/png;base64,10", call.attachments.single().dataUrl)
+        assertEquals(draftId, call.attachments.single().id)
+        val record = call.context!!["records"]!!.jsonArray.single().jsonObject
+        assertEquals(JsonPrimitive(draftId), record["attachmentId"])
+        assertEquals(JsonPrimitive("image"), record["kind"])
+    }
+
+    @Test
+    fun `annotating a conversation image attaches it to the reply with prior marks read-only`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository), chat = NoOpChatActions(), mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+        val prior = de.chennemann.agentic.domain.attachments.ImageAnnotation("p", 0f, 0f, 0.1f, 0.1f, "old")
+        val added = de.chennemann.agentic.domain.attachments.ImageAnnotation("n", 0.5f, 0.5f, 0.1f, 0.1f, "new")
+        viewModel.onEvent(ChatUiEvent.ConversationImageAnnotated("data:image/jpeg;base64,AQID", "sent.jpg", listOf(prior, added), 1))
+        advanceUntilIdle()
+        val draft = viewModel.state.value.composer.imageAttachments.single()
+        assertEquals("sent.jpg", draft.name)
+        assertEquals("image/jpeg", draft.mimeType)
+        assertEquals(listOf(prior, added), draft.annotations)
+        assertEquals(1, draft.burnedAnnotationCount)
     }
 
     @Test
@@ -2495,6 +2560,10 @@ private class RecordingInterfacePreferencesRepository(initial: InterfacePreferen
         codeScales += scale
         mutablePreferences.value = mutablePreferences.value.copy(codeScale = scale)
     }
+
+    override suspend fun setImageOpenAction(action: de.chennemann.agentic.domain.preferences.ImageOpenAction) {
+        mutablePreferences.value = mutablePreferences.value.copy(imageOpenAction = action)
+    }
 }
 
 private class RecordingEnvironmentCacheActions : EnvironmentCacheActions {
@@ -2677,6 +2746,7 @@ private class NoOpChatActions(
         runtimeMode: String,
         workspace: NewThreadWorkspace,
         attachments: List<de.chennemann.agentic.t3.contract.UploadChatAttachment>,
+        context: kotlinx.serialization.json.JsonObject?,
     ): StartTurnResult {
         startTurnFailure?.let { throw it }
         startTurnCalls += StartTurnCall(
@@ -2686,6 +2756,7 @@ private class NoOpChatActions(
             modelSelection,
             runtimeMode,
             attachments,
+            context,
         )
         return StartTurnResult(DispatchResult(1), threadId ?: "new-thread")
     }
@@ -2744,6 +2815,7 @@ private data class StartTurnCall(
     val modelSelection: ModelSelection,
     val runtimeMode: String,
     val attachments: List<de.chennemann.agentic.t3.contract.UploadChatAttachment>,
+    val context: JsonObject? = null,
 )
 
 private class FakeViewModelEnvironmentRepository : EnvironmentRepository {

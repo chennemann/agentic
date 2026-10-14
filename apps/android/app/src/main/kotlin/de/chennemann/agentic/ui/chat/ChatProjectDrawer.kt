@@ -44,6 +44,8 @@ import de.chennemann.agentic.icons.Add
 import de.chennemann.agentic.icons.ChevronDown
 import de.chennemann.agentic.icons.ChevronUp
 import de.chennemann.agentic.icons.Icons
+import de.chennemann.agentic.icons.Check
+import de.chennemann.agentic.icons.ArchiveRestore
 import de.chennemann.agentic.icons.Settings
 import de.chennemann.agentic.icons.Star
 import de.chennemann.agentic.icons.StarOutline
@@ -306,7 +308,13 @@ private fun NewThreadRow(onClick: () -> Unit) {
 internal val ThreadRowHeight = 40.dp
 
 @Composable
-internal fun ThreadRow(thread: ThreadPickerItemUi, selected: Boolean, settled: Boolean = false, onClick: () -> Unit) {
+internal fun ThreadRow(
+    thread: ThreadPickerItemUi,
+    selected: Boolean,
+    settled: Boolean = false,
+    onLifecycle: (() -> Unit)? = null,
+    onClick: () -> Unit,
+) {
     Row(
         Modifier
             .fillMaxWidth()
@@ -314,7 +322,7 @@ internal fun ThreadRow(thread: ThreadPickerItemUi, selected: Boolean, settled: B
             .clip(RoundedCornerShape(10.dp))
             .background(if (selected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent)
             .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+            .padding(start = 12.dp, end = if (onLifecycle != null) 0.dp else 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(10.dp),
     ) {
@@ -346,6 +354,16 @@ internal fun ThreadRow(thread: ThreadPickerItemUi, selected: Boolean, settled: B
         }
         badge?.let {
             Text(it, style = MaterialTheme.typography.labelSmall, color = LocalContentColor.current.copy(alpha = 0.6f))
+        }
+        onLifecycle?.let {
+            IconButton(onClick = it, modifier = Modifier.size(ThreadRowHeight)) {
+                Icon(
+                    if (settled) Icons.ArchiveRestore else Icons.Check,
+                    contentDescription = if (settled) "Un-settle ${thread.title}" else "Settle ${thread.title}",
+                    modifier = Modifier.size(18.dp),
+                    tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else LocalContentColor.current.copy(alpha = 0.7f),
+                )
+            }
         }
     }
 }

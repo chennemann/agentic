@@ -109,6 +109,8 @@ private class FakeWorkspaceFilesBrowser(
         previewPath = relativePath
         return previewResult.getOrThrow()
     }
+
+    override suspend fun image(threadId: String, path: String): WorkspaceFilePreview.Image = error("Not used")
 }
 
 private fun listing(truncated: Boolean = false) = WorkspaceFileListing(

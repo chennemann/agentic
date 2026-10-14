@@ -113,6 +113,7 @@ interface ChatActions {
         runtimeMode: String,
         workspace: NewThreadWorkspace = NewThreadWorkspace.InPlace(),
         attachments: List<UploadChatAttachment> = emptyList(),
+        context: JsonObject? = null,
     ): StartTurnResult
 
     suspend fun interrupt(
@@ -229,6 +230,7 @@ class ChatService(
         runtimeMode: String,
         workspace: NewThreadWorkspace,
         attachments: List<UploadChatAttachment>,
+        context: JsonObject?,
     ): StartTurnResult {
         val now = Instant.now().toString()
         val targetThreadId = threadId ?: uuid()
@@ -263,6 +265,7 @@ class ChatService(
                 messageId = uuid(),
                 text = prompt,
                 attachments = attachments,
+                context = context,
             ),
             modelSelection = modelSelection,
             interactionMode = "default",

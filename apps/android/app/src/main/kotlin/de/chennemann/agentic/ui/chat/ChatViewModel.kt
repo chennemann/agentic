@@ -1,5 +1,13 @@
 package de.chennemann.agentic.ui.chat
 
+import de.chennemann.agentic.domain.attachments.AnnotatedImageRenderer
+import de.chennemann.agentic.domain.attachments.DraftImageAttachment
+import de.chennemann.agentic.domain.attachments.MaxImageAnnotations
+import de.chennemann.agentic.domain.attachments.messageImageAnnotations
+import de.chennemann.agentic.domain.attachments.prepareTurnMessage
+import de.chennemann.agentic.domain.orchestration.WorkspaceFilesBrowser
+import de.chennemann.agentic.t3.contract.UploadChatAttachment
+import java.util.UUID
 import de.chennemann.agentic.domain.preferences.FollowUpBehavior
 import de.chennemann.agentic.domain.orchestration.MessageQueueService
 import androidx.lifecycle.ViewModel
@@ -110,6 +118,8 @@ class ChatViewModel(
     private val credentials: CredentialStore? = null,
     private val threadHistory: ThreadHistory? = null,
     private val messageQueue: MessageQueueService? = null,
+    private val annotatedImages: AnnotatedImageRenderer? = null,
+    private val workspaceFiles: WorkspaceFilesBrowser? = null,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
     private var historyJob: Job? = null
@@ -239,15 +249,22 @@ class ChatViewModel(
             }
         }
         if (attachmentAssets != null && credentials != null) viewModelScope.launch {
-            repository.focusedThread.collectLatest { state ->
-                val environment = environments.activeEnvironment.value ?: return@collectLatest
+            // Re-run when the environment or connection changes too: a cold start shows the cached
+            // thread before the environment is live, and those first loads must not be the last try.
+            combine(repository.focusedThread, environments.activeEnvironment, connection.state) { state, environment, _ ->
+                state to environment
+            }.collectLatest { (state, environment) ->
+                environment ?: return@collectLatest
                 val token = credentials.read(environment.id) ?: return@collectLatest
                 state.value?.thread?.messages.orEmpty().flatMap { it.attachments }.forEach { attachment ->
                     if (attachment.id in local.value.attachmentDataUrls) return@forEach
-                    runCatching {
-                        attachmentAssets.loadDataUrl(environment.baseUrl, token, attachment.id, attachment.mimeType)
-                    }.onSuccess { dataUrl ->
+                    try {
+                        val dataUrl = attachmentAssets.loadDataUrl(environment.baseUrl, token, attachment.id, attachment.mimeType)
                         update { copy(attachmentDataUrls = attachmentDataUrls + (attachment.id to dataUrl)) }
+                    } catch (cause: CancellationException) {
+                        throw cause
+                    } catch (_: Exception) {
+                        // Retried on the next thread, environment, or connection change.
                     }
                 }
             }
@@ -430,6 +447,7 @@ class ChatViewModel(
                 interfaceScale = display.interfaceScale,
                 codeScale = display.codeScale,
                 followUpBehavior = display.followUpBehavior,
+                imageOpenAction = display.imageOpenAction,
             ),
             cacheClearance = cache.environmentId?.let {
                 CacheClearanceUi(it, cache.categories, cache.clearableBytes, cache.busy, cache.cleared, cache.error)
@@ -468,8 +486,20 @@ class ChatViewModel(
             is ChatUiEvent.QueuedMessageRemoved -> messageQueue?.remove(event.id)
             is ChatUiEvent.ImagesSelected -> addImages(event.uris)
             is ChatUiEvent.ImageRemoved -> update {
-                copy(draftImages = draftImages.filterNot { it.dataUrl.hashCode().toString() == event.id })
+                copy(draftImages = draftImages.filterNot { it.id == event.id })
             }
+            is ChatUiEvent.ImageAnnotationsSaved -> update {
+                copy(
+                    draftImages = draftImages.map {
+                        if (it.id == event.imageId) {
+                            it.copy(annotations = event.annotations.take(MaxImageAnnotations))
+                        } else {
+                            it
+                        }
+                    },
+                )
+            }
+            is ChatUiEvent.ConversationImageAnnotated -> attachAnnotatedConversationImage(event)
             ChatUiEvent.VoiceInputPressed -> handleVoiceInput()
             ChatUiEvent.VoiceInputCancelled -> cancelVoiceInput()
             ChatUiEvent.MicrophonePermissionDenied -> update {
@@ -721,6 +751,8 @@ class ChatViewModel(
             ChatUiEvent.SharedImportErrorDismissed -> acceptShared(SharedTextWorkflowIntent.DismissError)
             ChatUiEvent.ShortcutErrorDismissed -> shortcutWorkflow?.dismissError()
             is ChatUiEvent.ThemeSelected -> viewModelScope.launch { interfacePreferences?.setTheme(event.value) }
+            is ChatUiEvent.ImageOpenActionSelected -> viewModelScope.launch { interfacePreferences?.setImageOpenAction(event.value) }
+            is ChatUiEvent.InlineImageRequested -> loadInlineImage(event.path)
             is ChatUiEvent.AccentSelected -> viewModelScope.launch { interfacePreferences?.setAccent(event.value) }
             is ChatUiEvent.InterfaceScaleSelected -> if (event.value in SupportedDisplayScales) {
                 viewModelScope.launch { interfacePreferences?.setInterfaceScale(event.value) }
@@ -921,24 +953,30 @@ class ChatViewModel(
         if (threadId != null && detail?.session?.status in ActiveSessionStatuses && behavior == FollowUpBehavior.QUEUE) {
             val queue = messageQueue ?: return submissionUnavailable("Message queuing is unavailable.")
             val environmentId = environments.activeEnvironment.value?.id ?: return
-            queue.enqueue(environmentId, threadId, prompt, selection, runtimeMode, attachments)
-            setDraft(draftKey, "", persistImmediately = true)
-            update { copy(draftImages = emptyList(), commandError = null) }
+            update { copy(sending = true, commandError = null) }
+            launchCommand {
+                val message = prepareTurnMessage(prompt, attachments, annotationRenderer())
+                queue.enqueue(environmentId, threadId, message.text, selection, runtimeMode, message.attachments, message.context)
+                setDraft(draftKey, "", persistImmediately = true)
+                update { copy(sending = false, draftImages = emptyList(), commandError = null) }
+            }
             return
         }
         update { copy(sending = true, commandError = null) }
         launchCommand {
+            val message = prepareTurnMessage(prompt, attachments, annotationRenderer())
             val result = chat.startTurn(
                 threadId = threadId,
                 projectId = projectId,
-                prompt = prompt,
+                prompt = message.text,
                 modelSelection = selection,
                 runtimeMode = runtimeMode,
                 workspace = local.value.workspaceChoices
                     .firstOrNull { it.id == local.value.selectedWorkspaceId }
                     ?.workspace
                     ?: NewThreadWorkspace.InPlace(),
-                attachments = attachments,
+                attachments = message.attachments,
+                context = message.context,
             )
             setDraft(draftKey, "", persistImmediately = true)
             update { copy(sending = false, commandError = null, draftImages = emptyList()) }
@@ -952,7 +990,7 @@ class ChatViewModel(
         if (remaining <= 0) return submissionUnavailable("You can attach up to 8 images.")
         viewModelScope.launch {
             try {
-                val images = uris.take(remaining).map { reader.read(it) }
+                val images = uris.take(remaining).map { DraftImageAttachment(UUID.randomUUID().toString(), reader.read(it)) }
                 update { copy(draftImages = draftImages + images, commandError = null) }
             } catch (cause: CancellationException) {
                 throw cause
@@ -960,6 +998,49 @@ class ChatViewModel(
                 update { copy(commandError = cause.message ?: "The selected image could not be attached.") }
             }
         }
+    }
+
+    private fun loadInlineImage(path: String) {
+        val threadId = repository.focusedThreadId.value ?: return
+        val files = workspaceFiles ?: return
+        val current = local.value.inlineImages[path]
+        if (current != null && current !is InlineImageUi.Failed) return
+        update { copy(inlineImages = inlineImages + (path to InlineImageUi.Loading)) }
+        viewModelScope.launch {
+            val result = try {
+                InlineImageUi.Loaded(files.image(threadId, path).dataUrl)
+            } catch (cause: CancellationException) {
+                throw cause
+            } catch (cause: Exception) {
+                InlineImageUi.Failed(cause.message ?: "The image could not be loaded.")
+            }
+            update { copy(inlineImages = inlineImages + (path to result)) }
+        }
+    }
+
+    private fun annotationRenderer(): AnnotatedImageRenderer = annotatedImages
+        ?: AnnotatedImageRenderer { _, _, _ -> error("Image annotations cannot be rendered on this device.") }
+
+    /** Annotating a conversation image adds the original picture with its marks to the reply. */
+    private fun attachAnnotatedConversationImage(event: ChatUiEvent.ConversationImageAnnotated) {
+        if (event.annotations.size <= event.burnedAnnotationCount) return
+        if (local.value.draftImages.size >= MaxImageAttachmentCount) {
+            return submissionUnavailable("You can attach up to 8 images.")
+        }
+        val mimeType = event.dataUrl.substringAfter("data:").substringBefore(';').ifBlank { "image/png" }
+        val sizeBytes = (event.dataUrl.substringAfter(',').length * 3L) / 4
+        val image = DraftImageAttachment(
+            id = UUID.randomUUID().toString(),
+            upload = UploadChatAttachment(
+                name = event.name.take(255).ifBlank { "image" },
+                mimeType = mimeType,
+                sizeBytes = sizeBytes,
+                dataUrl = event.dataUrl,
+            ),
+            annotations = event.annotations.take(MaxImageAnnotations),
+            burnedAnnotationCount = event.burnedAnnotationCount,
+        )
+        update { copy(draftImages = draftImages + image, commandError = null) }
     }
 
     private fun loadWorkspaceChoices() {
@@ -1530,6 +1611,7 @@ class ChatViewModel(
                 loading = local.historyLoading,
                 errorMessage = local.historyError,
             ),
+            inlineImages = local.inlineImages,
             connection = environment.connection.toUi(),
             composer = ComposerUiState(
                 draft = "",
@@ -1558,11 +1640,13 @@ class ChatViewModel(
                 enabled = environment.active != null && shell != null && project != null,
                 imageAttachments = local.draftImages.map {
                     ChatImageAttachmentUi(
-                        id = it.dataUrl.hashCode().toString(),
-                        name = it.name,
-                        mimeType = it.mimeType,
-                        sizeBytes = it.sizeBytes,
-                        previewDataUrl = it.dataUrl,
+                        id = it.id,
+                        name = it.upload.name,
+                        mimeType = it.upload.mimeType,
+                        sizeBytes = it.upload.sizeBytes,
+                        previewDataUrl = it.upload.dataUrl,
+                        annotations = it.annotations,
+                        burnedAnnotationCount = it.burnedAnnotationCount,
                     )
                 },
             ),
@@ -1791,14 +1875,19 @@ class ChatViewModel(
                         isStreaming = it.streaming,
                         canCopy = it.id in copyableAssistantMessageIds,
                         timestamp = if (it.role == "user") it.createdAt else it.updatedAt,
-                        attachments = it.attachments.map { attachment ->
-                            ChatImageAttachmentUi(
-                                id = attachment.id,
-                                name = attachment.name,
-                                mimeType = attachment.mimeType,
-                                sizeBytes = attachment.sizeBytes,
-                                previewDataUrl = local.attachmentDataUrls[attachment.id],
-                            )
+                        attachments = messageImageAnnotations(it.context).let { annotationsById ->
+                            it.attachments.map { attachment ->
+                                val saved = annotationsById[attachment.id]
+                                ChatImageAttachmentUi(
+                                    id = attachment.id,
+                                    name = attachment.name,
+                                    mimeType = attachment.mimeType,
+                                    sizeBytes = attachment.sizeBytes,
+                                    previewDataUrl = local.attachmentDataUrls[attachment.id],
+                                    annotations = saved?.annotations.orEmpty(),
+                                    burnedAnnotationCount = saved?.burnedAnnotationCount ?: 0,
+                                )
+                            }
                         },
                     ),
                 ),
@@ -2036,6 +2125,7 @@ class ChatViewModel(
             inFlightRequests = local.inFlightRequests,
             textAnswers = local.textAnswers,
             optionAnswers = local.optionAnswers,
+            attachmentDataUrls = local.attachmentDataUrls,
         )
     }
 
@@ -2052,6 +2142,8 @@ class ChatViewModel(
         val inFlightRequests: Set<String>,
         val textAnswers: Map<String, String>,
         val optionAnswers: Map<String, Set<String>>,
+        // Message image previews arrive after the thread does; they must re-map the timeline.
+        val attachmentDataUrls: Map<String, String>,
     )
 
     private data class WorkflowPresentation(
@@ -2075,7 +2167,8 @@ class ChatViewModel(
         val workspaceChoicesLoading: Boolean = false,
         val sending: Boolean = false,
         val commandError: String? = null,
-        val draftImages: List<de.chennemann.agentic.t3.contract.UploadChatAttachment> = emptyList(),
+        val draftImages: List<DraftImageAttachment> = emptyList(),
+        val inlineImages: Map<String, InlineImageUi> = emptyMap(),
         val attachmentDataUrls: Map<String, String> = emptyMap(),
         val renameVisible: Boolean = false,
         val renameDraft: String = "",

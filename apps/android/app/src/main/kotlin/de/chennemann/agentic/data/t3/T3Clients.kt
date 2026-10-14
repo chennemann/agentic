@@ -135,6 +135,15 @@ interface WorkspaceFilesRpcClient {
         absolutePath: String,
         mimeType: String,
     ): String
+
+    /** A media file anywhere the host can read; relative paths resolve against the thread workspace. */
+    suspend fun loadMediaFile(
+        baseUrl: String,
+        bearerToken: String,
+        threadId: String,
+        path: String,
+        mimeType: String,
+    ): String
 }
 
 interface TerminalRpcClient {

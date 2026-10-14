@@ -359,6 +359,7 @@ private data class MessageEventPayload(
     val createdAt: String,
     val updatedAt: String,
     val attachments: List<de.chennemann.agentic.t3.contract.ChatAttachment> = emptyList(),
+    val context: kotlinx.serialization.json.JsonObject? = null,
 ) {
     fun toMessage(): OrchestrationMessage = OrchestrationMessage(
         id = messageId,
@@ -369,5 +370,6 @@ private data class MessageEventPayload(
         createdAt = createdAt,
         updatedAt = updatedAt,
         attachments = attachments,
+        context = context,
     )
 }

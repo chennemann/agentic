@@ -1,7 +1,9 @@
 package de.chennemann.agentic.ui.chat
 
+import de.chennemann.agentic.domain.attachments.ImageAnnotation
 import de.chennemann.agentic.domain.preferences.FollowUpBehavior
 import de.chennemann.agentic.domain.preferences.AccentPreference
+import de.chennemann.agentic.domain.preferences.ImageOpenAction
 import de.chennemann.agentic.domain.preferences.ThemePreference
 
 data class ChatUiState(
@@ -45,7 +47,15 @@ data class ChatUiState(
     val latestTurnChanges: LatestTurnChangesUiState = LatestTurnChangesUiState(),
     val latestTurnTiming: ChatTurnTimingUi? = null,
     val history: ThreadHistoryUi = ThreadHistoryUi(),
+    /** Images referenced from message Markdown, keyed by their path. */
+    val inlineImages: Map<String, InlineImageUi> = emptyMap(),
 )
+
+sealed interface InlineImageUi {
+    data object Loading : InlineImageUi
+    data class Loaded(val dataUrl: String) : InlineImageUi
+    data class Failed(val message: String) : InlineImageUi
+}
 
 data class ThreadHistoryUi(
     val hasMore: Boolean = false,
@@ -108,6 +118,7 @@ data class InterfaceSettingsUi(
     val interfaceScale: Float = 1f,
     val codeScale: Float = 1f,
     val followUpBehavior: FollowUpBehavior = FollowUpBehavior.STEER,
+    val imageOpenAction: ImageOpenAction = ImageOpenAction.ZOOM,
 )
 data class CacheClearanceUi(val environmentId: String, val categories: List<String> = emptyList(), val clearableBytes: Long = 0, val clearing: Boolean = false, val success: Boolean = false, val errorMessage: String? = null)
 data class DurableWorkUi(val commandId: String, val label: String, val threadId: String?, val failed: Boolean, val attemptCount: Long, val errorMessage: String?, val awaitsReplay: Boolean)
@@ -229,6 +240,9 @@ data class ChatImageAttachmentUi(
     val mimeType: String,
     val sizeBytes: Long,
     val previewDataUrl: String? = null,
+    val annotations: List<ImageAnnotation> = emptyList(),
+    /** Leading [annotations] already flattened into the image's pixels. */
+    val burnedAnnotationCount: Int = 0,
 )
 
 enum class ChatMessageAuthorUi {
@@ -587,6 +601,17 @@ sealed interface ChatUiEvent {
 
     data class ImageRemoved(val id: String) : ChatUiEvent
 
+    /** Editable marks on a composer image were saved from the image viewer. */
+    data class ImageAnnotationsSaved(val imageId: String, val annotations: List<ImageAnnotation>) : ChatUiEvent
+
+    /** A conversation image was annotated; attach the original with its marks to the reply. */
+    data class ConversationImageAnnotated(
+        val dataUrl: String,
+        val name: String,
+        val annotations: List<ImageAnnotation>,
+        val burnedAnnotationCount: Int,
+    ) : ChatUiEvent
+
     data object VoiceInputPressed : ChatUiEvent
 
     data object VoiceInputCancelled : ChatUiEvent
@@ -771,6 +796,10 @@ sealed interface ChatUiEvent {
     data class AccentSelected(val value: AccentPreference) : ChatUiEvent
     data class InterfaceScaleSelected(val value: Float) : ChatUiEvent
     data class CodeScaleSelected(val value: Float) : ChatUiEvent
+    data class ImageOpenActionSelected(val value: ImageOpenAction) : ChatUiEvent
+
+    /** A message refers to an image by path; load it so it can be shown inline. */
+    data class InlineImageRequested(val path: String) : ChatUiEvent
     data class CacheInspectionRequested(val environmentId: String) : ChatUiEvent
     data object CacheClearConfirmed : ChatUiEvent
     data object CacheClearDismissed : ChatUiEvent

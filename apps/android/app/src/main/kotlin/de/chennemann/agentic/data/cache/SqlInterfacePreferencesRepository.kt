@@ -5,6 +5,7 @@ import app.cash.sqldelight.coroutines.asFlow
 import app.cash.sqldelight.coroutines.mapToOneOrNull
 import de.chennemann.agentic.db.AgenticDb
 import de.chennemann.agentic.domain.preferences.AccentPreference
+import de.chennemann.agentic.domain.preferences.ImageOpenAction
 import de.chennemann.agentic.domain.preferences.InterfacePreferences
 import de.chennemann.agentic.domain.preferences.InterfacePreferencesRepository
 import de.chennemann.agentic.domain.preferences.ThemePreference
@@ -28,6 +29,7 @@ class SqlInterfacePreferencesRepository(private val database: AgenticDb, private
     override suspend fun setAccent(accent: AccentPreference) = update { copy(accent = accent) }
     override suspend fun setInterfaceScale(scale: Float) = update { copy(interfaceScale = scale).validated() }
     override suspend fun setCodeScale(scale: Float) = update { copy(codeScale = scale).validated() }
+    override suspend fun setImageOpenAction(action: ImageOpenAction) = update { copy(imageOpenAction = action) }
 
     private suspend fun update(transform: InterfacePreferences.() -> InterfacePreferences) = withContext(dispatcher) {
         database.agenticT3Queries.upsertPreference(GlobalScope, PreferenceKey, T3Json.encodeToString(preferences.first().transform()))

@@ -328,6 +328,31 @@ class KtorT3Client(
         return "data:$mimeType;base64,${android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)}"
     }
 
+    override suspend fun loadMediaFile(
+        baseUrl: String,
+        bearerToken: String,
+        threadId: String,
+        path: String,
+        mimeType: String,
+    ): String {
+        val asset: de.chennemann.agentic.t3.contract.AssetCreateUrlResult = rpcCall(
+            baseUrl,
+            bearerToken,
+            "assets.createUrl",
+            buildJsonObject {
+                put("resource", buildJsonObject {
+                    put("_tag", "media-file")
+                    put("threadId", threadId)
+                    put("path", path)
+                })
+            },
+        )
+        val response = httpClients.client(baseUrl).get(url(baseUrl, asset.relativeUrl)) { bearerAuth(bearerToken) }
+        response.checked()
+        val bytes = response.body<ByteArray>()
+        return "data:$mimeType;base64,${android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)}"
+    }
+
     override suspend fun loadDataUrl(
         baseUrl: String,
         bearerToken: String,
@@ -345,7 +370,10 @@ class KtorT3Client(
                 })
             },
         )
-        val bytes = httpClients.client(baseUrl).get(url(baseUrl, asset.relativeUrl)).body<ByteArray>()
+        val response = httpClients.client(baseUrl).get(url(baseUrl, asset.relativeUrl))
+        // An error page must not be cached as the image.
+        response.checked()
+        val bytes = response.body<ByteArray>()
         return "data:$mimeType;base64,${android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)}"
     }
 

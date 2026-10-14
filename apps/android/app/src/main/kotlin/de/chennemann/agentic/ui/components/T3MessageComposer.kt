@@ -56,6 +56,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.animation.core.animateFloatAsState
@@ -76,6 +77,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import de.chennemann.agentic.icons.Add
 import de.chennemann.agentic.icons.Brain
+import de.chennemann.agentic.icons.Close
 import de.chennemann.agentic.icons.ChevronDown
 import de.chennemann.agentic.icons.Flame
 import de.chennemann.agentic.icons.Icons
@@ -93,6 +95,7 @@ import de.chennemann.agentic.ui.chat.KeyboardFocus
 import de.chennemann.agentic.ui.chat.toChatUiEvent
 import de.chennemann.agentic.ui.chat.toHardwareKeyStroke
 import androidx.compose.ui.input.key.onPreviewKeyEvent
+import de.chennemann.agentic.ui.chat.ChatImageAttachmentUi
 import de.chennemann.agentic.ui.chat.ComposerUiState
 import de.chennemann.agentic.ui.chat.ProjectQuickSwitchUi
 import de.chennemann.agentic.ui.chat.ProviderModelOptionUi
@@ -131,6 +134,7 @@ fun T3MessageComposer(
     },
     inputFocusRequested: Boolean? = null,
     onInputFocusedManually: () -> Unit = {},
+    onOpenImage: (ChatImageAttachmentUi) -> Unit = {},
 ) {
     var controlsOpen by rememberSaveable { mutableStateOf(false) }
     var commandMenuDismissed by remember { mutableStateOf(false) }
@@ -208,11 +212,14 @@ fun T3MessageComposer(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(state.imageAttachments, key = { it.id }) { attachment ->
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            attachment.previewDataUrl?.let { dataUrl -> AttachmentPreview(dataUrl, attachment.name) }
-                            TextButton(onClick = { onEvent(ChatUiEvent.ImageRemoved(attachment.id)) }) {
-                                Text("Remove", style = MaterialTheme.typography.labelSmall)
-                            }
+                        attachment.previewDataUrl?.let { dataUrl ->
+                            AttachmentPreview(
+                                dataUrl = dataUrl,
+                                name = attachment.name,
+                                annotationCount = attachment.annotations.size,
+                                onClick = { onOpenImage(attachment) },
+                                onRemove = { onEvent(ChatUiEvent.ImageRemoved(attachment.id)) },
+                            )
                         }
                     }
                 }
@@ -544,19 +551,42 @@ private fun ContextLine(
 }
 
 @Composable
-private fun AttachmentPreview(dataUrl: String, name: String) {
-    val bitmap = remember(dataUrl) {
-        runCatching {
-            val bytes = Base64.decode(dataUrl.substringAfter(','), Base64.DEFAULT)
-            BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-        }.getOrNull()
-    }
-    if (bitmap != null) {
-        Image(
-            bitmap = bitmap,
-            contentDescription = name,
-            modifier = Modifier.size(88.dp),
-        )
+private fun AttachmentPreview(
+    dataUrl: String,
+    name: String,
+    annotationCount: Int,
+    onClick: () -> Unit,
+    onRemove: () -> Unit,
+) {
+    val bitmap = remember(dataUrl) { decodeDataUrlBitmap(dataUrl, 512)?.asImageBitmap() }
+    Box(
+        Modifier
+            .size(72.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(ComposerSelected)
+            .clickable(onClickLabel = "Open image", onClick = onClick),
+    ) {
+        bitmap?.let {
+            Image(
+                bitmap = it,
+                contentDescription = name,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        }
+        AnnotationCountBadge(annotationCount, Modifier.align(Alignment.BottomEnd))
+        Box(
+            Modifier
+                .align(Alignment.TopEnd)
+                .padding(3.dp)
+                .size(22.dp)
+                .background(Color.Black.copy(alpha = 0.7f), CircleShape)
+                .clickable(onClickLabel = "Remove $name", onClick = onRemove)
+                .semantics { contentDescription = "Remove $name" },
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(Icons.Close, contentDescription = null, modifier = Modifier.size(14.dp), tint = Color.White)
+        }
     }
 }
 

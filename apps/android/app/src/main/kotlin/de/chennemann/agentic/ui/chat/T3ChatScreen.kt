@@ -92,6 +92,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.chennemann.agentic.streamingmarkdown.StreamingMarkdownText
+import de.chennemann.agentic.domain.preferences.ImageOpenAction
+import de.chennemann.agentic.ui.components.AnnotationCountBadge
+import de.chennemann.agentic.ui.components.ImageViewerDialog
+import de.chennemann.agentic.ui.components.ImageViewerMode
+import de.chennemann.agentic.ui.components.decodeDataUrlBitmap
+import androidx.compose.foundation.clickable
 import de.chennemann.agentic.ui.components.ChatActivityCard
 import de.chennemann.agentic.ui.components.ConnectionStatusBanner
 import de.chennemann.agentic.ui.components.T3MessageComposer
@@ -128,6 +134,8 @@ fun T3ChatScreen(
 ) {
     val listState = rememberLazyListState()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
+    var imageViewer by remember { mutableStateOf<ImageViewerRequest?>(null) }
+    val openImage = { request: ImageViewerRequest -> imageViewer = request }
     val scope = rememberCoroutineScope()
     val dragging by listState.interactionSource.collectIsDraggedAsState()
     val expandedActivities = remember(state.threadId) { mutableStateMapOf<String, Boolean>() }
@@ -334,7 +342,12 @@ fun T3ChatScreen(
                             ) {
                                 Text(item.label + if (expandedActivities[item.lazyKey] == true) " - Hide work" else " - Show work")
                             }
-                            is ChatTimelineItemUi.Message -> MessageItem(item.value)
+                            is ChatTimelineItemUi.Message -> MessageItem(
+                                message = item.value,
+                                inlineImages = state.inlineImages,
+                                onRequestInlineImage = { onEvent(ChatUiEvent.InlineImageRequested(it)) },
+                                onOpenImage = openImage,
+                            )
                             is ChatTimelineItemUi.Activity -> {
                                 ChatActivityCard(
                                     activity = item.value,
@@ -454,6 +467,7 @@ fun T3ChatScreen(
                             }
                         }
                     } else IsolatedDraftComposer(
+                        onOpenImage = { openImage(ImageViewerRequest.Draft(it.id)) },
                         state = state.composer,
                         draft = composerDraft,
                         turnRunning = state.isTurnRunning,
@@ -478,6 +492,15 @@ fun T3ChatScreen(
                 }
             }
         }
+    }
+
+    imageViewer?.let { request ->
+        ImageViewerHost(
+            request = request,
+            state = state,
+            onEvent = onEvent,
+            onDismiss = { imageViewer = null },
+        )
     }
 
     ChatSelectionSheets(
@@ -761,6 +784,7 @@ private fun ThreadPanelScrim(visible: Boolean, progress: Float, onDismiss: () ->
 
 @Composable
 private fun IsolatedDraftComposer(
+    onOpenImage: (ChatImageAttachmentUi) -> Unit,
     state: ComposerUiState,
     draft: StateFlow<String>?,
     turnRunning: Boolean,
@@ -787,6 +811,7 @@ private fun IsolatedDraftComposer(
             modifier = modifier,
             inputFocusRequested = inputFocusRequested,
             onInputFocusedManually = onInputFocusedManually,
+            onOpenImage = onOpenImage,
         )
     } else {
         val value by draft.collectAsStateWithLifecycle()
@@ -802,6 +827,7 @@ private fun IsolatedDraftComposer(
             modifier = modifier,
             inputFocusRequested = inputFocusRequested,
             onInputFocusedManually = onInputFocusedManually,
+            onOpenImage = onOpenImage,
         )
     }
 }
@@ -880,7 +906,18 @@ private fun GroqSettingsDialog(
 }
 
 @Composable
-private fun MessageItem(message: ChatMessageUi) {
+private fun MessageItem(
+    message: ChatMessageUi,
+    inlineImages: Map<String, InlineImageUi> = emptyMap(),
+    onRequestInlineImage: (String) -> Unit = {},
+    onOpenImage: (ImageViewerRequest) -> Unit = {},
+) {
+    val segments = remember(message.content) { splitMessageImages(message.content) }
+    val inlineImage: @Composable (MessageSegment.Image) -> Unit = { segment ->
+        InlineMessageImage(segment, inlineImages[segment.path], onRequestInlineImage) { dataUrl ->
+            onOpenImage(ImageViewerRequest.Conversation(dataUrl, segment.path.substringAfterLast('/').substringAfterLast('\\')))
+        }
+    }
     val context = LocalContext.current
     val clipboard = remember(context) { context.getSystemService(ClipboardManager::class.java) }
     var copied by remember(message.id) { mutableStateOf(false) }
@@ -905,16 +942,21 @@ private fun MessageItem(message: ChatMessageUi) {
                         ),
                     ) {
                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            MessageImages(message.attachments)
-                            if (message.content.isNotBlank()) SelectionContainer {
-                                StreamingMarkdownText(
-                                    content = message.content,
-                                    modifier = Modifier.fillMaxWidth(),
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                    streaming = false,
-                                    inlineCode = SpanStyle(color = MaterialTheme.colorScheme.onPrimaryContainer),
-                                )
+                            MessageImages(message.attachments, onOpenImage)
+                            if (message.content.isNotBlank()) segments.forEach { segment ->
+                                when (segment) {
+                                    is MessageSegment.Image -> inlineImage(segment)
+                                    is MessageSegment.Text -> SelectionContainer {
+                                        StreamingMarkdownText(
+                                            content = segment.markdown,
+                                            modifier = Modifier.fillMaxWidth(),
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                            streaming = false,
+                                            inlineCode = SpanStyle(color = MaterialTheme.colorScheme.onPrimaryContainer),
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -923,19 +965,24 @@ private fun MessageItem(message: ChatMessageUi) {
 
             ChatMessageAuthorUi.ASSISTANT -> {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    MessageImages(message.attachments)
-                    SelectionContainer {
-                        val codeScale = LocalCodeScale.current
-                        val localDensity = LocalDensity.current
-                        CompositionLocalProvider(
-                            LocalDensity provides Density(localDensity.density, localDensity.fontScale * codeScale),
-                        ) { StreamingMarkdownText(
-                            content = message.content,
-                            streaming = message.isStreaming,
-                            modifier = Modifier.fillMaxWidth(),
-                            style = MaterialTheme.typography.bodyLarge,
-                            inlineCode = SpanStyle(color = MaterialTheme.colorScheme.primary),
-                        ) }
+                    MessageImages(message.attachments, onOpenImage)
+                    segments.forEachIndexed { index, segment ->
+                        when (segment) {
+                            is MessageSegment.Image -> inlineImage(segment)
+                            is MessageSegment.Text -> SelectionContainer {
+                                val codeScale = LocalCodeScale.current
+                                val localDensity = LocalDensity.current
+                                CompositionLocalProvider(
+                                    LocalDensity provides Density(localDensity.density, localDensity.fontScale * codeScale),
+                                ) { StreamingMarkdownText(
+                                    content = segment.markdown,
+                                    streaming = message.isStreaming && index == segments.lastIndex,
+                                    modifier = Modifier.fillMaxWidth(),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    inlineCode = SpanStyle(color = MaterialTheme.colorScheme.primary),
+                                ) }
+                            }
+                        }
                     }
                     if (message.isStreaming) {
                         Text(
@@ -968,7 +1015,7 @@ private fun MessageItem(message: ChatMessageUi) {
             }
             ChatMessageAuthorUi.SYSTEM -> {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    MessageImages(message.attachments)
+                    MessageImages(message.attachments, onOpenImage)
                     Text(
                         text = message.content,
                         style = MaterialTheme.typography.bodySmall,
@@ -1011,34 +1058,161 @@ private fun MessageCopyButton(
 }
 
 @Composable
-private fun MessageImages(attachments: List<ChatImageAttachmentUi>) {
+private fun MessageImages(attachments: List<ChatImageAttachmentUi>, onOpenImage: (ImageViewerRequest) -> Unit) {
     if (attachments.isEmpty()) return
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         items(attachments, key = { it.id }) { attachment ->
             val bitmap = remember(attachment.previewDataUrl) {
-                attachment.previewDataUrl?.let { dataUrl ->
-                    runCatching {
-                        val bytes = Base64.decode(dataUrl.substringAfter(','), Base64.DEFAULT)
-                        BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.asImageBitmap()
-                    }.getOrNull()
-                }
+                attachment.previewDataUrl?.let { decodeDataUrlBitmap(it, 720)?.asImageBitmap() }
             }
             if (bitmap == null) {
                 Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant) {
                     Text("Loading ${attachment.name}…", modifier = Modifier.padding(12.dp))
                 }
             } else {
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = attachment.name,
-                    modifier = Modifier
+                Box(
+                    Modifier
                         .width(220.dp)
                         .height(164.dp)
-                        .clip(MaterialTheme.shapes.medium),
-                    contentScale = ContentScale.Fit,
-                )
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable(onClickLabel = "Open image") {
+                            onOpenImage(
+                                ImageViewerRequest.Conversation(
+                                    dataUrl = attachment.previewDataUrl,
+                                    name = attachment.name,
+                                    annotations = attachment.annotations,
+                                    burnedAnnotationCount = attachment.burnedAnnotationCount,
+                                ),
+                            )
+                        },
+                ) {
+                    Image(
+                        bitmap = bitmap,
+                        contentDescription = attachment.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                    )
+                    AnnotationCountBadge(attachment.annotations.size, Modifier.align(Alignment.BottomEnd))
+                }
             }
         }
+    }
+}
+
+/** An image a message refers to by path, loaded on demand and shown in the flow of the text. */
+@Composable
+private fun InlineMessageImage(
+    segment: MessageSegment.Image,
+    image: InlineImageUi?,
+    onRequest: (String) -> Unit,
+    onOpen: (String) -> Unit,
+) {
+    LaunchedEffect(segment.path, image == null) { if (image == null) onRequest(segment.path) }
+    val label = segment.alt.ifBlank { segment.path.substringAfterLast('/').substringAfterLast('\\') }
+    when (image) {
+        is InlineImageUi.Loaded -> {
+            val bitmap = remember(image.dataUrl) { decodeDataUrlBitmap(image.dataUrl, 1280)?.asImageBitmap() }
+            if (bitmap != null) {
+                Image(
+                    bitmap = bitmap,
+                    contentDescription = label,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 320.dp)
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable(onClickLabel = "Open image") { onOpen(image.dataUrl) },
+                )
+            } else {
+                InlineImagePlaceholder("$label could not be shown")
+            }
+        }
+        is InlineImageUi.Failed -> Surface(
+            onClick = { onRequest(segment.path) },
+            shape = MaterialTheme.shapes.medium,
+            color = MaterialTheme.colorScheme.surfaceVariant,
+        ) {
+            Column(Modifier.padding(12.dp)) {
+                Text(label, style = MaterialTheme.typography.labelLarge)
+                Text("${image.message} Tap to retry.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+        }
+        InlineImageUi.Loading, null -> InlineImagePlaceholder("Loading $label…")
+    }
+}
+
+@Composable
+private fun InlineImagePlaceholder(text: String) {
+    Surface(shape = MaterialTheme.shapes.medium, color = MaterialTheme.colorScheme.surfaceVariant) {
+        Text(text, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(12.dp))
+    }
+}
+
+/** What the full-screen viewer shows; drafts are looked up live so edits land on the attachment. */
+sealed interface ImageViewerRequest {
+    data class Draft(val imageId: String) : ImageViewerRequest
+    data class Conversation(
+        val dataUrl: String?,
+        val name: String,
+        val annotations: List<de.chennemann.agentic.domain.attachments.ImageAnnotation> = emptyList(),
+        val burnedAnnotationCount: Int = 0,
+    ) : ImageViewerRequest
+}
+
+@Composable
+private fun ImageViewerHost(
+    request: ImageViewerRequest,
+    state: ChatUiState,
+    onEvent: (ChatUiEvent) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val initialMode = if (state.interfaceSettings.imageOpenAction == ImageOpenAction.ANNOTATE) {
+        ImageViewerMode.ANNOTATE
+    } else {
+        ImageViewerMode.ZOOM
+    }
+    when (request) {
+        is ImageViewerRequest.Draft -> {
+            val image = state.composer.imageAttachments.firstOrNull { it.id == request.imageId }
+            if (image == null) {
+                LaunchedEffect(Unit) { onDismiss() }
+                return
+            }
+            ImageViewerDialog(
+                dataUrl = image.previewDataUrl,
+                name = image.name,
+                initialAnnotations = image.annotations,
+                readOnlyCount = image.burnedAnnotationCount,
+                initialMode = initialMode,
+                annotationHint = "Sending burns these marks into a copy and adds the comments to your message.",
+                onClose = { marks ->
+                    if (marks != image.annotations) onEvent(ChatUiEvent.ImageAnnotationsSaved(image.id, marks))
+                    onDismiss()
+                },
+            )
+        }
+        is ImageViewerRequest.Conversation -> ImageViewerDialog(
+            dataUrl = request.dataUrl,
+            name = request.name,
+            initialAnnotations = request.annotations,
+            readOnlyCount = request.annotations.size,
+            initialMode = initialMode,
+            annotationHint = "Closing adds this image with your annotations to the reply.",
+            onClose = { marks ->
+                val dataUrl = request.dataUrl
+                if (dataUrl != null && marks.size > request.annotations.size) {
+                    onEvent(
+                        ChatUiEvent.ConversationImageAnnotated(
+                            dataUrl = dataUrl,
+                            name = request.name,
+                            annotations = marks,
+                            burnedAnnotationCount = request.annotations.size,
+                        ),
+                    )
+                }
+                onDismiss()
+            },
+        )
     }
 }
 
