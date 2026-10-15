@@ -1421,6 +1421,102 @@ class ChatViewModelIntentTest {
     }
 
     @Test
+    fun `settling the focused thread falls back to the latest other open thread`() = runTest(dispatcher) {
+        val shell = pickerShell().let {
+            it.copy(
+                threads = it.threads + listOf(
+                    OrchestrationThreadShell(
+                        id = "thread-older",
+                        projectId = "project-1",
+                        title = "Older",
+                        createdAt = "2026-07-29T09:00:00Z",
+                        updatedAt = "2026-07-29T09:00:00Z",
+                    ),
+                    OrchestrationThreadShell(
+                        id = "thread-newer",
+                        projectId = "project-1",
+                        title = "Newer",
+                        createdAt = "2026-07-29T09:00:00Z",
+                        updatedAt = "2026-07-29T09:30:00Z",
+                    ),
+                ),
+            )
+        }
+        val repository = FakeOrchestrationRepository().apply {
+            this.shell.value = ProjectionState(value = shell, sequence = 7, source = ProjectionSource.LIVE, synchronized = true)
+            selectedProjectId.value = "project-1"
+            focusedThreadId.value = "thread-1"
+        }
+        val threadActions = RecordingThreadActions(repository)
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = threadActions, chat = NoOpChatActions(), mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+        viewModel.onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
+        viewModel.onEvent(ChatUiEvent.ThreadSettleRequested("thread-1"))
+        advanceUntilIdle()
+
+        assertEquals(listOf("thread-1"), threadActions.settledThreads)
+        assertEquals(listOf<String?>("thread-newer"), threadActions.selectedThreads)
+        assertEquals("thread-newer", viewModel.state.value.threadId)
+        assertEquals(ChatPickerUi.PROJECT_THREAD, viewModel.state.value.activePicker)
+    }
+
+    @Test
+    fun `settling the only open thread shows a new thread and closes the panel`() = runTest(dispatcher) {
+        val repository = FakeOrchestrationRepository().apply {
+            shell.value = ProjectionState(value = pickerShell(), sequence = 7, source = ProjectionSource.LIVE, synchronized = true)
+            selectedProjectId.value = "project-1"
+            focusedThreadId.value = "thread-1"
+        }
+        val threadActions = RecordingThreadActions(repository)
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = threadActions, chat = NoOpChatActions(), mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+        viewModel.onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
+        viewModel.onEvent(ChatUiEvent.ThreadSettleRequested("thread-1"))
+        advanceUntilIdle()
+
+        assertEquals(listOf("thread-1"), threadActions.settledThreads)
+        assertEquals(listOf<String?>(null), threadActions.selectedThreads)
+        assertEquals(null, viewModel.state.value.threadId)
+        assertEquals("project-1", repository.selectedProjectId.value)
+        assertEquals(null, viewModel.state.value.activePicker)
+    }
+
+    @Test
+    fun `settling another thread keeps the focused one and switching projects closes the panel`() = runTest(dispatcher) {
+        val repository = FakeOrchestrationRepository().apply {
+            shell.value = ProjectionState(value = pickerShell(), sequence = 7, source = ProjectionSource.LIVE, synchronized = true)
+            selectedProjectId.value = "project-1"
+            focusedThreadId.value = "thread-1"
+        }
+        val threadActions = RecordingThreadActions(repository)
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = threadActions, chat = NoOpChatActions(), mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+        viewModel.onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
+        viewModel.onEvent(ChatUiEvent.ThreadSettleRequested("thread-2"))
+        advanceUntilIdle()
+        assertTrue(threadActions.selectedThreads.isEmpty())
+        assertEquals("thread-1", viewModel.state.value.threadId)
+        assertEquals(ChatPickerUi.PROJECT_THREAD, viewModel.state.value.activePicker)
+
+        viewModel.onEvent(ChatUiEvent.ProjectQuickSwitchRequested("project-2"))
+        advanceUntilIdle()
+        assertEquals(null, viewModel.state.value.activePicker)
+        assertEquals("thread-2", viewModel.state.value.threadId)
+    }
+
+    @Test
     fun `background thread updates do not rebuild the focused timeline`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model"))
         val detail = requireNotNull(repository.focusedThread.value.value)

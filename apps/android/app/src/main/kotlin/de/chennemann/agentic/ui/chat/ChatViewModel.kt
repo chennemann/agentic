@@ -690,9 +690,7 @@ class ChatViewModel(
             }
 
             is ChatUiEvent.ThreadSelected -> selectThread(event.threadId)
-            is ChatUiEvent.ThreadSettleRequested -> launchCommand {
-                threads.settle(event.threadId)
-            }
+            is ChatUiEvent.ThreadSettleRequested -> settleThread(event.threadId)
             is ChatUiEvent.ThreadUnsettleRequested -> launchCommand {
                 threads.unsettle(event.threadId)
             }
@@ -1286,6 +1284,9 @@ class ChatViewModel(
     }
 
     private fun quickSwitchProject(projectId: String) {
+        if (local.value.activePicker == ChatPickerUi.PROJECT_THREAD) {
+            update { copy(activePicker = null, pickerProjectId = null) }
+        }
         launchCommand {
             val shell = repository.shell.value.value ?: return@launchCommand
             if (shell.projects.none { it.id == projectId }) return@launchCommand
@@ -1311,6 +1312,30 @@ class ChatViewModel(
             } else {
                 threads.selectThread(nextThreadId)
             }
+        }
+    }
+
+    /**
+     * Settling the thread on screen moves straight to the most recent other open thread of its
+     * project. Without one, the screen shows a fresh new-thread draft and the thread panel closes.
+     */
+    private fun settleThread(threadId: String) {
+        launchCommand {
+            if (threadId == repository.focusedThreadId.value) {
+                val shell = repository.shell.value.value
+                val projectId = shell?.threads?.firstOrNull { it.id == threadId }?.projectId
+                    ?: repository.selectedProjectId.value
+                val fallback = shell?.threads.orEmpty()
+                    .filter { it.id != threadId && it.projectId == projectId && it.archivedAt == null && !it.isSettled() }
+                    .maxWithOrNull(compareBy<de.chennemann.agentic.t3.contract.OrchestrationThreadShell> { it.updatedAt }.thenBy { it.id })
+                if (fallback != null) {
+                    threads.selectThread(fallback.id)
+                } else {
+                    threads.selectThread(null)
+                    update { copy(activePicker = null, pickerProjectId = null) }
+                }
+            }
+            threads.settle(threadId)
         }
     }
 
