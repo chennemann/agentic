@@ -44,8 +44,8 @@ import de.chennemann.agentic.icons.Add
 import de.chennemann.agentic.icons.ChevronDown
 import de.chennemann.agentic.icons.ChevronUp
 import de.chennemann.agentic.icons.Icons
+import de.chennemann.agentic.icons.Undo
 import de.chennemann.agentic.icons.Check
-import de.chennemann.agentic.icons.ArchiveRestore
 import de.chennemann.agentic.icons.Settings
 import de.chennemann.agentic.icons.Star
 import de.chennemann.agentic.icons.StarOutline
@@ -358,7 +358,7 @@ internal fun ThreadRow(
         onLifecycle?.let {
             IconButton(onClick = it, modifier = Modifier.size(ThreadRowHeight)) {
                 Icon(
-                    if (settled) Icons.ArchiveRestore else Icons.Check,
+                    if (settled) Icons.Undo else Icons.Check,
                     contentDescription = if (settled) "Un-settle ${thread.title}" else "Settle ${thread.title}",
                     modifier = Modifier.size(18.dp),
                     tint = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else LocalContentColor.current.copy(alpha = 0.7f),

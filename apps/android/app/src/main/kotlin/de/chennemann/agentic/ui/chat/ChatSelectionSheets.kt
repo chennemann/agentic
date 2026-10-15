@@ -76,6 +76,7 @@ import de.chennemann.agentic.icons.Add
 import de.chennemann.agentic.icons.ArchiveRestore
 import de.chennemann.agentic.icons.Check
 import de.chennemann.agentic.icons.Icons
+import de.chennemann.agentic.icons.Undo
 import de.chennemann.agentic.icons.Star
 import de.chennemann.agentic.icons.StarOutline
 import java.time.Instant
@@ -516,7 +517,11 @@ private fun ThreadPickerRow(
         }
         IconButton(onClick = onLifecycleClick) {
             Icon(
-                imageVector = if (thread.archived || settled) Icons.ArchiveRestore else Icons.Check,
+                imageVector = when {
+                    thread.archived -> Icons.ArchiveRestore
+                    settled -> Icons.Undo
+                    else -> Icons.Check
+                },
                 contentDescription = when {
                     thread.archived -> "Unarchive ${thread.title}"
                     settled -> "Un-settle ${thread.title}"
