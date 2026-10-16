@@ -24,6 +24,7 @@ import io.ktor.client.request.accept
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
+import io.ktor.client.request.setBody
 import io.ktor.client.request.post
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
@@ -77,6 +78,7 @@ class KtorT3Client(
     WorkspaceFilesRpcClient,
     TerminalRpcClient,
     ReviewDiffRpcClient,
+    ComposerRpcClient,
     AttachmentAssetClient,
     UsageRpcClient {
     constructor(httpClient: HttpClient, scope: CoroutineScope) : this(
@@ -252,6 +254,64 @@ class KtorT3Client(
             put("relativePath", relativePath)
         },
     )
+
+    override suspend fun searchComposerPaths(
+        baseUrl: String,
+        token: String,
+        cwd: String,
+        query: String
+    ): de.chennemann.agentic.t3.contract.WorkspaceEntriesResult = rpcCall(
+        baseUrl,
+        token,
+        "projects.searchEntries",
+        buildJsonObject {
+            put("cwd", cwd)
+            put("query", query.take(256))
+            put("limit", 20)
+        }
+    )
+
+    override suspend fun composerProviders(
+        baseUrl: String,
+        token: String,
+        instanceId: String,
+        cwd: String
+    ): de.chennemann.agentic.t3.contract.ProviderUpdatedResult = rpcCall(
+        baseUrl,
+        token,
+        "server.refreshProviders",
+        buildJsonObject {
+            put("instanceId", instanceId)
+            put("cwd", cwd)
+        }
+    )
+
+    override suspend fun uploadPastedText(baseUrl: String, token: String, name: String, text: String): String {
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        val upload: de.chennemann.agentic.t3.contract.AttachmentUploadUrl = rpcCall(
+            baseUrl,
+            token,
+            "attachments.createUploadUrl",
+            buildJsonObject {
+                put("type", "file")
+                put("name", name)
+                put("mimeType", "text/plain")
+                put("sizeBytes", bytes.size)
+            }
+        )
+        val relative = URI(upload.relativeUrl)
+        require(
+            !relative.isAbsolute && relative.rawAuthority == null && relative.path.startsWith("/api/attachments/")
+        ) {
+            "The environment returned an invalid upload URL."
+        }
+        val response = httpClients.client(baseUrl).post(url(baseUrl, upload.relativeUrl)) {
+            headers.append("Content-Type", "text/plain")
+            setBody(bytes)
+        }
+        response.checked()
+        return upload.attachmentId
+    }
 
     override suspend fun turnDiff(baseUrl: String, bearerToken: String, threadId: String, fromTurnCount: Int, toTurnCount: Int): de.chennemann.agentic.t3.contract.ThreadTurnDiff = rpcCall(
         baseUrl, bearerToken, "orchestration.getTurnDiff", buildJsonObject {

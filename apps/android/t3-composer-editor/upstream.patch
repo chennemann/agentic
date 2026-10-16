@@ -1,0 +1,146 @@
+--- a/src/main/java/expo/modules/t3composereditor/T3ComposerEditorView.kt
++++ b/src/main/java/expo/modules/t3composereditor/T3ComposerEditorView.kt
+@@ -26,32 +26,27 @@
+ import android.view.inputmethod.InputConnectionWrapper
+ import android.view.inputmethod.InputMethodManager
+ import android.widget.EditText
+-import expo.modules.kotlin.AppContext
+-import expo.modules.kotlin.viewevent.EventDispatcher
+-import expo.modules.kotlin.views.ExpoView
++import android.widget.FrameLayout
+ import expo.modules.t3markdowntext.T3ContextChip
+ import org.json.JSONObject
+ import kotlin.math.max
+ 
+-class T3ComposerEditorView(context: Context, appContext: AppContext) : ExpoView(
+-  context,
+-  appContext
+-) {
++class T3ComposerEditorView(context: Context) : FrameLayout(context) {
+   private val editor = SelectionAwareEditText(context)
+   private val defaultHighlightColor = editor.highlightColor
+   private val defaultSelectionColor = context.resolveThemeColor(
+     android.R.attr.colorAccent,
+     editor.currentTextColor,
+   )
+-  private val onComposerChange by EventDispatcher()
+-  private val onComposerSelectionChange by EventDispatcher()
+-  private val onComposerFocus by EventDispatcher()
+-  private val onComposerBlur by EventDispatcher()
+-  private val onComposerPasteImages by EventDispatcher()
+-  private val onComposerContextPress by EventDispatcher()
+-  private val onComposerPasteContext by EventDispatcher()
+-  private val onComposerPasteText by EventDispatcher()
+-  private val onComposerContentSizeChange by EventDispatcher()
++  var onComposerChange: (Map<String, Any>) -> Unit = {}
++  var onComposerSelectionChange: (Map<String, Any>) -> Unit = {}
++  var onComposerFocus: (Map<String, Any>) -> Unit = {}
++  var onComposerBlur: (Map<String, Any>) -> Unit = {}
++  var onComposerPasteImages: (Map<String, Any>) -> Unit = {}
++  var onComposerContextPress: (Map<String, Any>) -> Unit = {}
++  var onComposerPasteContext: (Map<String, Any>) -> Unit = {}
++  var onComposerPasteText: (Map<String, Any>) -> Unit = {}
++  var onComposerContentSizeChange: (Map<String, Any>) -> Unit = {}
+   private var applyingNativeValue = false
+   private var desiredLineHeightPx = 0
+   private var lastContentHeight = 0
+--- a/src/main/java/expo/modules/t3composereditor/T3ComposerClipboard.kt
++++ b/src/main/java/expo/modules/t3composereditor/T3ComposerClipboard.kt
+@@ -1,7 +1,5 @@
+ package expo.modules.t3composereditor
+ 
+-import expo.modules.kotlin.modules.Module
+-import expo.modules.kotlin.modules.ModuleDefinition
+ import android.content.ClipData
+ import android.content.ClipboardManager
+ import android.content.Context
+@@ -61,89 +59,3 @@
+   }
+ }
+ 
+-class T3ComposerEditorModule : Module() {
+-  override fun definition() = ModuleDefinition {
+-    Name("T3ComposerEditor")
+-
+-    AsyncFunction("writeContextClipboard") { text: String, fragment: String ->
+-      T3ComposerClipboard.write(requireNotNull(appContext.reactContext), text, fragment)
+-    }
+-
+-    View(T3ComposerEditorView::class) {
+-      Prop("controlledDocumentJson") { view: T3ComposerEditorView, documentJson: String ->
+-        view.setControlledDocumentJson(documentJson)
+-      }
+-      Prop("themeJson") { view: T3ComposerEditorView, themeJson: String ->
+-        view.setThemeJson(themeJson)
+-      }
+-      Prop("clipboardFragment") { view: T3ComposerEditorView, fragment: String ->
+-        view.setClipboardFragment(fragment)
+-      }
+-      Prop("placeholder") { view: T3ComposerEditorView, placeholder: String ->
+-        view.setPlaceholder(placeholder)
+-      }
+-      Prop("fontFamily") { view: T3ComposerEditorView, fontFamily: String ->
+-        view.setFontFamily(fontFamily)
+-      }
+-      Prop("fontSize") { view: T3ComposerEditorView, fontSize: Double ->
+-        view.setFontSize(fontSize.toFloat())
+-      }
+-      Prop("lineHeight") { view: T3ComposerEditorView, lineHeight: Double ->
+-        view.setLineHeight(lineHeight.toFloat())
+-      }
+-      Prop("contentInsetVertical") { view: T3ComposerEditorView, contentInsetVertical: Double ->
+-        view.setContentInsetVertical(contentInsetVertical.toInt())
+-      }
+-
+-      Prop("singleLineCentered") { view: T3ComposerEditorView, singleLineCentered: Boolean ->
+-        view.setSingleLineCentered(singleLineCentered)
+-      }
+-      Prop("editable") { view: T3ComposerEditorView, editable: Boolean ->
+-        view.setEditable(editable)
+-      }
+-      Prop("readOnly") { view: T3ComposerEditorView, readOnly: Boolean ->
+-        view.setReadOnly(readOnly)
+-      }
+-      Prop("scrollEnabled") { view: T3ComposerEditorView, scrollEnabled: Boolean ->
+-        view.setScrollEnabled(scrollEnabled)
+-      }
+-      Prop("autoFocus") { view: T3ComposerEditorView, autoFocus: Boolean ->
+-        view.setAutoFocus(autoFocus)
+-      }
+-      Prop("autoCorrect") { view: T3ComposerEditorView, autoCorrect: Boolean ->
+-        view.setAutoCorrect(autoCorrect)
+-      }
+-      Prop("spellCheck") { view: T3ComposerEditorView, spellCheck: Boolean ->
+-        view.setSpellCheck(spellCheck)
+-      }
+-      Prop("textPasteThresholdBytes") { view: T3ComposerEditorView, threshold: Int ->
+-        view.setTextPasteThresholdBytes(threshold)
+-      }
+-      Prop("maxInputChars") { view: T3ComposerEditorView, maxInputChars: Int ->
+-        view.setMaxInputChars(maxInputChars)
+-      }
+-
+-      Events(
+-        "onComposerChange",
+-        "onComposerSelectionChange",
+-        "onComposerFocus",
+-        "onComposerBlur",
+-        "onComposerPasteImages",
+-        "onComposerContextPress",
+-        "onComposerPasteContext",
+-        "onComposerPasteText",
+-        "onComposerContentSizeChange",
+-      )
+-
+-      AsyncFunction("focus") { view: T3ComposerEditorView ->
+-        view.focusEditor()
+-      }
+-      AsyncFunction("blur") { view: T3ComposerEditorView ->
+-        view.blurEditor()
+-      }
+-      AsyncFunction("setSelection") { view: T3ComposerEditorView, start: Int, end: Int ->
+-        view.setSelection(start, end)
+-      }
+-    }
+-  }
+-}

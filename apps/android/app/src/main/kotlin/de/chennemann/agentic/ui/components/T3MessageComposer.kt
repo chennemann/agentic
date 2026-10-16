@@ -12,8 +12,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.PressInteraction
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -45,10 +43,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TextField
-import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,8 +58,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -89,12 +82,6 @@ import de.chennemann.agentic.icons.TextAlignStart
 import de.chennemann.agentic.icons.Tune
 import de.chennemann.agentic.ui.chat.ChatPickerUi
 import de.chennemann.agentic.ui.chat.ChatUiEvent
-import de.chennemann.agentic.ui.chat.HardwareKeyboardBindings
-import de.chennemann.agentic.ui.chat.KeyboardAction
-import de.chennemann.agentic.ui.chat.KeyboardFocus
-import de.chennemann.agentic.ui.chat.toChatUiEvent
-import de.chennemann.agentic.ui.chat.toHardwareKeyStroke
-import androidx.compose.ui.input.key.onPreviewKeyEvent
 import de.chennemann.agentic.ui.chat.ChatImageAttachmentUi
 import de.chennemann.agentic.ui.chat.ComposerUiState
 import de.chennemann.agentic.ui.chat.ProjectQuickSwitchUi
@@ -137,11 +124,8 @@ fun T3MessageComposer(
     onOpenImage: (ChatImageAttachmentUi) -> Unit = {},
 ) {
     var controlsOpen by rememberSaveable { mutableStateOf(false) }
-    var commandMenuDismissed by remember { mutableStateOf(false) }
-    val inputInteractionSource = remember { MutableInteractionSource() }
     val focusManager = LocalFocusManager.current
     val keyboardController = LocalSoftwareKeyboardController.current
-    val inputFocusRequester = remember { FocusRequester() }
     val requestMicrophonePermission = rememberMicrophonePermissionRequest(
         onGranted = { onEvent(ChatUiEvent.VoiceInputPressed) },
         onDenied = { onEvent(ChatUiEvent.MicrophonePermissionDenied) },
@@ -151,16 +135,6 @@ fun T3MessageComposer(
     }
     val selectedModel = state.providerModels.firstOrNull {
         it.id == state.selectedProviderModelId
-    }
-    val commandQuery = state.draft
-        .takeIf { it.startsWith("/") }
-        ?.drop(1)
-        ?.substringBefore(' ')
-        .orEmpty()
-    val matchingCommands = if (commandQuery.isBlank() && !state.draft.startsWith("/")) {
-        emptyList()
-    } else {
-        state.slashCommands.filter { it.name.startsWith(commandQuery, ignoreCase = true) }
     }
     val hasMessage = state.draft.isNotBlank() || state.imageAttachments.isNotEmpty()
     val showStop = turnRunning && !hasMessage
@@ -172,28 +146,6 @@ fun T3MessageComposer(
         onRecordingCancelled = { onEvent(ChatUiEvent.VoiceInputCancelled) },
     )
     BackHandler(enabled = controlsOpen) { controlsOpen = false }
-    LaunchedEffect(inputInteractionSource) {
-        inputInteractionSource.interactions.collect { interaction ->
-            if (interaction is PressInteraction.Press) {
-                controlsOpen = false
-                onInputFocusedManually()
-            }
-        }
-    }
-    LaunchedEffect(inputFocusRequested, state.enabled) {
-        when {
-            inputFocusRequested == true && state.enabled -> {
-                inputFocusRequester.requestFocus()
-                keyboardController?.show()
-            }
-
-            inputFocusRequested == false -> {
-                focusManager.clearFocus()
-                keyboardController?.hide()
-            }
-        }
-    }
-
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = ComposerBackground,
@@ -251,95 +203,40 @@ fun T3MessageComposer(
                     }
                 }
             }
+            if (state.suggestions.isNotEmpty() || state.suggestionsLoading || state.suggestionsError != null) {
+                Column(Modifier.fillMaxWidth().heightIn(max = 180.dp).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
+                    state.suggestions.forEach { suggestion ->
+                        Column(Modifier.fillMaxWidth().clickable {
+                            onEvent(ChatUiEvent.ComposerSuggestionSelected(suggestion.id))
+                        }.padding(vertical = 8.dp)) {
+                            Text(suggestion.label, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+                            if (suggestion.detail.isNotBlank()) Text(suggestion.detail, maxLines = 2, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.bodySmall, color = ComposerMuted)
+                        }
+                    }
+                    if (state.suggestionsLoading) Text("Searching…", style = MaterialTheme.typography.bodySmall, color = ComposerMuted)
+                    state.suggestionsError?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                }
+            }
             Row(
                 modifier = Modifier.fillMaxWidth().padding(end = 12.dp),
                 verticalAlignment = Alignment.Bottom,
             ) {
-                Box(modifier = Modifier.weight(1f)) {
-                TextField(
-                    value = state.draft,
-                    onValueChange = {
-                        commandMenuDismissed = false
-                        onEvent(ChatUiEvent.DraftChanged(it))
-                    },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(inputFocusRequester)
-                        .testTag(ComposerInputTestTag)
-                        .onPreviewKeyEvent { keyEvent ->
-                            val stroke = keyEvent.toHardwareKeyStroke(KeyboardFocus.COMPOSER)
-                                ?: return@onPreviewKeyEvent false
-                            val action = HardwareKeyboardBindings.map(
-                                stroke,
-                                canSend = state.enabled &&
-                                    !state.sending &&
-                                    (state.draft.isNotBlank() || state.imageAttachments.isNotEmpty()),
-                                turnRunning = turnRunning,
-                            ) ?: return@onPreviewKeyEvent false
-                            if (action == KeyboardAction.NEWLINE) return@onPreviewKeyEvent false
-                            action.toChatUiEvent()?.let(onEvent)
-                            true
+                androidx.compose.runtime.key(state.draftIdentity) {
+                    NativeComposerEditor(
+                        state = state,
+                        turnRunning = turnRunning,
+                        onEvent = { event ->
+                            val token = (event as? ChatUiEvent.ComposerContextRequested)?.source?.let {
+                                de.chennemann.agentic.domain.composer.composerTokens(it).singleOrNull()
+                            }
+                            val binding = token?.contextId?.let { id -> state.contextItems.firstOrNull { it.id == id }?.attachmentId }
+                            val image = binding?.let { id -> state.imageAttachments.firstOrNull { it.id == id } }
+                            if (image != null) onOpenImage(image) else onEvent(event)
                         },
-                    enabled = state.enabled &&
-                        state.voiceInputStatus == VoiceInputStatusUi.IDLE,
-                    placeholder = {
-                        Text(
-                            when (state.voiceInputStatus) {
-                                VoiceInputStatusUi.RECORDING -> "Recording…"
-                                VoiceInputStatusUi.TRANSCRIBING -> "Transcribing…"
-                                VoiceInputStatusUi.IDLE -> "Message"
-                            },
-                        )
-                    },
-                    interactionSource = inputInteractionSource,
-                    maxLines = 12,
-                    colors = TextFieldDefaults.colors(
-                        focusedContainerColor = Color.Transparent,
-                        unfocusedContainerColor = Color.Transparent,
-                        disabledContainerColor = Color.Transparent,
-                        focusedTextColor = ComposerContent,
-                        unfocusedTextColor = ComposerContent,
-                        disabledTextColor = ComposerDisabled,
-                        cursorColor = MaterialTheme.colorScheme.primary,
-                        focusedPlaceholderColor = ComposerMuted,
-                        unfocusedPlaceholderColor = ComposerMuted,
-                        disabledPlaceholderColor = ComposerDisabled,
-                        focusedIndicatorColor = Color.Transparent,
-                        unfocusedIndicatorColor = Color.Transparent,
-                        disabledIndicatorColor = Color.Transparent,
-                    ),
-                )
-
-                DropdownMenu(
-                    expanded = matchingCommands.isNotEmpty() && !commandMenuDismissed,
-                    onDismissRequest = { commandMenuDismissed = true },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(max = 260.dp),
-                ) {
-                    matchingCommands.forEach { command ->
-                        DropdownMenuItem(
-                            text = {
-                                Column {
-                                    Text("/${command.name}")
-                                    command.description?.let {
-                                        Text(
-                                            text = it,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            maxLines = 2,
-                                            overflow = TextOverflow.Ellipsis,
-                                        )
-                                    }
-                                }
-                            },
-                            onClick = {
-                                commandMenuDismissed = true
-                                onEvent(ChatUiEvent.SlashCommandSelected(command.name))
-                            },
-                        )
-                    }
-                }
-
+                        onFocus = { controlsOpen = false; onInputFocusedManually() },
+                        focusRequested = if (controlsOpen) false else inputFocusRequested,
+                        modifier = Modifier.weight(1f).testTag(ComposerInputTestTag),
+                    )
                 }
                 Row(
                     modifier = Modifier.padding(bottom = 4.dp),
@@ -497,6 +394,21 @@ fun T3MessageComposer(
                 }
             }
         }
+    }
+    state.contextPreview?.let { preview ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { onEvent(ChatUiEvent.ComposerContextDismissed) },
+            title = { Text(preview.title) },
+            text = {
+                androidx.compose.foundation.text.selection.SelectionContainer {
+                    Column(Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                        if (preview.loading) CircularProgressIndicator(Modifier.size(24.dp))
+                        Text(preview.text, fontFamily = FontFamily.Monospace)
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { onEvent(ChatUiEvent.ComposerContextDismissed) }) { Text("Close") } },
+        )
     }
 }
 

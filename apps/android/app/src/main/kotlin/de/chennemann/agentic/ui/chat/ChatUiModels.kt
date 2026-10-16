@@ -425,6 +425,14 @@ enum class EnvironmentConnectionIndicatorUi {
 data class QueuedMessageUi(val id: String, val text: String, val paused: Boolean, val error: String?)
 
 data class ComposerUiState(
+    val clipboardFragment: String = "",
+    val contextItems: List<ComposerContextItemUi> = emptyList(),
+    val suggestions: List<ComposerSuggestionUi> = emptyList(),
+    val suggestionsLoading: Boolean = false,
+    val suggestionsError: String? = null,
+    val selectionRequest: ComposerSelectionUi? = null,
+    val draftIdentity: String = "",
+    val contextPreview: ComposerContextPreviewUi? = null,
     val followUpBehavior: FollowUpBehavior = FollowUpBehavior.STEER,
     val queuedMessages: List<QueuedMessageUi> = emptyList(),
     val draft: String = "",
@@ -445,6 +453,11 @@ data class ComposerUiState(
     val voiceInputStatus: VoiceInputStatusUi = VoiceInputStatusUi.IDLE,
     val imageAttachments: List<ChatImageAttachmentUi> = emptyList(),
 )
+
+data class ComposerContextItemUi(val id: String, val kind: String, val label: String, val detail: String, val available: Boolean = true, val attachmentId: String? = null)
+data class ComposerSuggestionUi(val id: String, val kind: String, val label: String, val detail: String, val value: String)
+data class ComposerSelectionUi(val start: Int, val end: Int, val requestId: Long)
+data class ComposerContextPreviewUi(val title: String, val text: String, val loading: Boolean = false)
 
 enum class VoiceInputStatusUi {
     IDLE,
@@ -581,6 +594,14 @@ enum class ChatPickerUi {
 }
 
 sealed interface ChatUiEvent {
+    data class ComposerEdited(val value: String, val start: Int, val end: Int) : ChatUiEvent
+    data class ComposerSelectionChanged(val value: String, val start: Int, val end: Int) : ChatUiEvent
+    data class ComposerSuggestionSelected(val id: String) : ChatUiEvent
+    data class ComposerTextPasted(val value: String, val start: Int, val end: Int, val text: String) : ChatUiEvent
+    data class ComposerContextPasted(val value: String, val start: Int, val end: Int, val text: String, val html: String) : ChatUiEvent
+    data class ComposerContextRequested(val source: String) : ChatUiEvent
+    data object ComposerContextDismissed : ChatUiEvent
+
     data object OlderHistoryRequested : ChatUiEvent
     data class DraftChanged(
         val value: String,

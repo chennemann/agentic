@@ -171,3 +171,6 @@ VALUES (?, ?, 'pending', ?);
 
 setSharedTextReceiptStatus:
 UPDATE shared_text_import SET status = ? WHERE fingerprint = ?;
+
+selectComposerDraftPayloads:
+SELECT payload_json FROM local_preference WHERE preference_key LIKE 'composer-draft-v1:%';

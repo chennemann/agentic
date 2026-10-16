@@ -1,0 +1,51 @@
+{
+  "repository": "https://github.com/pingdotgg/t3code",
+  "revision": "3e6b45028ceec5820dacb37dc3852470ebdc9411",
+  "files": {
+    "src/main/java/expo/modules/t3composereditor/T3ComposerEditorView.kt": {
+      "source": "apps/mobile/modules/t3-composer-editor/android/src/main/java/expo/modules/t3composereditor/T3ComposerEditorView.kt",
+      "sha256": "ef4bc3ab9701580a26e3b07a3751e667cbb0169cd9b71701d3c5f1e81baaafcb",
+      "binary": false
+    },
+    "src/main/java/expo/modules/t3markdowntext/T3ContextChip.kt": {
+      "source": "apps/mobile/modules/t3-markdown-text/android/src/main/java/expo/modules/t3markdowntext/T3ContextChip.kt",
+      "sha256": "3134472ede20218ba63e865327e7a58d0dc341953a86b991a527dc6c38d58f97",
+      "binary": false
+    },
+    "reference/T3ComposerEditorModule.kt": {
+      "source": "apps/mobile/modules/t3-composer-editor/android/src/main/java/expo/modules/t3composereditor/T3ComposerEditorModule.kt",
+      "sha256": "840e090846ffe53aaed7507dda3a65f14fc70f920aaeab212561631ba79ec3d7",
+      "binary": false
+    },
+    "reference/composerTrigger.ts": {
+      "source": "packages/shared/src/composerTrigger.ts",
+      "sha256": "f162906ade8b91a0c89fae70e8d7a6cfe786cf3eb4d39a64b401cd466e7a63ab",
+      "binary": false
+    },
+    "reference/composerInlineTokens.ts": {
+      "source": "packages/shared/src/composerInlineTokens.ts",
+      "sha256": "876081c52b707f6ca365df6f6fcaf6e725893f752bba5a0b08504e9b98ac56a5",
+      "binary": false
+    },
+    "reference/composerContextReferences.ts": {
+      "source": "packages/shared/src/composerContextReferences.ts",
+      "sha256": "710897a72e8dbb74740c2f5324ae43dfb6658dc1463cf77c0b32911e1eb97b1f",
+      "binary": false
+    },
+    "reference/textPaste.ts": {
+      "source": "packages/client-runtime/src/textPaste.ts",
+      "sha256": "089ebfc0d5870274f6bb99b5c723bca899a2e5ddd06139e76df8ee5aed918b07",
+      "binary": false
+    },
+    "LICENSE": {
+      "source": "apps/mobile/modules/t3-composer-editor/LICENSE",
+      "sha256": "fb3ca4a837f5779e83cef89b78253a8949cfb9429c340309f62d0465ec6610b4",
+      "binary": false
+    },
+    "src/main/java/expo/modules/t3composereditor/T3ComposerClipboard.kt": {
+      "source": "apps/mobile/modules/t3-composer-editor/android/src/main/java/expo/modules/t3composereditor/T3ComposerEditorModule.kt",
+      "sha256": "840e090846ffe53aaed7507dda3a65f14fc70f920aaeab212561631ba79ec3d7",
+      "binary": false
+    }
+  }
+}

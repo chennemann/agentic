@@ -108,6 +108,100 @@ import org.junit.jupiter.api.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModelIntentTest {
     @Test
+    fun `composer skills use the exact workspace catalog and uploaded context binds to server ids`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val environments = FakeViewModelEnvironmentRepository()
+        val config = repository.clientConfig.value.value!!
+        repository.clientConfig.value = repository.clientConfig.value.copy(value = config.copy(environment = config.environment.copy(capabilities = ExecutionEnvironmentCapabilities(attachmentUploads = true, inlineMessageContext = true, fileAttachments = de.chennemann.agentic.t3.contract.FileAttachmentCapability(5000000)))))
+        val current = repository.focusedThread.value.value!!
+        repository.focusedThread.value = repository.focusedThread.value.copy(value = current.copy(thread = current.thread.copy(worktreePath = "/worktree")))
+        val shell = repository.shell.value.value!!
+        repository.shell.value = repository.shell.value.copy(value = shell.copy(threads = shell.threads.map { if (it.id == "thread-1") it.copy(worktreePath = "/worktree") else it }))
+        val rpc = RecordingComposerRpc()
+        val service = de.chennemann.agentic.domain.composer.ComposerContextService(environments, ComposerTestCredentials(), repository, rpc)
+        assertEquals(listOf("allowed"), service.suggestions("skill", "", "provider").map { it.value })
+        assertEquals(listOf("provider" to "/worktree"), rpc.workspaces)
+        val file = de.chennemann.agentic.domain.composer.pastedTextFile("payload", emptyList())
+        val doc = de.chennemann.agentic.domain.composer.ComposerDocument(de.chennemann.agentic.domain.composer.composerContextReference("file", file.id, file.name), listOf(de.chennemann.agentic.domain.composer.pastedTextRecord(file)), listOf(file))
+        val prepared = service.prepare("environment", doc)
+        assertEquals("uploaded-file", prepared.attachments.single().id)
+        assertEquals(JsonPrimitive("uploaded-file"), prepared.records.single()["attachmentId"])
+        assertEquals("file", prepared.attachments.single().type)
+        assertEquals("pasted-text", prepared.attachments.single().source?.get("_tag")?.let { (it as JsonPrimitive).content })
+        rpc.onUpload = { (environments.activeEnvironment as MutableStateFlow).value = null }
+        val error = runCatching { service.prepare("environment", doc) }.exceptionOrNull()
+        assertTrue(error?.message.orEmpty().contains("environment changed"))
+    }
+
+    @Test
+    fun `composer completion replaces only the active token and restores the caret`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val actions = RecordingComposerContext()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository), chat = NoOpChatActions(), mappingDispatcher = dispatcher,
+            composerContext = actions,
+        )
+        advanceUntilIdle()
+        viewModel.onEvent(ChatUiEvent.ComposerEdited("Review @src then test", 11, 11))
+        advanceUntilIdle()
+        assertEquals(listOf("path" to "src"), actions.queries)
+        viewModel.onEvent(ChatUiEvent.ComposerSuggestionSelected("path:src/Main.kt"))
+        advanceUntilIdle()
+        assertEquals("Review [Main.kt](src/Main.kt)  then test", viewModel.draft.value)
+        assertEquals(30, viewModel.state.value.composer.selectionRequest?.start)
+        assertTrue(viewModel.state.value.composer.suggestions.isEmpty())
+    }
+
+    @Test
+    fun `large unicode paste folds at the selection and sends an uploaded file with bound context`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val chat = NoOpChatActions()
+        val actions = RecordingComposerContext()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository), chat = chat, mappingDispatcher = dispatcher,
+            composerContext = actions,
+        )
+        advanceUntilIdle()
+        val pasted = "\u65e5".repeat(12000)
+        viewModel.onEvent(ChatUiEvent.DraftChanged("before replace after"))
+        viewModel.onEvent(ChatUiEvent.ComposerTextPasted("before replace after", 7, 14, pasted))
+        advanceUntilIdle()
+        assertTrue(viewModel.draft.value.startsWith("before [pasted-text.txt](t3-context://v1/file/"))
+        assertTrue(viewModel.draft.value.endsWith("  after"))
+        assertEquals(1, viewModel.state.value.composer.contextItems.size)
+        viewModel.onEvent(ChatUiEvent.ComposerContextRequested(de.chennemann.agentic.domain.composer.composerTokens(viewModel.draft.value).single().source))
+        advanceUntilIdle()
+        assertEquals(pasted, viewModel.state.value.composer.contextPreview?.text)
+        viewModel.onEvent(ChatUiEvent.MessageSubmitted)
+        advanceUntilIdle()
+        assertEquals(pasted, actions.prepared.single().pastes.single().text)
+        assertEquals(1, chat.startTurnCalls.size)
+        assertEquals("", viewModel.draft.value)
+    }
+
+    @Test
+    fun `unavailable upload keeps large paste editable and oversized paste preserves the draft`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository), chat = NoOpChatActions(), mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+        viewModel.onEvent(ChatUiEvent.ComposerTextPasted("", 0, 0, "a".repeat(33000)))
+        advanceUntilIdle()
+        assertEquals(33000, viewModel.draft.value.length)
+        viewModel.onEvent(ChatUiEvent.ComposerTextPasted(viewModel.draft.value, 0, 0, "b".repeat(120000)))
+        advanceUntilIdle()
+        assertEquals("a".repeat(33000), viewModel.draft.value)
+        assertTrue(viewModel.state.value.composer.errorMessage.orEmpty().contains("limit"))
+    }
+
+    @Test
     fun `follow up tap steers by default and long press queues with reversed configuration`() = runTest(dispatcher) {
         for (behavior in de.chennemann.agentic.domain.preferences.FollowUpBehavior.entries) {
             val fixture = QueueFixture(backgroundScope)
@@ -3325,5 +3419,42 @@ private class QueueFixture(scope: CoroutineScope) {
                 ) else thread
             },
         ))
+    }
+}
+
+private class RecordingComposerContext : de.chennemann.agentic.domain.composer.ComposerContextActions {
+    val queries = mutableListOf<Pair<String, String>>()
+    val prepared = mutableListOf<de.chennemann.agentic.domain.composer.ComposerDocument>()
+    override fun maxPasteBytes() = 50L * 1024 * 1024
+    override fun inlineContextAvailable() = true
+    override suspend fun suggestions(kind: String, query: String, instanceId: String?): List<de.chennemann.agentic.domain.composer.ComposerSuggestion> {
+        queries += kind to query
+        return listOf(de.chennemann.agentic.domain.composer.ComposerSuggestion("path:src/Main.kt", "path", "Main.kt", "src/Main.kt", "src/Main.kt"))
+    }
+    override suspend fun prepare(environmentId: String, document: de.chennemann.agentic.domain.composer.ComposerDocument): de.chennemann.agentic.domain.composer.PreparedComposerContext {
+        prepared += document
+        val uploads = document.retained().pastes.map { de.chennemann.agentic.t3.contract.UploadChatAttachment(type = "file", id = it.id, name = it.name, mimeType = "text/plain", sizeBytes = it.text.toByteArray().size.toLong()) }
+        return de.chennemann.agentic.domain.composer.PreparedComposerContext(uploads, document.referencedRecords())
+    }
+}
+
+private class ComposerTestCredentials : de.chennemann.agentic.data.auth.CredentialStore {
+    override suspend fun read(environmentId: String) = "test-token"
+    override suspend fun write(environmentId: String, bearerToken: String) = Unit
+    override suspend fun remove(environmentId: String) = Unit
+}
+
+private class RecordingComposerRpc : de.chennemann.agentic.data.t3.ComposerRpcClient {
+    val workspaces = mutableListOf<Pair<String, String>>()
+    var onUpload: () -> Unit = {}
+    override suspend fun searchComposerPaths(baseUrl: String, token: String, cwd: String, query: String) = de.chennemann.agentic.t3.contract.WorkspaceEntriesResult(emptyList(), false)
+    override suspend fun composerProviders(baseUrl: String, token: String, instanceId: String, cwd: String): de.chennemann.agentic.t3.contract.ProviderUpdatedResult {
+        workspaces += instanceId to cwd
+        val skills = listOf(de.chennemann.agentic.t3.contract.ProviderSkill("allowed", "/skills/a", true), de.chennemann.agentic.t3.contract.ProviderSkill("disabled", "/skills/b", false), de.chennemann.agentic.t3.contract.ProviderSkill("agent-only", "/skills/c", true, userInvocable = false))
+        return de.chennemann.agentic.t3.contract.ProviderUpdatedResult(listOf(ProviderInstance(instanceId, workspaceSnapshots = listOf(de.chennemann.agentic.t3.contract.ProviderWorkspaceSnapshot(cwd, skills)))))
+    }
+    override suspend fun uploadPastedText(baseUrl: String, token: String, name: String, text: String): String {
+        onUpload()
+        return "uploaded-file"
     }
 }

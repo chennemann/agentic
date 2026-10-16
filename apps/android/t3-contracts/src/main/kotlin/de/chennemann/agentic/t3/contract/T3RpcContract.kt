@@ -43,6 +43,9 @@ data class ExecutionEnvironmentCapabilities(
     val threadSettlement: Boolean = false,
     val threadSnooze: Boolean = false,
     val usagePriceOverrides: Boolean = false,
+    val attachmentUploads: Boolean = false,
+    val inlineMessageContext: Boolean = false,
+    val fileAttachments: FileAttachmentCapability? = null,
     val requiredWorktreeBootstrap: Boolean = false
 )
 
@@ -265,7 +268,8 @@ data class ProviderInstance(
     val slashCommands: List<SlashCommand> = emptyList(),
     val auth: ProviderAuth = ProviderAuth(),
     val usageLimits: ProviderUsageLimits? = null,
-    val skills: List<JsonElement> = emptyList()
+    val skills: List<JsonElement> = emptyList(),
+    val workspaceSnapshots: List<ProviderWorkspaceSnapshot> = emptyList()
 )
 
 @Serializable
@@ -486,7 +490,8 @@ data class UploadChatAttachment(
     val name: String,
     val mimeType: String,
     val sizeBytes: Long,
-    val dataUrl: String
+    val dataUrl: String = "",
+    val source: JsonObject? = null
 )
 
 @Serializable

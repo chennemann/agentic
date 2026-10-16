@@ -179,6 +179,8 @@ val appModule = module {
     single<TerminalRpcClient> { get<KtorT3Client>() }
     single<de.chennemann.agentic.data.t3.ReviewDiffRpcClient> { get<KtorT3Client>() }
     single<ThreadWorkspaceRpcClient> { get<KtorT3Client>() }
+    single<de.chennemann.agentic.data.t3.ComposerRpcClient> { get<KtorT3Client>() }
+    single<de.chennemann.agentic.domain.composer.ComposerContextActions> { de.chennemann.agentic.domain.composer.ComposerContextService(get(), get(), get(), get()) }
     single<WorkspaceFilesRpcClient> { get<KtorT3Client>() }
     single<de.chennemann.agentic.data.t3.AttachmentAssetClient> { get<KtorT3Client>() }
     single<ProjectDestinationRpcClient> { get<KtorT3Client>() }
@@ -211,6 +213,7 @@ val appModule = module {
         SqlComposerDraftRepository(
             database = get(),
             dispatcher = get<DispatcherProvider>().io,
+            payloads = de.chennemann.agentic.data.cache.ComposerPastePayloads(java.io.File(get<android.content.Context>().filesDir, "composer-pastes")),
         )
     }
     single<CommandOutbox> { SqlCommandOutbox(get(), get<DispatcherProvider>().io) }
@@ -341,6 +344,7 @@ val appModule = module {
             messageQueue = get(),
             annotatedImages = get(),
             workspaceFiles = get(),
+            composerContext = get(),
         )
     }
 }

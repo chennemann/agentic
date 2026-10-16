@@ -1,5 +1,19 @@
 package de.chennemann.agentic.ui.chat
 
+import de.chennemann.agentic.domain.composer.ComposerContextActions
+import de.chennemann.agentic.domain.composer.ComposerDocument
+import de.chennemann.agentic.domain.composer.COMPOSER_CONTEXT_MAX_RECORDS
+import de.chennemann.agentic.domain.composer.COMPOSER_INPUT_MAX_CHARS
+import de.chennemann.agentic.domain.composer.PASTED_TEXT_ATTACHMENT_THRESHOLD_BYTES
+import de.chennemann.agentic.domain.composer.PreparedComposerContext
+import de.chennemann.agentic.domain.composer.composerContextReference
+import de.chennemann.agentic.domain.composer.composerFileLink
+import de.chennemann.agentic.domain.composer.composerTokens
+import de.chennemann.agentic.domain.composer.composerTrigger
+import de.chennemann.agentic.domain.composer.messageContext
+import de.chennemann.agentic.domain.composer.pastedTextFile
+import de.chennemann.agentic.domain.composer.pastedTextRecord
+import de.chennemann.agentic.domain.composer.string
 import de.chennemann.agentic.domain.attachments.AnnotatedImageRenderer
 import de.chennemann.agentic.domain.attachments.DraftImageAttachment
 import de.chennemann.agentic.domain.attachments.MaxImageAnnotations
@@ -120,8 +134,15 @@ class ChatViewModel(
     private val messageQueue: MessageQueueService? = null,
     private val annotatedImages: AnnotatedImageRenderer? = null,
     private val workspaceFiles: WorkspaceFilesBrowser? = null,
+    private val composerContext: ComposerContextActions? = null,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
+    private val knownComposerSkills = mutableMapOf<String, ComposerSuggestionUi>()
+    private var suggestionJob: Job? = null
+    private var composerSelectionStart = 0
+    private var composerSelectionEnd = 0
+    private var selectionRequestId = 0L
+    private val documentCache = mutableMapOf<DraftKey?, ComposerDocument>()
     private var historyJob: Job? = null
     private val mutableDraft = MutableStateFlow("")
     val draft = mutableDraft.asStateFlow()
@@ -233,10 +254,10 @@ class ChatViewModel(
             viewModelScope.launch {
                 for (write in draftWrites) {
                     runCatching {
-                        drafts.setDraft(
+                        drafts.setDocument(
                             environmentId = write.key.environmentId,
                             threadId = write.key.threadId,
-                            draft = write.value,
+                            document = write.document,
                         )
                     }
                 }
@@ -472,6 +493,16 @@ class ChatViewModel(
 
     fun onEvent(event: ChatUiEvent) {
         when (event) {
+            is ChatUiEvent.ComposerEdited -> {
+                setDraft(event.value)
+                composerSelectionChanged(event.value, event.start, event.end)
+            }
+            is ChatUiEvent.ComposerSelectionChanged -> composerSelectionChanged(event.value, event.start, event.end)
+            is ChatUiEvent.ComposerSuggestionSelected -> selectComposerSuggestion(event.id)
+            is ChatUiEvent.ComposerTextPasted -> pasteComposerText(event)
+            is ChatUiEvent.ComposerContextPasted -> pasteComposerContext(event)
+            is ChatUiEvent.ComposerContextRequested -> inspectComposerContext(event.source)
+            ChatUiEvent.ComposerContextDismissed -> update { copy(composerPreview = null) }
             is ChatUiEvent.DraftChanged -> setDraft(event.value)
             ChatUiEvent.DraftDiscardRequested -> setDraft(
                 displayedDraftKey,
@@ -485,8 +516,12 @@ class ChatViewModel(
             is ChatUiEvent.QueuedMessageSendRequested -> messageQueue?.sendNow(event.id)
             is ChatUiEvent.QueuedMessageRemoved -> messageQueue?.remove(event.id)
             is ChatUiEvent.ImagesSelected -> addImages(event.uris)
-            is ChatUiEvent.ImageRemoved -> update {
-                copy(draftImages = draftImages.filterNot { it.id == event.id })
+            is ChatUiEvent.ImageRemoved -> {
+                val recordIds = currentDocument().records.filter { it.string("attachmentId") == event.id }.mapNotNull { it.string("contextId") }.toSet()
+                var text = mutableDraft.value
+                composerTokens(text).filter { it.contextId in recordIds }.asReversed().forEach { text = text.removeRange(it.start, it.end) }
+                setDraft(text)
+                update { copy(draftImages = draftImages.filterNot { it.id == event.id }) }
             }
             is ChatUiEvent.ImageAnnotationsSaved -> update {
                 copy(
@@ -528,8 +563,10 @@ class ChatViewModel(
             }
             ChatUiEvent.SessionTerminationRequested -> terminateSession()
 
-            is ChatUiEvent.ProviderModelSelected -> update {
-                copy(providerModelId = event.id, activePicker = null)
+            is ChatUiEvent.ProviderModelSelected -> {
+                knownComposerSkills.clear()
+                update { copy(providerModelId = event.id, activePicker = null) }
+                composerSelectionChanged(mutableDraft.value, composerSelectionStart, composerSelectionEnd)
             }
 
             is ChatUiEvent.ProviderModelFavoriteChanged -> {
@@ -934,7 +971,23 @@ class ChatViewModel(
         if (local.value.sending) return
         val draftKey = displayedDraftKey
         val prompt = mutableDraft.value.trim()
+        val document = currentDocument().copy(text = prompt)
+        if (prompt.length >
+            COMPOSER_INPUT_MAX_CHARS
+        ) {
+            return submissionUnavailable(
+                "Messages can contain up to 120,000 characters. Shorten this draft before sending."
+            )
+        }
+        val known = document.records.mapNotNull { it.string("contextId") }.toSet()
+        if (composerTokens(prompt).any {
+                it.contextId != null && it.contextId !in known
+            }
+        ) {
+            return submissionUnavailable("Some context is unavailable. Remove or replace its chip before sending.")
+        }
         val attachments = local.value.draftImages
+        val targetEnvironmentId = environments.activeEnvironment.value?.id ?: return
         if (prompt.isEmpty() && attachments.isEmpty()) return
         val shell = repository.shell.value.value
             ?: return submissionUnavailable("Projects are not available yet.")
@@ -948,13 +1001,24 @@ class ChatViewModel(
             ?.takeIf { it.id == threadId }
         val runtimeMode = local.value.runtimeModeId ?: DefaultRuntimeMode
         val behavior = state.value.composer.followUpBehavior.let { if (alternate) it.alternate() else it }
-        if (threadId != null && detail?.session?.status in ActiveSessionStatuses && behavior == FollowUpBehavior.QUEUE) {
+        if (threadId != null &&
+            detail?.session?.status in ActiveSessionStatuses &&
+            behavior == FollowUpBehavior.QUEUE
+        ) {
             val queue = messageQueue ?: return submissionUnavailable("Message queuing is unavailable.")
             val environmentId = environments.activeEnvironment.value?.id ?: return
             update { copy(sending = true, commandError = null) }
             launchCommand {
-                val message = prepareTurnMessage(prompt, attachments, annotationRenderer())
-                queue.enqueue(environmentId, threadId, message.text, selection, runtimeMode, message.attachments, message.context)
+                val message = prepareComposerMessage(targetEnvironmentId, document, attachments)
+                queue.enqueue(
+                    environmentId,
+                    threadId,
+                    message.text,
+                    selection,
+                    runtimeMode,
+                    message.attachments,
+                    message.context
+                )
                 setDraft(draftKey, "", persistImmediately = true)
                 update { copy(sending = false, draftImages = emptyList(), commandError = null) }
             }
@@ -962,7 +1026,7 @@ class ChatViewModel(
         }
         update { copy(sending = true, commandError = null) }
         launchCommand {
-            val message = prepareTurnMessage(prompt, attachments, annotationRenderer())
+            val message = prepareComposerMessage(targetEnvironmentId, document, attachments)
             val result = chat.startTurn(
                 threadId = threadId,
                 projectId = projectId,
@@ -974,7 +1038,7 @@ class ChatViewModel(
                     ?.workspace
                     ?: NewThreadWorkspace.InPlace(),
                 attachments = message.attachments,
-                context = message.context,
+                context = message.context
             )
             setDraft(draftKey, "", persistImmediately = true)
             update { copy(sending = false, commandError = null, draftImages = emptyList()) }
@@ -986,10 +1050,31 @@ class ChatViewModel(
         val reader = imageAttachments ?: return submissionUnavailable("Image attachments are unavailable.")
         val remaining = MaxImageAttachmentCount - local.value.draftImages.size
         if (remaining <= 0) return submissionUnavailable("You can attach up to 8 images.")
+        val key = displayedDraftKey
         viewModelScope.launch {
             try {
-                val images = uris.take(remaining).map { DraftImageAttachment(UUID.randomUUID().toString(), reader.read(it)) }
+                val images = uris.take(remaining).map {
+                    DraftImageAttachment(UUID.randomUUID().toString(), reader.read(it))
+                }
+                if (key != displayedDraftKey) return@launch
                 update { copy(draftImages = draftImages + images, commandError = null) }
+                if (composerContext?.inlineContextAvailable() == true) {
+                    images.forEach { image ->
+                        val id = "image-${image.id}"
+                        val record = kotlinx.serialization.json.buildJsonObject {
+                            put("version", JsonPrimitive(1))
+                            put("kind", JsonPrimitive("image"))
+                            put("contextId", JsonPrimitive(id))
+                            put("label", JsonPrimitive(image.upload.name.take(200)))
+                            put("attachmentId", JsonPrimitive(image.id))
+                            put("name", JsonPrimitive(image.upload.name))
+                            put("mimeType", JsonPrimitive(image.upload.mimeType))
+                            put("sizeBytes", JsonPrimitive(image.upload.sizeBytes))
+                        }
+                        documentCache[key] = currentDocument().copy(records = currentDocument().records + record)
+                        insertComposerText(composerContextReference("image", id, image.upload.name) + " ")
+                    }
+                }
             } catch (cause: CancellationException) {
                 throw cause
             } catch (cause: Exception) {
@@ -1474,22 +1559,312 @@ class ChatViewModel(
         local.value = local.value.transform()
     }
 
+    private fun currentDocument(): ComposerDocument =
+        (documentCache[displayedDraftKey] ?: ComposerDocument()).copy(text = mutableDraft.value)
+
+    private fun updateComposerItems(document: ComposerDocument) {
+        val imageIds = local.value.draftImages.map { it.id }.toSet()
+        val pastedIds = document.pastes.filter { it.text.isNotEmpty() }.map { it.id }.toSet()
+        val items = document.records.mapNotNull { record ->
+            val id = record.string("contextId") ?: return@mapNotNull null
+            val kind = record.string("kind") ?: return@mapNotNull null
+            val attachment = record.string("attachmentId")
+            ComposerContextItemUi(
+                id,
+                kind,
+                record.string("label").orEmpty(),
+                record.string("sizeBytes")?.let { "${(it.toLongOrNull() ?: 0) / 1024} KiB" }.orEmpty(),
+                attachment == null || attachment in imageIds || attachment in pastedIds,
+                attachment
+            )
+        }
+        val allItems =
+            items + knownComposerSkills.values.map { ComposerContextItemUi("skill:${it.value}", "skill", it.label, "") }
+        val clipboard = kotlinx.serialization.json.buildJsonObject {
+            put("version", JsonPrimitive(1))
+            put(
+                "source",
+                kotlinx.serialization.json.buildJsonObject {
+                    put("environmentId", JsonPrimitive(environments.activeEnvironment.value?.id.orEmpty()))
+                }
+            )
+            put("records", JsonArray(document.records))
+        }.toString()
+        if (allItems != local.value.composerItems ||
+            clipboard != local.value.composerClipboard
+        ) {
+            update { copy(composerItems = allItems, composerClipboard = clipboard) }
+        }
+    }
+
+    private fun composerSelectionChanged(value: String, start: Int, end: Int) {
+        if (value != mutableDraft.value) return
+        composerSelectionStart = start.coerceIn(0, value.length)
+        composerSelectionEnd = end.coerceIn(0, value.length)
+        suggestionJob?.cancel()
+        val trigger = composerTrigger(value, composerSelectionStart, composerSelectionEnd)
+        if (trigger == null) {
+            update {
+                copy(
+                    composerSuggestions = emptyList(),
+                    composerSuggestionsLoading = false,
+                    composerSuggestionsError = null
+                )
+            }
+            return
+        }
+        val key = displayedDraftKey
+        val instanceId = selectedModel()?.instanceId
+        val commands = if (trigger.kind ==
+            "command"
+        ) {
+            state.value.composer.slashCommands.filter { it.name.contains(trigger.query, true) }.map {
+                ComposerSuggestionUi("command:${it.name}", "command", "/${it.name}", it.description.orEmpty(), it.name)
+            }
+        } else {
+            emptyList()
+        }
+        update {
+            copy(
+                composerSuggestions = commands,
+                composerSuggestionsLoading = composerContext != null,
+                composerSuggestionsError = null
+            )
+        }
+        val actions = composerContext ?: return
+        suggestionJob = viewModelScope.launch {
+            delay(150)
+            try {
+                val suggestions = actions.suggestions(
+                    if (trigger.kind ==
+                        "command"
+                    ) {
+                        "skill"
+                    } else {
+                        trigger.kind
+                    },
+                    trigger.query,
+                    instanceId
+                )
+                    .map { ComposerSuggestionUi(it.id, it.kind, it.label, it.detail, it.value) }
+                if (key != displayedDraftKey ||
+                    composerTrigger(mutableDraft.value, composerSelectionStart, composerSelectionEnd) != trigger ||
+                    selectedModel()?.instanceId != instanceId
+                ) {
+                    return@launch
+                }
+                suggestions.filter { it.kind == "skill" }.forEach { knownComposerSkills[it.value] = it }
+                updateComposerItems(currentDocument())
+                update { copy(composerSuggestions = commands + suggestions, composerSuggestionsLoading = false) }
+            } catch (cause: CancellationException) {
+                throw cause
+            } catch (_: Exception) {
+                if (key ==
+                    displayedDraftKey
+                ) {
+                    update {
+                        copy(
+                            composerSuggestionsLoading = false,
+                            composerSuggestionsError = "Could not load suggestions. Type again to retry."
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private fun selectComposerSuggestion(id: String) {
+        val suggestion = local.value.composerSuggestions.firstOrNull { it.id == id } ?: return
+        val trigger = composerTrigger(mutableDraft.value, composerSelectionStart, composerSelectionEnd) ?: return
+        val replacement = when (suggestion.kind) {
+            "path" -> composerFileLink(suggestion.value)
+            "skill" -> "$" + suggestion.value
+            else -> "/" + suggestion.value
+        } + " "
+        insertComposerText(replacement, trigger.start, trigger.end)
+    }
+
+    private fun insertComposerText(text: String, start: Int = composerSelectionStart, end: Int = composerSelectionEnd) {
+        val value = mutableDraft.value
+        val from = start.coerceIn(0, value.length)
+        val to = end.coerceIn(from, value.length)
+        val next = value.replaceRange(from, to, text)
+        if (next.length >
+            COMPOSER_INPUT_MAX_CHARS
+        ) {
+            return submissionUnavailable("Messages can contain up to 120,000 characters.")
+        }
+        setDraft(next)
+        composerSelectionStart = from + text.length
+        composerSelectionEnd = composerSelectionStart
+        suggestionJob?.cancel()
+        update {
+            copy(
+                composerSelectionRequest = ComposerSelectionUi(
+                    composerSelectionStart,
+                    composerSelectionEnd,
+                    ++selectionRequestId
+                ),
+                composerSuggestions = emptyList(),
+                composerSuggestionsLoading = false,
+                composerSuggestionsError = null
+            )
+        }
+    }
+
+    private fun pasteComposerText(event: ChatUiEvent.ComposerTextPasted) {
+        if (event.value != mutableDraft.value) setDraft(event.value)
+        val exceedsLimit = event.value.length - (event.end - event.start) + event.text.length > COMPOSER_INPUT_MAX_CHARS
+        val bytes = event.text.toByteArray(Charsets.UTF_8).size.toLong()
+        val canAttach =
+            bytes <= (composerContext?.maxPasteBytes() ?: 0) &&
+                currentDocument().retained().pastes.size + local.value.draftImages.size < 100
+        if (canAttach && (bytes >= PASTED_TEXT_ATTACHMENT_THRESHOLD_BYTES || exceedsLimit)) {
+            val document = currentDocument()
+            if (document.referencedRecords().size >=
+                COMPOSER_CONTEXT_MAX_RECORDS
+            ) {
+                return submissionUnavailable("Remove some context items before attaching more.")
+            }
+            val file = pastedTextFile(event.text, document.pastes)
+            documentCache[displayedDraftKey] =
+                document.copy(records = document.records + pastedTextRecord(file), pastes = document.pastes + file)
+            insertComposerText(composerContextReference("file", file.id, file.name) + " ", event.start, event.end)
+        } else if (!exceedsLimit) {
+            insertComposerText(event.text, event.start, event.end)
+        } else {
+            submissionUnavailable(
+                "This paste exceeds the message limit and cannot be attached here. Use a smaller paste."
+            )
+        }
+    }
+
+    private fun pasteComposerContext(event: ChatUiEvent.ComposerContextPasted) {
+        try {
+            require(event.html.length < 2_000_000)
+            val encoded =
+                Regex("data-t3-context-fragment=[\"']([^\"']+)[\"']").find(event.html)?.groupValues?.get(1)
+                    ?: error("Missing context")
+            val payload = T3Json.parseToJsonElement(java.net.URLDecoder.decode(encoded, Charsets.UTF_8)).jsonObject
+            require(payload["version"]?.jsonPrimitive?.intOrNull == 1)
+            require(
+                payload["source"]?.jsonObject?.get("environmentId")?.jsonPrimitive?.content ==
+                    environments.activeEnvironment.value?.id
+            ) { "Copy context from the active environment." }
+            val records = payload["records"]?.jsonArray?.map { it.jsonObject }.orEmpty()
+            require(records.size + currentDocument().referencedRecords().size <= COMPOSER_CONTEXT_MAX_RECORDS) {
+                "Too many context items."
+            }
+            val originals = documentCache.values.flatMap { it.pastes }.associateBy { it.id }
+            val importedPastes = records.mapNotNull { originals[it.string("attachmentId")] }.distinctBy { it.id }
+            require(
+                records.none {
+                    it.string("attachmentId") != null &&
+                        it.string("attachmentId") !in importedPastes.map { file -> file.id } &&
+                        it.string("attachmentId") !in local.value.draftImages.map { image -> image.id }
+                }
+            ) { "Paste this attachment from its original draft or attach it again." }
+            val doc = currentDocument()
+            documentCache[displayedDraftKey] =
+                doc.copy(
+                    records = (doc.records + records).distinctBy { it.string("contextId") },
+                    pastes = (
+                        doc.pastes +
+                            importedPastes
+                        ).distinctBy { it.id }
+                )
+            insertComposerText(event.text, event.start, event.end)
+        } catch (cause: Exception) {
+            submissionUnavailable(cause.message ?: "This context could not be pasted. Copy it again.")
+        }
+    }
+
+    private fun inspectComposerContext(source: String) {
+        val token = composerTokens("$source ").singleOrNull() ?: return
+        val document = currentDocument()
+        val record = document.records.firstOrNull { it.string("contextId") == token.contextId }
+        val file = document.pastes.firstOrNull { it.id == record?.string("attachmentId") }
+        val title = record?.string("label") ?: token.label
+        val contents =
+            file?.text?.ifEmpty { "Pasted text is unavailable. Remove this chip and paste it again." }
+                ?: record?.string("text")
+                ?: record?.string("path")
+                ?: record?.string("description")
+                ?: knownComposerSkills[token.value]?.detail ?: token.value
+        val text = if (contents.length >
+            128_000
+        ) {
+            contents.take(128_000) + "\n\nPreview truncated. The complete text will be attached."
+        } else {
+            contents
+        }
+        update { copy(composerPreview = ComposerContextPreviewUi(title, text)) }
+        if (token.kind == "mention") {
+            val threadId = repository.focusedThreadId.value ?: return
+            val key = displayedDraftKey
+            update { copy(composerPreview = ComposerContextPreviewUi(title, text, true)) }
+            viewModelScope.launch {
+                val preview = runCatching { workspaceFiles?.preview(threadId, token.value) }.getOrNull()
+                if (key == displayedDraftKey && local.value.composerPreview?.title == title) {
+                    update {
+                        copy(
+                            composerPreview = ComposerContextPreviewUi(
+                                title,
+                                (preview as? de.chennemann.agentic.domain.orchestration.WorkspaceFilePreview.Text)?.contents
+                                    ?: text
+                            )
+                        )
+                    }
+                }
+            }
+        }
+    }
+
+    private suspend fun prepareComposerMessage(
+        environmentId: String,
+        document: ComposerDocument,
+        images: List<DraftImageAttachment>
+    ): de.chennemann.agentic.domain.attachments.PreparedTurnMessage {
+        val prepared = prepareTurnMessage(document.text, images, annotationRenderer())
+        val inline =
+            composerContext?.prepare(environmentId, document) ?: PreparedComposerContext(emptyList(), emptyList())
+        val annotated = prepared.context?.get("records")?.jsonArray?.map { it.jsonObject }.orEmpty()
+        val records = (inline.records + annotated).associateBy { it.string("contextId") }.values.toList()
+        val imageIds = images.map { it.id }.toSet()
+        val fileIds = inline.attachments.map { it.id }.toSet()
+        require(
+            records.none {
+                it.string("attachmentId") != null &&
+                    it.string("attachmentId") !in imageIds &&
+                    it.string("attachmentId") !in fileIds
+            }
+        ) { "An attachment is unavailable. Remove its chip or attach it again." }
+        require(environmentId == environments.activeEnvironment.value?.id) {
+            "The environment changed. Send the draft again."
+        }
+        return prepared.copy(attachments = prepared.attachments + inline.attachments, context = messageContext(records))
+    }
+
     private fun setDraft(value: String) {
         setDraft(displayedDraftKey, value)
     }
 
-    private fun setDraft(
-        key: DraftKey?,
-        value: String,
-        persistImmediately: Boolean = false,
-    ) {
+    private fun setDraft(key: DraftKey?, value: String, persistImmediately: Boolean = false) {
+        val document = if (persistImmediately &&
+            value.isEmpty()
+        ) {
+            ComposerDocument()
+        } else {
+            (documentCache[key] ?: ComposerDocument()).withText(value)
+        }
+        documentCache[key] = document
         if (key == null) {
             unthreadedDraft = value
         } else {
             draftCache[key] = value
             dirtyDraftKeys += key
             if (composerDrafts != null) {
-                val write = DraftWrite(key, value)
+                val write = DraftWrite(key, value, document.retained())
                 if (persistImmediately) {
                     cancelPendingDraftWrite(key)
                     draftWrites.trySend(write)
@@ -1500,20 +1875,33 @@ class ChatViewModel(
         }
         if (key == displayedDraftKey) {
             mutableDraft.value = value
+            if (persistImmediately && value.isEmpty()) {
+                composerSelectionStart = 0
+                composerSelectionEnd = 0
+                update { copy(composerSelectionRequest = ComposerSelectionUi(0, 0, ++selectionRequestId)) }
+            }
+            updateComposerItems(document)
             if (local.value.commandError != null) {
                 update { copy(commandError = null) }
             }
         }
     }
 
-    private suspend fun selectDraft(
-        key: DraftKey?,
-        drafts: ComposerDraftRepository?,
-    ) {
+    private suspend fun selectDraft(key: DraftKey?, drafts: ComposerDraftRepository?) {
         if (draftSelectionInitialized && key == displayedDraftKey) return
         val previousKey = displayedDraftKey
         if (draftSelectionInitialized) flushPendingDraftWrite(displayedDraftKey)
         displayedDraftKey = key
+        suggestionJob?.cancel()
+        update {
+            copy(
+                composerSuggestions = emptyList(),
+                composerSuggestionsError = null,
+                composerSuggestionsLoading = false,
+                composerPreview = null,
+                composerSelectionRequest = null
+            )
+        }
         draftSelectionInitialized = true
 
         if (key == null) {
@@ -1532,15 +1920,19 @@ class ChatViewModel(
         }
 
         showDraft("")
-        val restored = drafts?.observe(key.environmentId, key.threadId)?.first().orEmpty()
+        val restored = drafts?.observeDocument(key.environmentId, key.threadId)?.first() ?: ComposerDocument()
         if (key == displayedDraftKey && key !in dirtyDraftKeys) {
-            draftCache[key] = restored
-            showDraft(restored)
+            documentCache[key] = restored
+            draftCache[key] = restored.text
+            showDraft(restored.text)
         }
     }
 
     private fun showDraft(value: String) {
         mutableDraft.value = value
+        composerSelectionStart = value.length
+        composerSelectionEnd = value.length
+        updateComposerItems((documentCache[displayedDraftKey] ?: ComposerDocument()).copy(text = value))
         if (local.value.commandError != null) {
             update { copy(commandError = null) }
         }
@@ -1640,6 +2032,14 @@ class ChatViewModel(
             connection = environment.connection.toUi(),
             composer = ComposerUiState(
                 draft = "",
+                clipboardFragment = local.composerClipboard,
+                contextItems = local.composerItems,
+                suggestions = local.composerSuggestions,
+                suggestionsLoading = local.composerSuggestionsLoading,
+                suggestionsError = local.composerSuggestionsError,
+                selectionRequest = local.composerSelectionRequest,
+                draftIdentity = "${environment.active?.id}:${orchestration.threadId ?: projectId}",
+                contextPreview = local.composerPreview,
                 selectedProviderModelId = selectedModelId,
                 providerModels = modelOptions,
                 providerOptions = providerOptions,
@@ -2179,6 +2579,13 @@ class ChatViewModel(
     )
 
     private data class LocalState(
+        val composerClipboard: String = "",
+        val composerItems: List<ComposerContextItemUi> = emptyList(),
+        val composerSuggestions: List<ComposerSuggestionUi> = emptyList(),
+        val composerSuggestionsLoading: Boolean = false,
+        val composerSuggestionsError: String? = null,
+        val composerSelectionRequest: ComposerSelectionUi? = null,
+        val composerPreview: ComposerContextPreviewUi? = null,
         val historyLoading: Boolean = false,
         val historyError: String? = null,
         val activePicker: ChatPickerUi? = null,
@@ -2246,6 +2653,7 @@ class ChatViewModel(
     private data class DraftWrite(
         val key: DraftKey,
         val value: String,
+        val document: ComposerDocument,
     )
 
 }
