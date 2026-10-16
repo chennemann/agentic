@@ -1,13 +1,14 @@
 package de.chennemann.agentic.ui.terminal
 
-import android.os.Handler
-import android.os.Looper
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import expo.modules.t3terminal.GhosttySession
 import java.nio.ByteBuffer
 import java.nio.CharBuffer
 import java.nio.charset.CodingErrorAction
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.connectbot.terminal.TerminalEmulatorFactory
 
 /** Retained screen state consumes each output chunk once, including while off screen. */
 interface TerminalDisplay {
@@ -26,17 +27,17 @@ fun interface TerminalDisplayFactory {
     ): TerminalDisplay
 }
 
-class ConnectBotTerminalDisplayFactory : TerminalDisplayFactory {
+class GhosttyTerminalDisplayFactory : TerminalDisplayFactory {
     override suspend fun create(
         history: String,
         cols: Int,
         rows: Int,
         onInput: (String) -> Unit,
         onResize: (Int, Int) -> Unit
-    ): TerminalDisplay = ConnectBotTerminalDisplay(cols, rows, onInput, onResize).also {
+    ): TerminalDisplay = GhosttyTerminalDisplay(cols, rows, onInput, onResize).also {
         try {
-            it.append(history)
-            it.finishReplay()
+            // Replay updates screen state but must not answer historical device queries.
+            withContext(Dispatchers.Default) { it.session.feed(history) }
         } catch (cause: Exception) {
             it.detach()
             throw cause
@@ -44,39 +45,47 @@ class ConnectBotTerminalDisplayFactory : TerminalDisplayFactory {
     }
 }
 
-class ConnectBotTerminalDisplay(
+class GhosttyTerminalDisplay(
     cols: Int,
     rows: Int,
     private var onInput: ((String) -> Unit)?,
     private var onResize: ((Int, Int) -> Unit)?
 ) : TerminalDisplay {
-    private var replaying = true
+    val session = GhosttySession(cols, rows)
     private val inputDecoder = TerminalInputDecoder()
-    val emulator = TerminalEmulatorFactory.create(
-        initialCols = cols,
-        initialRows = rows,
-        onKeyboardInput = { bytes ->
-            if (!replaying) inputDecoder.decode(bytes).takeIf(String::isNotEmpty)?.let { onInput?.invoke(it) }
-        },
-        onResize = { size -> onResize?.invoke(size.columns, size.rows) }
-    )
+    var ctrl by mutableStateOf(false)
+    var alt by mutableStateOf(false)
 
-    // Parsing is synchronous and thread safe; large output bursts must not block rendering.
-    override suspend fun append(data: String) = withContext(Dispatchers.Default) {
-        emulator.writeInput(data.toByteArray(Charsets.UTF_8))
+    override suspend fun append(data: String) {
+        val response = withContext(Dispatchers.Default) { session.feed(data) }
+        withContext(Dispatchers.Main.immediate) { reply(response) }
     }
 
     override suspend fun clear() = append("\u001b[2J\u001b[3J\u001b[H")
 
-    fun finishReplay() {
-        // Drain historical device-query replies before allowing replies to the live program.
-        Handler(Looper.getMainLooper()).post { replaying = false }
+    fun reply(bytes: ByteArray) {
+        if (bytes.isNotEmpty()) inputDecoder.decode(bytes).takeIf(String::isNotEmpty)?.let { onInput?.invoke(it) }
+    }
+
+    fun input(data: String) {
+        var encoded = if (ctrl) applyTerminalCtrlModifier(data) else data
+        if (alt) encoded = "\u001b$encoded"
+        ctrl = false
+        alt = false
+        onInput?.invoke(encoded)
+    }
+
+    fun paste(text: String) {
+        onInput?.invoke(encodeTerminalPaste(text))
+    }
+    fun resize(cols: Int, rows: Int) {
+        onResize?.invoke(cols, rows)
     }
 
     override fun detach() {
         onInput = null
         onResize = null
-        emulator.close()
+        session.close()
     }
 }
 

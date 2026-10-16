@@ -4,6 +4,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.background
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,11 +22,13 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -37,12 +40,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.PopupProperties
-import org.connectbot.terminal.ModifierManager
-import org.connectbot.terminal.SelectionController
-import org.connectbot.terminal.Terminal
-import org.connectbot.terminal.VTermKey
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import expo.modules.t3terminal.T3TerminalView
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,12 +61,18 @@ fun TerminalScreen(
     var menuExpanded by remember { mutableStateOf(false) }
     BackHandler(enabled = menuExpanded) { menuExpanded = false }
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.surface,
         topBar = {
             TopAppBar(
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
                 title = {
                     Column {
                         Text("Terminal")
-                        Text(state.status, style = MaterialTheme.typography.labelSmall)
+                        Text(
+                            state.status,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 },
                 navigationIcon = { TextButton(onClick = onBack) { Text("Back") } },
@@ -140,7 +147,7 @@ fun TerminalScreen(
                     TextButton(onClick = onReconnect, enabled = !state.busy) { Text("Reconnect") }
                 }
             }
-            val display = state.display as? ConnectBotTerminalDisplay
+            val display = state.display as? GhosttyTerminalDisplay
             if (display == null) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     if (state.selectedId ==
@@ -148,7 +155,7 @@ fun TerminalScreen(
                     ) {
                         Button(onClick = onCreate, enabled = !state.busy) { Text("Open terminal") }
                     } else {
-                        Text("Connecting to terminal…")
+                        Text("Connecting to terminal\u2026")
                     }
                 }
             } else {
@@ -181,66 +188,72 @@ fun TerminalScreen(
 }
 
 @Composable
-private fun TerminalSurface(display: ConnectBotTerminalDisplay, canInput: Boolean, modifier: Modifier) {
+private fun TerminalSurface(display: GhosttyTerminalDisplay, canInput: Boolean, modifier: Modifier) {
     val context = LocalContext.current
+    val appearance = rememberTerminalAppearance()
     val clipboard = remember(context) { context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager }
-    val modifiers = remember { TerminalModifiers() }
     var keyboard by remember { mutableStateOf(false) }
-    var selection by remember { mutableStateOf<SelectionController?>(null) }
+    var nativeView by remember { mutableStateOf<T3TerminalView?>(null) }
+    val revision by display.session.revision.collectAsStateWithLifecycle()
     var pasteConfirmation by remember { mutableStateOf<String?>(null) }
     val paste = {
         val text = clipboard.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString().orEmpty()
         if (text.contains('\n') || text.contains('\r')) {
             pasteConfirmation = text
         } else if (canInput) {
-            display.emulator.pasteText(text)
+            display.paste(text)
         }
     }
-    Column(modifier) {
-        Terminal(
-            terminalEmulator = display.emulator,
+    Column(modifier.background(MaterialTheme.colorScheme.surface)) {
+        AndroidView(
+            factory = { viewContext ->
+                T3TerminalView(viewContext, display.session).also { nativeView = it }
+            },
             modifier = Modifier.weight(1f).fillMaxWidth().testTag("terminal-emulator"),
-            initialFontSize = 13.sp,
-            minFontSize = 8.sp,
-            keyboardEnabled = canInput,
-            showSoftKeyboard = keyboard && canInput,
-            onTerminalTap = { keyboard = true },
-            modifierManager = modifiers,
-            onSelectionControllerAvailable = { selection = it },
-            onPasteRequest = { if (canInput) paste() }
+            onRelease = { view ->
+                view.cleanup()
+                if (nativeView === view) nativeView = null
+            },
+            update = { view ->
+                view.onInput = { if (canInput) display.input(it) }
+                view.onResize = display::resize
+                view.onResponse = display::reply
+                view.onPaste = { if (canInput) paste() }
+                view.inputEnabled = canInput
+                appearance.applyTo(view)
+                // Read the revision to refresh after output; no accumulated output buffer.
+                view.refresh(revision)
+            }
         )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         Row(
-            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            verticalAlignment = Alignment.CenterVertically
+            Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             TextButton(onClick = {
                 keyboard = !keyboard
+                if (keyboard) nativeView?.showKeyboard() else nativeView?.dismissKeyboard()
             }, enabled = canInput) { Text(if (keyboard) "Hide keyboard" else "Keyboard") }
-            FilterChip(selected = modifiers.ctrl, onClick = {
-                modifiers.ctrl = !modifiers.ctrl
+            FilterChip(selected = display.ctrl, onClick = {
+                display.ctrl = !display.ctrl
             }, enabled = canInput, label = { Text("Ctrl") })
-            FilterChip(selected = modifiers.alt, onClick = {
-                modifiers.alt = !modifiers.alt
+            FilterChip(selected = display.alt, onClick = {
+                display.alt = !display.alt
             }, enabled = canInput, label = { Text("Alt") })
             listOf(
-                "Esc" to VTermKey.ESCAPE, "Tab" to VTermKey.TAB, "Up" to VTermKey.UP, "Down" to VTermKey.DOWN,
-                "Left" to VTermKey.LEFT, "Right" to VTermKey.RIGHT, "Home" to VTermKey.HOME, "End" to VTermKey.END,
-                "PgUp" to VTermKey.PAGEUP, "PgDn" to VTermKey.PAGEDOWN
+                "Esc" to "\u001b", "Tab" to "\t", "Up" to "\u001b[A", "Down" to "\u001b[B",
+                "Left" to "\u001b[D", "Right" to "\u001b[C", "Home" to "\u001b[H", "End" to "\u001b[F",
+                "PgUp" to "\u001b[5~", "PgDn" to "\u001b[6~"
             ).forEach { (label, code) ->
-                TextButton(onClick = {
-                    display.emulator.dispatchKey(modifiers.mask(), code)
-                    modifiers.clearTransients()
-                }, enabled = canInput) { Text(label) }
+                TextButton(onClick = { display.input(code) }, enabled = canInput) { Text(label) }
             }
+            TextButton(onClick = { display.input("\u0003") }, enabled = canInput) { Text("Ctrl+C") }
+            TextButton(onClick = { nativeView?.selectAll() }) { Text("Select") }
             TextButton(onClick = {
-                display.emulator.dispatchCharacter(4, 'c'.code)
-            }, enabled = canInput) { Text("Ctrl+C") }
-            TextButton(onClick = { selection?.startSelection() }) { Text("Select") }
-            TextButton(onClick = {
-                selection?.copySelection()?.takeIf {
-                    it.isNotEmpty()
-                }?.let { clipboard.setPrimaryClip(ClipData.newPlainText("Terminal", it)) }
-                selection?.clearSelection()
+                nativeView?.selectionText()?.takeIf(String::isNotEmpty)?.let {
+                    clipboard.setPrimaryClip(ClipData.newPlainText("Terminal", it))
+                }
             }) { Text("Copy") }
             TextButton(onClick = { paste() }, enabled = canInput) { Text("Paste") }
         }
@@ -253,23 +266,10 @@ private fun TerminalSurface(display: ConnectBotTerminalDisplay, canInput: Boolea
             confirmButton = {
                 TextButton(onClick = {
                     pasteConfirmation = null
-                    if (canInput) display.emulator.pasteText(text)
+                    if (canInput) display.paste(text)
                 }) { Text("Paste") }
             },
             dismissButton = { TextButton(onClick = { pasteConfirmation = null }) { Text("Cancel") } }
         )
     }
-}
-
-private class TerminalModifiers : ModifierManager {
-    var ctrl by mutableStateOf(false)
-    var alt by mutableStateOf(false)
-    override fun isCtrlActive() = ctrl
-    override fun isAltActive() = alt
-    override fun isShiftActive() = false
-    override fun clearTransients() {
-        ctrl = false
-        alt = false
-    }
-    fun mask() = (if (ctrl) 4 else 0) or (if (alt) 2 else 0)
 }

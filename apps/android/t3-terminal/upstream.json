@@ -1,0 +1,258 @@
+{
+  "repository": "https://github.com/pingdotgg/t3code",
+  "revision": "3e6b45028ceec5820dacb37dc3852470ebdc9411",
+  "module": "apps/mobile/modules/t3-terminal/android",
+  "ghosttyRevision": "9f62873bf195e4d8a762d768a1405a5f2f7b1697",
+  "files": {
+    "src/main/assets/fonts/MesloLGS-NF-Bold.ttf": {
+      "source": "apps/mobile/modules/t3-terminal/android/src/main/assets/fonts/MesloLGS-NF-Bold.ttf",
+      "sha256": "b6c0199cf7c7483c8343ea020658925e6de0aeb318b89908152fcb4d19226003",
+      "binary": true
+    },
+    "src/main/assets/fonts/MesloLGS-NF-Regular.ttf": {
+      "source": "apps/mobile/modules/t3-terminal/android/src/main/assets/fonts/MesloLGS-NF-Regular.ttf",
+      "sha256": "d97946186e97f8d7c0139e8983abf40a1d2d086924f2c5dbf1c29bd8f2c6e57d",
+      "binary": true
+    },
+    "src/main/cpp/CMakeLists.txt": {
+      "source": "apps/mobile/modules/t3-terminal/android/src/main/cpp/CMakeLists.txt",
+      "sha256": "f92b598a8dac5cd3a77c3a0e33541fe961a0fd1ee9421d203a153ec975a9b0e9",
+      "binary": false
+    },
+    "src/main/cpp/t3_terminal_jni.cpp": {
+      "source": "apps/mobile/modules/t3-terminal/android/src/main/cpp/t3_terminal_jni.cpp",
+      "sha256": "5398460f6689902b4fa79c0aa8799d97bb0ad2d403f35e2ee9238765f3abbf10",
+      "binary": false
+    },
+    "src/main/java/expo/modules/t3terminal/GhosttyBridge.kt": {
+      "source": "apps/mobile/modules/t3-terminal/android/src/main/java/expo/modules/t3terminal/GhosttyBridge.kt",
+      "sha256": "09c50d62f3a056812ef45fa9f8840e5135a990b32bd5c255529c224ce67091c4",
+      "binary": false
+    },
+    "src/main/java/expo/modules/t3terminal/T3TerminalView.kt": {
+      "source": "apps/mobile/modules/t3-terminal/android/src/main/java/expo/modules/t3terminal/T3TerminalView.kt",
+      "sha256": "3e77158417c7990c589b4c90351580ce26ba5d94af5d968d2b6d762d224bdbe6",
+      "binary": false
+    },
+    "src/main/java/expo/modules/t3terminal/TerminalCanvasView.kt": {
+      "source": "apps/mobile/modules/t3-terminal/android/src/main/java/expo/modules/t3terminal/TerminalCanvasView.kt",
+      "sha256": "3c5f30bdc853bca832dca0197165a8d06eb698acb9982ec4890e30a5af566678",
+      "binary": false
+    },
+    "src/main/java/expo/modules/t3terminal/TerminalFrame.kt": {
+      "source": "apps/mobile/modules/t3-terminal/android/src/main/java/expo/modules/t3terminal/TerminalFrame.kt",
+      "sha256": "028f645cfd7520b5e933e124759157ccc275fddd7f44a01f1c613db25ebd6123",
+      "binary": false
+    },
+    "src/main/jniLibs/arm64-v8a/libghostty-vt.so": {
+      "source": "apps/mobile/modules/t3-terminal/android/src/main/jniLibs/arm64-v8a/libghostty-vt.so",
+      "sha256": "cb81078eddced389a8586c46000274832f173c226a5e047c819c46919be5ceb3",
+      "binary": true
+    },
+    "src/main/jniLibs/armeabi-v7a/libghostty-vt.so": {
+      "source": "apps/mobile/modules/t3-terminal/android/src/main/jniLibs/armeabi-v7a/libghostty-vt.so",
+      "sha256": "7f475fb083b2fd8d6855e89494814c58b94cd68a35b794c1a760e4ff1112279e",
+      "binary": true
+    },
+    "src/main/jniLibs/x86/libghostty-vt.so": {
+      "source": "apps/mobile/modules/t3-terminal/android/src/main/jniLibs/x86/libghostty-vt.so",
+      "sha256": "73fdc3459c14fd71a675e9c456d18cc254843c47991ac52aeba26e05eec0198f",
+      "binary": true
+    },
+    "src/main/jniLibs/x86_64/libghostty-vt.so": {
+      "source": "apps/mobile/modules/t3-terminal/android/src/main/jniLibs/x86_64/libghostty-vt.so",
+      "sha256": "46dd1d0d66733dd6aa999730e62df8a7e6fe61a06e19af270a2482beebeba4a3",
+      "binary": true
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/allocator.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/allocator.h",
+      "sha256": "7b21d6c62c79c261f9496154d04c82d7a35fc9f661113fa3f1ae437c20e4858b",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/build_info.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/build_info.h",
+      "sha256": "535e44c29b5fd9c8df172605f58616df735432f7786ca24e3cc58d7cb3ba8361",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/color.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/color.h",
+      "sha256": "c71dd6e60bb10ad4334e08d8529eecf56420a2be674281f91a50f81717840e99",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/device.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/device.h",
+      "sha256": "90afd32d7341e486ad9fec58168a2ea16cafc78fa04864911e666786278135ab",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/focus.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/focus.h",
+      "sha256": "ddc28ead578ca9f683a4140420807ec9988a45f669d719e28cdf840913ea56b4",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/formatter.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/formatter.h",
+      "sha256": "f13716568e52e5fd89b47d18ee31627a1dcae2e4202d85786c01b5f462a584fa",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/grid_ref.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/grid_ref.h",
+      "sha256": "80cc49f02d63025605d605c86f1207638ad9534ce74e9a14766299e0518d4987",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/grid_ref_tracked.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/grid_ref_tracked.h",
+      "sha256": "78c65cf69c1a6ee439849175221084366ca4392455503cc44e93cfdf9ddbc021",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/key/encoder.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/key/encoder.h",
+      "sha256": "6963a275e2ba154a647382c462c416840dcdc2beb6d59aa200d80f37f9a5e196",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/key/event.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/key/event.h",
+      "sha256": "0eb11bfab67b887f4b409557b396a5da6ea17e9e62d92b97a38e723b46db635d",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/key.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/key.h",
+      "sha256": "0f758d78bb5e6135255835c445429badab2daab54da82aa621ecafdd40ea8014",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/kitty_graphics.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/kitty_graphics.h",
+      "sha256": "4eaedeaeb0f76f3d6b0518fe1cdf1b1725e75ee95b70ac143b64d28914055df1",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/modes.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/modes.h",
+      "sha256": "85b9f1a703b22cfd92f61ba5179aa10d5987397d3b05b61c3abc08c51e2a508b",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/mouse/encoder.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/mouse/encoder.h",
+      "sha256": "2e409c50fcd06806dd1a86cf66751ff35362c65e14ff588e2592e8a09141c017",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/mouse/event.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/mouse/event.h",
+      "sha256": "68f14cd03109919cb8da36b17f70670334a3369af5c685496118c913c3049abf",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/mouse.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/mouse.h",
+      "sha256": "7a93a65a722624eee6afb03f008bbc37130b8504f0655f3e7a758c7e1435bf60",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/osc.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/osc.h",
+      "sha256": "6b8b26417a82cc12efe98c35054bee255b89e7f28692d141e600ec3a7571664a",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/paste.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/paste.h",
+      "sha256": "dcf6b62a20428313cf1c6aab2177f8bafa11f72ac41a9eaf6566879df9efd8c1",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/point.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/point.h",
+      "sha256": "cede17de0238a49a2bec81eba0a9a4214643f0f5066443a9cbd63c17affe729c",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/render.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/render.h",
+      "sha256": "a8418b7109e939ec4da1a7efe0fe40f3b2a24fdc647bec575572226d36865eff",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/screen.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/screen.h",
+      "sha256": "9efc58ed188d76864b45dc1e89a994055030ec6eafd10490d54f2e7dbe7954ac",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/selection.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/selection.h",
+      "sha256": "1b51473b977f10cf090b171c767de3d536e8a5f1c3a81f06f5b45bae89854ac0",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/sgr.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/sgr.h",
+      "sha256": "effc6205c273c5178f163a355077b7687d9359c60a7078098078efff8ace989e",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/size_report.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/size_report.h",
+      "sha256": "a86cd1b0e5cf2307411030646285e5f2dcb1e6ca26e938cb6d578b16301e94a7",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/style.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/style.h",
+      "sha256": "ebb50a1821952dd954dd51d5897f9881c6927abd73b909e2e2f1deb3a52f31a9",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/sys.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/sys.h",
+      "sha256": "dbd8e1499a68510b1393634191ba373c88f5b6fc01b33a76773cc98eb5e4a938",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/terminal.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/terminal.h",
+      "sha256": "25c51cf3edd824a5432919df879d7ff58863f06aaa120e469bb009a8552994d1",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/types.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/types.h",
+      "sha256": "b1a3511b1fcbe50b95a77660c975185fb9a9d222521e4df51734f0bdada4ee78",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt/wasm.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt/wasm.h",
+      "sha256": "e26a54bab795870282f3983404f22bbe197c163b879278586b7daf66d022ba8c",
+      "binary": false
+    },
+    "vendor/libghostty-vt/include/ghostty/vt.h": {
+      "source": "native/libghostty-vt/include/ghostty/vt.h",
+      "sha256": "8edfc5c606d41fa8c9ec278c299ceb3e83815eee9eae3926e3c26f036b303841",
+      "binary": false
+    },
+    "vendor/libghostty-vt/LICENSE": {
+      "source": "native/libghostty-vt/LICENSE",
+      "sha256": "386211873e5b7a02f663ae4d7adf96285999f91608f8f9f31fecfd0f4095e6f1",
+      "binary": false
+    },
+    "vendor/libghostty-vt/VERSION": {
+      "source": "native/libghostty-vt/VERSION",
+      "sha256": "3fc03e29c86b5100e6738d20cb1c97c3969ab1044debbe8a4cd7d49cdc9cf321",
+      "binary": false
+    },
+    "vendor/libghostty-android-patches/0001-link-android-libvt-with-libc.patch": {
+      "source": "apps/mobile/modules/t3-terminal/scripts/libghostty-android-patches/0001-link-android-libvt-with-libc.patch",
+      "sha256": "5bca3343d961d58c17aa21e96e8527f3d4889bad165b49bb9af008fa7f9f793c",
+      "binary": false
+    },
+    "vendor/libghostty-android-patches/0002-align-android-libvt-to-16kb-pages.patch": {
+      "source": "apps/mobile/modules/t3-terminal/scripts/libghostty-android-patches/0002-align-android-libvt-to-16kb-pages.patch",
+      "sha256": "6da5400d8e21348dede88b47d21916573fd7f8765f781e74941a832305685414",
+      "binary": false
+    },
+    "vendor/build-libghostty-android.sh": {
+      "source": "apps/mobile/modules/t3-terminal/scripts/build-libghostty-android.sh",
+      "sha256": "9c9a5315dc858699172c93bc0e75d1c0c475ee2132a92c88d34c931d2b494ce2",
+      "binary": false
+    },
+    "LICENSE": {
+      "source": "LICENSE",
+      "sha256": "935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43",
+      "binary": false
+    },
+    "THIRD_PARTY_NOTICES.md": {
+      "source": "apps/mobile/modules/t3-terminal/THIRD_PARTY_NOTICES.md",
+      "sha256": "d3f4fb913990dfbb1f5d88af7ea4d1f09d4e0e7c6cb63305db27a9d98607c48d",
+      "binary": false
+    },
+    "reference/terminalInput.ts": {
+      "source": "apps/mobile/src/features/terminal/terminalInput.ts",
+      "sha256": "9ab6b57abe79e67e0b38292a51cb37e1e92551cd24152604d1ce669248ba8765",
+      "binary": false
+    }
+  }
+}

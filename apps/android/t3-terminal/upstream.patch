@@ -1,0 +1,341 @@
+--- a/src/main/cpp/CMakeLists.txt
++++ b/src/main/cpp/CMakeLists.txt
+@@ -13,7 +13,7 @@
+ 
+ target_include_directories(
+   t3terminal
+-  PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../../../../native/libghostty-vt/include"
++  PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../../vendor/libghostty-vt/include"
+ )
+ 
+ target_link_options(
+--- a/src/main/java/expo/modules/t3terminal/T3TerminalView.kt
++++ b/src/main/java/expo/modules/t3terminal/T3TerminalView.kt
+@@ -10,20 +10,30 @@
+ import android.view.ViewGroup
+ import android.view.inputmethod.EditorInfo
+ import android.view.inputmethod.InputMethodManager
+-import android.widget.EditText
+ import android.widget.FrameLayout
+-import expo.modules.kotlin.AppContext
+-import expo.modules.kotlin.viewevent.EventDispatcher
+-import expo.modules.kotlin.views.ExpoView
+ import kotlin.math.max
+ 
+-class T3TerminalView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
++class T3TerminalView(context: Context, private val session: GhosttySession) : FrameLayout(context) {
+   private val container = FrameLayout(context)
+   private val terminalCanvas = TerminalCanvasView(context)
+-  private val inputView = EditText(context)
+-  private val onInput by EventDispatcher()
+-  private val onResize by EventDispatcher()
+-  private val onCapture by EventDispatcher()
++  private val inputView = TerminalInputView(context) { emitInput(it) }
++  var onInput: (String) -> Unit = {}
++  var onResize: (Int, Int) -> Unit = { _, _ -> }
++  var onCapture: (String) -> Unit = {}
++  var onResponse: (ByteArray) -> Unit = {}
++  var onPaste: () -> Unit = {}
++  private var renderedRevision = -1L
++  var inputEnabled: Boolean = true
++    set(value) {
++      if (field == value) return
++      field = value
++      inputView.isEnabled = value
++      if (!value) hideKeyboard()
++    }
++
++  private fun emitInput(data: String) {
++    if (inputEnabled && !isCleanedUp) onInput(data)
++  }
+   var captureRequest: Double = 0.0
+     set(value) {
+       if (field == value || value <= 0) return
+@@ -31,7 +41,7 @@
+       val frame = if (terminalHandle !=
+         0L
+       ) {
+-        TerminalFrame.decode(GhosttyBridge.nativeSnapshot(terminalHandle))
++        TerminalFrame.decode(session.withHandle { handle -> GhosttyBridge.nativeSnapshot(handle) })
+       } else {
+         null
+       }
+@@ -45,10 +55,9 @@
+           }.trimEnd()
+         }
+       } ?: ""
+-      onCapture(mapOf("text" to text))
+-    }
+-  private var terminalHandle = 0L
+-  private var fedBuffer = ""
++      onCapture(text)
++    }
++  private val terminalHandle: Long get() = session.handle
+   private var cols = 0
+   private var rows = 0
+   private var clearingInput = false
+@@ -59,21 +68,6 @@
+   private var cursorColorValue = Color.parseColor("#009FFF")
+   private var paletteColors = IntArray(0)
+ 
+-  var terminalKey: String = ""
+-    set(value) {
+-      if (field == value) return
+-      field = value
+-      contentDescription = "t3-terminal-$value"
+-      recreateTerminal()
+-    }
+-
+-  var initialBuffer: String = ""
+-    set(value) {
+-      if (field == value) return
+-      field = value
+-      feedPendingBuffer()
+-    }
+-
+   var fontSize: Float = 10f
+     set(value) {
+       field = value
+@@ -136,7 +130,7 @@
+     terminalCanvas.onRequestKeyboard = { requestKeyboardFocus() }
+     terminalCanvas.onScrollRows = { delta ->
+       if (terminalHandle != 0L) {
+-        GhosttyBridge.nativeScroll(terminalHandle, delta)
++        session.withHandle { handle -> GhosttyBridge.nativeScroll(handle, delta) }
+         renderSnapshot()
+       }
+     }
+@@ -144,27 +138,27 @@
+     terminalCanvas.selectionDelegate = object : TerminalSelectionDelegate {
+       override fun selectWordAt(col: Int, row: Int): Boolean {
+         if (terminalHandle == 0L) return false
+-        val selected = GhosttyBridge.nativeSelectWordAt(terminalHandle, col, row)
++        val selected = session.withHandle { handle -> GhosttyBridge.nativeSelectWordAt(handle, col, row) }
+         if (selected) renderSnapshot()
+         return selected
+       }
+ 
+       override fun extendSelection(anchorCol: Int, anchorRow: Int, col: Int, row: Int) {
+         if (terminalHandle == 0L) return
+-        GhosttyBridge.nativeExtendSelection(terminalHandle, anchorCol, anchorRow, col, row)
++        session.withHandle { handle -> GhosttyBridge.nativeExtendSelection(handle, anchorCol, anchorRow, col, row) }
+         renderSnapshot()
+       }
+ 
+       override fun selectAll(): Boolean {
+         if (terminalHandle == 0L) return false
+-        val selected = GhosttyBridge.nativeSelectAll(terminalHandle)
++        val selected = session.withHandle { handle -> GhosttyBridge.nativeSelectAll(handle) }
+         if (selected) renderSnapshot()
+         return selected
+       }
+ 
+       override fun clearSelection() {
+         if (terminalHandle == 0L) return
+-        GhosttyBridge.nativeClearSelection(terminalHandle)
++        session.withHandle { handle -> GhosttyBridge.nativeClearSelection(handle) }
+         renderSnapshot()
+       }
+ 
+@@ -172,10 +166,11 @@
+         if (terminalHandle == 0L) {
+           null
+         } else {
+-          GhosttyBridge.nativeGetSelectionText(terminalHandle)?.let { String(it, Charsets.UTF_8) }
+-        }
+-    }
+-
++          session.withHandle { handle -> GhosttyBridge.nativeGetSelectionText(handle) }?.let { String(it, Charsets.UTF_8) }
++        }
++    }
++
++    inputView.onPaste = { if (inputEnabled && !isCleanedUp) onPaste() }
+     configureInputView()
+     container.addView(
+       terminalCanvas,
+@@ -217,7 +212,14 @@
+     terminalCanvas.onRequestKeyboard = null
+     terminalCanvas.onCellMetricsChanged = null
+     terminalCanvas.selectionDelegate = null
+-    destroyTerminal()
++    terminalCanvas.resetSelectionState()
++    onInput = {}
++    onResize = { _, _ -> }
++    onCapture = {}
++    onResponse = {}
++    onPaste = {}
++    inputView.onPaste = {}
++    inputView.setOnKeyListener(null)
+   }
+ 
+   private fun configureInputView() {
+@@ -245,7 +247,7 @@
+       val isEnter = isImeSend || isHardwareEnter
+       if (isEnter) {
+         // Enter must send CR: raw-mode TUIs treat LF as Ctrl+J (insert newline).
+-        onInput(mapOf("data" to "\r"))
++        emitInput("\r")
+         true
+       } else {
+         false
+@@ -255,14 +257,12 @@
+       if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
+       when {
+         keyCode == KeyEvent.KEYCODE_DEL -> {
+-          onInput(mapOf("data" to "\u007F"))
++          emitInput("\u007F")
+           true
+         }
+         // Hardware keyboard Ctrl+A..Z -> control bytes 0x01..0x1A (Ctrl+C, Ctrl+Z, ...).
+         event.isCtrlPressed && keyCode in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z -> {
+-          onInput(
+-            mapOf("data" to (keyCode - KeyEvent.KEYCODE_A + 1).toChar().toString()),
+-          )
++          emitInput((keyCode - KeyEvent.KEYCODE_A + 1).toChar().toString())
+           true
+         }
+         else -> false
+@@ -278,7 +278,7 @@
+           if (start >= end) return
+           val insertedText = s.subSequence(start, end).toString()
+           if (insertedText.isNotEmpty()) {
+-            onInput(mapOf("data" to insertedText))
++            emitInput(insertedText)
+           }
+         }
+ 
+@@ -312,90 +312,55 @@
+     if (nextCols == cols && nextRows == rows && terminalHandle != 0L) return
+     cols = nextCols
+     rows = nextRows
+-    val response = if (terminalHandle == 0L) {
+-      createTerminal()
+-      ByteArray(0)
+-    } else {
+-      GhosttyBridge.nativeResize(
+-        terminalHandle,
+-        cols,
+-        rows,
+-        terminalCanvas.cellWidthPx.toInt(),
+-        terminalCanvas.cellHeightPx.toInt(),
+-      )
+-    }
+-    emitResponse(response)
+-    onResize(mapOf("cols" to cols, "rows" to rows))
+-    feedPendingBuffer()
+-    renderSnapshot()
+-  }
+-
+-  @Suppress("ComplexCondition")
+-  private fun createTerminal() {
+-    if (terminalHandle != 0L || cols <= 0 || rows <= 0 || isCleanedUp) return
+-    terminalHandle = GhosttyBridge.nativeCreate(
++    emitResponse(session.resize(
+       cols,
+       rows,
+       terminalCanvas.cellWidthPx.toInt(),
+       terminalCanvas.cellHeightPx.toInt(),
+-      foregroundColorValue,
+-      backgroundColorValue,
+-      cursorColorValue,
+-      paletteColors,
+     )
+-    fedBuffer = ""
+-  }
+-
+-  private fun recreateTerminal() {
++    )
++    onResize(cols, rows)
++    renderSnapshot()
++  }
++
++  fun refresh(revision: Long) {
++    if (isCleanedUp || renderedRevision == revision) return
++    renderedRevision = revision
++    if (terminalCanvas.hasActiveSelection()) {
++      session.withHandle { GhosttyBridge.nativeClearSelection(it) }
++      terminalCanvas.resetSelectionState()
++    }
++    renderSnapshot()
++  }
++
++  fun selectAll() {
+     if (terminalHandle == 0L) return
+-    destroyTerminal()
+-    createTerminal()
+-    feedPendingBuffer()
++    session.withHandle { GhosttyBridge.nativeSelectAll(it) }
+     renderSnapshot()
+   }
+ 
+-  private fun destroyTerminal() {
+-    if (terminalHandle == 0L) return
+-    GhosttyBridge.nativeDestroy(terminalHandle)
+-    terminalHandle = 0L
+-    fedBuffer = ""
+-    terminalCanvas.resetSelectionState()
+-  }
+-
+-  private fun feedPendingBuffer() {
+-    if (terminalHandle == 0L || initialBuffer == fedBuffer) return
+-    if (!initialBuffer.startsWith(fedBuffer)) {
+-      recreateTerminal()
+-      if (terminalHandle == 0L) return
+-    }
+-    val suffix = initialBuffer.substring(fedBuffer.length)
+-    if (suffix.isNotEmpty()) {
+-      emitResponse(GhosttyBridge.nativeFeed(terminalHandle, suffix.toByteArray(Charsets.UTF_8)))
+-      // New output invalidates an active selection (matches the web drawer);
+-      // otherwise the copy toolbar drifts out of sync with the grid.
+-      if (terminalCanvas.hasActiveSelection()) {
+-        GhosttyBridge.nativeClearSelection(terminalHandle)
+-        terminalCanvas.resetSelectionState()
+-      }
+-    }
+-    fedBuffer = initialBuffer
+-    renderSnapshot()
+-  }
++  fun selectionText(): String? = session.withHandle {
++    GhosttyBridge.nativeGetSelectionText(it)?.let { bytes -> String(bytes, Charsets.UTF_8) }
++  }
++
++  fun showKeyboard() = requestKeyboardFocus()
++  fun dismissKeyboard() = hideKeyboard()
+ 
+   private fun renderSnapshot() {
+     if (terminalHandle == 0L) return
+     TerminalFrame.decode(
+-      GhosttyBridge.nativeSnapshot(terminalHandle)
++      session.withHandle { handle -> GhosttyBridge.nativeSnapshot(handle) }
+     )?.let(terminalCanvas::setFrame)
+   }
+ 
+   private fun emitResponse(response: ByteArray) {
+     if (response.isNotEmpty()) {
+-      onInput(mapOf("data" to String(response, Charsets.UTF_8)))
++      if (!isCleanedUp) onResponse(response)
+     }
+   }
+ 
+   private fun requestKeyboardFocus() {
++    if (!inputEnabled || isCleanedUp) return
+     inputView.requestFocus()
+     val inputMethodManager = context.getSystemService(
+       Context.INPUT_METHOD_SERVICE
+@@ -415,13 +380,13 @@
+     container.setBackgroundColor(backgroundColorValue)
+     terminalCanvas.setBackgroundColor(backgroundColorValue)
+     if (terminalHandle != 0L) {
+-      GhosttyBridge.nativeSetTheme(
+-        terminalHandle,
++      session.withHandle { handle -> GhosttyBridge.nativeSetTheme(
++        handle,
+         foregroundColorValue,
+         backgroundColorValue,
+         cursorColorValue,
+         paletteColors,
+-      )
++      ) }
+       renderSnapshot()
+     }
+   }

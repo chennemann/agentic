@@ -92,7 +92,7 @@ kotlin {
 dependencies {
     implementation(project(":streaming-markdown"))
     implementation(project(":t3-contracts"))
-    implementation(project(":terminal-emulator"))
+    implementation(project(":t3-terminal"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)

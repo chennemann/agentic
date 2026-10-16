@@ -1,10 +1,11 @@
-ConnectBot terminal 0.3.10
-https://github.com/connectbot/termlib/tree/0.3.10
-Copyright 2025-2026 Kenny Root and contributors
-Apache License 2.0 (connectbot-terminal-Apache-2.0.txt)
+T3 Code Android terminal
+Copyright (c) 2026 T3 Tools Inc.
+MIT License (t3-terminal-MIT.txt).
+Pinned source and local patch: apps/android/t3-terminal/upstream.json and upstream.patch.
 
-Includes libvterm by Paul Evans and contributors.
-MIT license (libvterm-MIT.txt).
+Includes Ghostty / libghostty-vt at 9f62873bf195e4d8a762d768a1405a5f2f7b1697.
+MIT License (ghostty-MIT.txt).
 
-Kotlin/resources from tag 0.3.10 with Agentic's documented lifecycle patch.
-Native binaries are unmodified from org.connectbot:termlib:0.3.10 on Maven Central.
+Includes MesloLGS NF Regular and Bold from romkatv/powerlevel10k-media.
+Meslo LG by Andre Berg, with Nerd Fonts patches.
+Apache License 2.0 (MesloLGS-NF-Apache-2.0.txt).

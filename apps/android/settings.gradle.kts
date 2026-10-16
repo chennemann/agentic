@@ -33,4 +33,4 @@ rootProject.name = "mobile"
 include(":app")
 include(":streaming-markdown")
 include(":t3-contracts")
-include(":terminal-emulator")
+include(":t3-terminal")

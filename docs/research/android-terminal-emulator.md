@@ -1,5 +1,8 @@
 # Embedded Android terminal research
 
+Historical library-selection research from before the T3 mobile terminal port. The current
+implementation follows upstream T3 Code Android/Ghostty; see [the terminal guide](../terminal.md).
+
 Investigated 2026-10-04 for Agentic's remote T3 PTY terminal. These are library-selection findings, not a claim that the application integration has passed device validation.
 
 ## Recommendation

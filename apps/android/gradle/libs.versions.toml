@@ -23,7 +23,6 @@ cameraX = "1.5.3"
 mlkitBarcode = "17.3.0"
 
 [libraries]
-connectbot-terminal = { group = "org.connectbot", name = "termlib", version = "0.3.10" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 junit-jupiter-api = { group = "org.junit.jupiter", name = "junit-jupiter-api", version.ref = "junitJupiter" }
 junit-jupiter-engine = { group = "org.junit.jupiter", name = "junit-jupiter-engine", version.ref = "junitJupiter" }

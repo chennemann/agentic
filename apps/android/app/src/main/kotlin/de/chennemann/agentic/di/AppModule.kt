@@ -305,7 +305,7 @@ val appModule = module {
     viewModel { de.chennemann.agentic.ui.usage.UsageViewModel(get(), get()) }
     viewModel { OnboardingViewModel(get(), get(), get(), get()) }
     viewModel { WorkspaceFilesViewModel(get()) }
-    factory<de.chennemann.agentic.ui.terminal.TerminalDisplayFactory> { de.chennemann.agentic.ui.terminal.ConnectBotTerminalDisplayFactory() }
+    factory<de.chennemann.agentic.ui.terminal.TerminalDisplayFactory> { de.chennemann.agentic.ui.terminal.GhosttyTerminalDisplayFactory() }
     viewModel { TerminalViewModel(get(), get()) }
     viewModel {
         ChatViewModel(
