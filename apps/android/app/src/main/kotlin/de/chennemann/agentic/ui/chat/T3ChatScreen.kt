@@ -130,6 +130,7 @@ fun T3ChatScreen(
     onOpenUpdater: () -> Unit = {},
     onOpenUsage: () -> Unit = {},
     onOpenTerminal: (String) -> Unit = {},
+    onOpenChanges: (String) -> Unit = {},
     onRunProjectScript: (String, ProjectScriptUi) -> Unit = { _, _ -> },
 ) {
     val listState = rememberLazyListState()
@@ -257,6 +258,7 @@ fun T3ChatScreen(
                 onClose = { scope.launch { drawerState.close() } },
                 onOpenFiles = onOpenFiles,
                 onOpenTerminal = onOpenTerminal,
+                onOpenChanges = onOpenChanges,
                 onRunProjectScript = onRunProjectScript,
                 onOpenUsage = onOpenUsage,
             )

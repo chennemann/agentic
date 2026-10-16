@@ -64,6 +64,7 @@ fun ChatProjectDrawer(
     onOpenTerminal: (String) -> Unit,
     onRunProjectScript: (String, ProjectScriptUi) -> Unit,
     onOpenUsage: () -> Unit,
+    onOpenChanges: (String) -> Unit = {},
 ) {
     ModalDrawerSheet {
         Row(
@@ -92,7 +93,7 @@ fun ChatProjectDrawer(
         }
         state.threadId?.let { threadId ->
             HorizontalDivider()
-            DrawerTools(state, threadId, onEvent, onClose, onOpenFiles, onOpenTerminal, onRunProjectScript, onOpenUsage)
+            DrawerTools(state, threadId, onEvent, onClose, onOpenFiles, onOpenTerminal, onRunProjectScript, onOpenUsage, onOpenChanges)
         }
     }
 }
@@ -107,6 +108,7 @@ private fun ColumnScope.DrawerTools(
     onOpenTerminal: (String) -> Unit,
     onRunProjectScript: (String, ProjectScriptUi) -> Unit,
     onOpenUsage: () -> Unit,
+    onOpenChanges: (String) -> Unit = {},
 ) {
     var terminalMenuOpen by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -148,8 +150,8 @@ private fun ColumnScope.DrawerTools(
                 }
             }
         }
-        if (state.latestTurnChanges.files.isNotEmpty()) {
-            TextButton(onClick = { onClose(); onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.LATEST_TURN_CHANGES)) }) {
+        if (state.latestTurnChanges.turnId != null) {
+            TextButton(onClick = { onClose(); onOpenChanges(threadId) }) {
                 Text("Changes (${state.latestTurnChanges.files.size})")
             }
         }

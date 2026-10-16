@@ -93,6 +93,7 @@ dependencies {
     implementation(project(":streaming-markdown"))
     implementation(project(":t3-contracts"))
     implementation(project(":t3-terminal"))
+    implementation(project(":t3-review-diff"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.lifecycle.runtime.compose)

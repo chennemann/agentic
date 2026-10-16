@@ -63,12 +63,13 @@ class AppBackStackTest {
         lateinit var stack: MutableList<NavKey>
         restoration.setContent { stack = rememberAppBackStack(target.value) }
         val terminal = TerminalRoute("test-thread")
-        compose.runOnIdle { stack.add(terminal) }
+        val review = ReviewDiffRoute("test-thread")
+        compose.runOnIdle { stack.add(terminal); stack.add(review) }
 
         restoration.emulateSavedInstanceStateRestore()
 
         compose.runOnIdle {
-            assertEquals(listOf(ChatRoute, terminal), stack.toList())
+            assertEquals(listOf(ChatRoute, terminal, review), stack.toList())
             target.value = OnboardingRoute
         }
         compose.runOnIdle { assertEquals(listOf(OnboardingRoute), stack.toList()) }

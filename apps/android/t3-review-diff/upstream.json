@@ -1,0 +1,42 @@
+{
+  "repository": "https://github.com/pingdotgg/t3code",
+  "revision": "3e6b45028ceec5820dacb37dc3852470ebdc9411",
+  "module": "apps/mobile/modules/t3-review-diff/android",
+  "files": {
+    "src/main/java/expo/modules/t3reviewdiff/ReviewDiffCanvasDrawing.kt": {
+      "source": "apps/mobile/modules/t3-review-diff/android/src/main/java/expo/modules/t3reviewdiff/ReviewDiffCanvasDrawing.kt",
+      "sha256": "37097ca3bb66ae8a3f6fe424e458061d949a95fdbe11c9aacda90e405efc75f5",
+      "binary": false
+    },
+    "src/main/java/expo/modules/t3reviewdiff/ReviewDiffCodeLayout.kt": {
+      "source": "apps/mobile/modules/t3-review-diff/android/src/main/java/expo/modules/t3reviewdiff/ReviewDiffCodeLayout.kt",
+      "sha256": "423646b6e7012195032e49c57e42e41b6496aedbd6784f2896f573422dd98fdd",
+      "binary": false
+    },
+    "src/main/java/expo/modules/t3reviewdiff/T3ReviewDiffView.kt": {
+      "source": "apps/mobile/modules/t3-review-diff/android/src/main/java/expo/modules/t3reviewdiff/T3ReviewDiffView.kt",
+      "sha256": "b495ae92baffa8d3d5d697c4a72ca4e617dcebfaf657f975ee1eacae9865fbc2",
+      "binary": false
+    },
+    "LICENSE": {
+      "source": "LICENSE",
+      "sha256": "935d8f2af0c703f9c39517ee57cc4930b19d02d533be930b63f0e82f93614b43",
+      "binary": false
+    },
+    "reference/nativeReviewDiffAdapter.ts": {
+      "source": "apps/mobile/src/features/review/nativeReviewDiffAdapter.ts",
+      "sha256": "62573b8b681b2e3245c089107ad08398554c3300064baa519c7006d740fc2856",
+      "binary": false
+    },
+    "reference/nativeReviewDiffSurface.ts": {
+      "source": "apps/mobile/src/features/diffs/nativeReviewDiffSurface.ts",
+      "sha256": "1674844ed7b3ffed3d9dc9d5db5b69173f184e7636c5ad8f0a5bb306314e31f1",
+      "binary": false
+    },
+    "reference/reviewModel.ts": {
+      "source": "apps/mobile/src/features/review/reviewModel.ts",
+      "sha256": "724ded2b62171b06d681cdf518be1ef12396591820601e59dca260babfec33ab",
+      "binary": false
+    }
+  }
+}

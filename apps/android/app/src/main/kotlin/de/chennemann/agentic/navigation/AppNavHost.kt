@@ -28,6 +28,8 @@ import de.chennemann.agentic.ui.files.WorkspaceFilesViewModel
 import de.chennemann.agentic.ui.onboarding.OnboardingUiEvent
 import de.chennemann.agentic.ui.onboarding.OnboardingViewModel
 import de.chennemann.agentic.ui.onboarding.T3OnboardingScreen
+import de.chennemann.agentic.ui.review.ReviewDiffScreen
+import de.chennemann.agentic.ui.review.ReviewDiffViewModel
 import de.chennemann.agentic.ui.terminal.TerminalScreen
 import de.chennemann.agentic.ui.terminal.TerminalViewModel
 import de.chennemann.agentic.ui.updater.StorUpdaterScreen
@@ -116,6 +118,7 @@ fun AppNavHost() {
                         onOpenUpdater = onOpenUpdater,
                         onOpenUsage = onOpenUsage,
                         onOpenTerminal = onOpenTerminal,
+                        onOpenChanges = { threadId -> stack.add(ReviewDiffRoute(threadId)) },
                         onRunProjectScript = onRunProjectScript,
                     )
                 }
@@ -141,6 +144,13 @@ fun AppNavHost() {
 
                 StorUpdaterRoute -> NavEntry(route) {
                     StorUpdaterScreen(onBack = { stack.removeLastOrNull() })
+                }
+
+                is ReviewDiffRoute -> NavEntry(route) {
+                    val viewModel: ReviewDiffViewModel = koinViewModel()
+                    val state by viewModel.state.collectAsStateWithLifecycle()
+                    LaunchedEffect(route.threadId) { viewModel.load(route.threadId) }
+                    ReviewDiffScreen(state, { stack.removeLastOrNull() }, viewModel::refresh, viewModel::select)
                 }
 
                 is TerminalRoute -> NavEntry(route) {

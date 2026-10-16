@@ -578,7 +578,6 @@ enum class ChatPickerUi {
     PROVIDER_MODEL,
     RUNTIME_MODE,
     THREAD_WORKSPACE,
-    LATEST_TURN_CHANGES,
 }
 
 sealed interface ChatUiEvent {

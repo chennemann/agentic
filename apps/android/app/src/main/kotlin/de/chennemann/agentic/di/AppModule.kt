@@ -177,6 +177,7 @@ val appModule = module {
     single<EnvironmentAuthClient> { get<KtorT3Client>() }
     single<T3RpcClient> { get<KtorT3Client>() }
     single<TerminalRpcClient> { get<KtorT3Client>() }
+    single<de.chennemann.agentic.data.t3.ReviewDiffRpcClient> { get<KtorT3Client>() }
     single<ThreadWorkspaceRpcClient> { get<KtorT3Client>() }
     single<WorkspaceFilesRpcClient> { get<KtorT3Client>() }
     single<de.chennemann.agentic.data.t3.AttachmentAssetClient> { get<KtorT3Client>() }
@@ -307,6 +308,10 @@ val appModule = module {
     viewModel { WorkspaceFilesViewModel(get()) }
     factory<de.chennemann.agentic.ui.terminal.TerminalDisplayFactory> { de.chennemann.agentic.ui.terminal.GhosttyTerminalDisplayFactory() }
     viewModel { TerminalViewModel(get(), get()) }
+    single<de.chennemann.agentic.domain.orchestration.ReviewChanges> {
+        de.chennemann.agentic.domain.orchestration.ReviewChangesService(get(), get(), get(), get())
+    }
+    viewModel { de.chennemann.agentic.ui.review.ReviewDiffViewModel(get()) }
     viewModel {
         ChatViewModel(
             environments = get(),

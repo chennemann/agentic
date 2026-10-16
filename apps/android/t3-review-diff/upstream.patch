@@ -1,0 +1,126 @@
+--- a/src/main/java/expo/modules/t3reviewdiff/ReviewDiffCodeLayout.kt
++++ b/src/main/java/expo/modules/t3reviewdiff/ReviewDiffCodeLayout.kt
+@@ -3,6 +3,7 @@
+ import android.graphics.Color
+ import android.graphics.Paint
+ import android.graphics.Typeface
++import android.graphics.text.LineBreaker
+ import android.text.Layout
+ import android.text.SpannableString
+ import android.text.Spanned
+@@ -66,7 +67,7 @@
+   val layout = StaticLayout.Builder.obtain(text, 0, text.length, paint, max(1, width))
+     .setAlignment(Layout.Alignment.ALIGN_NORMAL)
+     .setIncludePad(false)
+-    .setBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE)
++    .setBreakStrategy(LineBreaker.BREAK_STRATEGY_SIMPLE)
+     .setHyphenationFrequency(Layout.HYPHENATION_FREQUENCY_NONE)
+     .build()
+   return CodeLines(IntArray(layout.lineCount) { layout.getLineStart(it) }, lineHeight, layout)
+--- a/src/main/java/expo/modules/t3reviewdiff/T3ReviewDiffView.kt
++++ b/src/main/java/expo/modules/t3reviewdiff/T3ReviewDiffView.kt
+@@ -12,9 +12,7 @@
+ import android.view.ViewGroup
+ import android.view.ViewConfiguration
+ import android.widget.OverScroller
+-import expo.modules.kotlin.AppContext
+-import expo.modules.kotlin.viewevent.EventDispatcher
+-import expo.modules.kotlin.views.ExpoView
++import android.widget.FrameLayout
+ import org.json.JSONArray
+ import org.json.JSONObject
+ import java.util.concurrent.Executors
+@@ -23,14 +21,15 @@
+ import kotlin.math.max
+ import kotlin.math.min
+ 
+-class T3ReviewDiffView(context: Context, appContext: AppContext) : ExpoView(context, appContext) {
++class T3ReviewDiffView(context: Context) : FrameLayout(context) {
+   private val canvasView = DiffCanvasView(context)
+-  private val onDebug by EventDispatcher()
+-  private val onVisibleFileChange by EventDispatcher()
+-  private val onToggleFile by EventDispatcher()
+-  private val onToggleViewedFile by EventDispatcher()
+-  private val onPressLine by EventDispatcher()
+-  private val onToggleComment by EventDispatcher()
++  private var disposed = false
++  var onDebug: (Map<String, Any>) -> Unit = {}
++  var onVisibleFileChange: (Map<String, Any>) -> Unit = {}
++  var onToggleFile: (Map<String, Any>) -> Unit = {}
++  var onToggleViewedFile: (Map<String, Any>) -> Unit = {}
++  var onPressLine: (Map<String, Any>) -> Unit = {}
++  var onToggleComment: (Map<String, Any>) -> Unit = {}
+   private var rows: List<DiffRow> = emptyList()
+   private var visibleRows: List<DiffRow> = emptyList()
+   private var collapsedFileIds: Set<String> = emptySet()
+@@ -141,6 +140,7 @@
+   }
+ 
+   fun setRowsJson(value: String) {
++    if (disposed) return
+     rowsDecodeGeneration += 1
+     val generation = rowsDecodeGeneration
+     val prepareLayout = canvasView.prepareRows()
+@@ -148,7 +148,7 @@
+       val decodedRows = parseRows(value)
+       val codeLayouts = prepareLayout(decodedRows)
+       post {
+-        if (generation != rowsDecodeGeneration) return@post
++        if (disposed || generation != rowsDecodeGeneration) return@post
+         canvasView.useCodeLayouts(codeLayouts)
+         rows = decodedRows
+         lastVisibleFileId = null
+@@ -158,18 +158,20 @@
+   }
+ 
+   fun setTokensJson(value: String) {
++    if (disposed) return
+     tokensDecodeGeneration += 1
+     val generation = tokensDecodeGeneration
+     payloadDecodeExecutor.execute {
+       val decodedTokens = parseTokensObject(value)
+       post {
+-        if (generation != tokensDecodeGeneration) return@post
++        if (disposed || generation != tokensDecodeGeneration) return@post
+         canvasView.tokensByRowId = decodedTokens
+       }
+     }
+   }
+ 
+   fun setTokensPatchJson(value: String) {
++    if (disposed) return
+     payloadDecodeExecutor.execute {
+       try {
+         val payload = JSONObject(value)
+@@ -178,7 +180,7 @@
+           payload.optJSONObject("tokensByRowId") ?: JSONObject(),
+         )
+         post {
+-          if (resetKey.isNotEmpty() && resetKey != tokensResetKey) return@post
++          if (disposed || (resetKey.isNotEmpty() && resetKey != tokensResetKey)) return@post
+           if (decodedTokens.isNotEmpty()) {
+             canvasView.tokensByRowId = canvasView.tokensByRowId + decodedTokens
+           }
+@@ -189,6 +191,22 @@
+   }
+ 
+   fun cleanup() {
++    if (disposed) return
++    disposed = true
++    rowsDecodeGeneration++
++    tokensDecodeGeneration++
++    canvasView.onRowTap = null
++    canvasView.onVisibleRowsChanged = null
++    verticalScroller.forceFinished(true)
++    horizontalScroller.forceFinished(true)
++    velocityTracker?.recycle()
++    velocityTracker = null
++    onDebug = {}
++    onVisibleFileChange = {}
++    onToggleFile = {}
++    onToggleViewedFile = {}
++    onPressLine = {}
++    onToggleComment = {}
+     payloadDecodeExecutor.shutdownNow()
+   }
+ 

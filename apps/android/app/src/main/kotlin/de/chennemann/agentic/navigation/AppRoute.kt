@@ -24,3 +24,6 @@ data class TerminalRoute(val threadId: String, val script: ProjectScript? = null
 
 @Serializable
 data object UsageRoute : AppRoute
+
+@Serializable
+data class ReviewDiffRoute(val threadId: String) : AppRoute

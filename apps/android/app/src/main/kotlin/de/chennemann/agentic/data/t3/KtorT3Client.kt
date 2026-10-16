@@ -76,6 +76,7 @@ class KtorT3Client(
     ThreadWorkspaceRpcClient,
     WorkspaceFilesRpcClient,
     TerminalRpcClient,
+    ReviewDiffRpcClient,
     AttachmentAssetClient,
     UsageRpcClient {
     constructor(httpClient: HttpClient, scope: CoroutineScope) : this(
@@ -250,6 +251,23 @@ class KtorT3Client(
             put("cwd", cwd)
             put("relativePath", relativePath)
         },
+    )
+
+    override suspend fun turnDiff(baseUrl: String, bearerToken: String, threadId: String, fromTurnCount: Int, toTurnCount: Int): de.chennemann.agentic.t3.contract.ThreadTurnDiff = rpcCall(
+        baseUrl, bearerToken, "orchestration.getTurnDiff", buildJsonObject {
+            put("threadId", threadId)
+            put("fromTurnCount", fromTurnCount)
+            put("toTurnCount", toTurnCount)
+            put("ignoreWhitespace", false)
+        }
+    )
+
+    override suspend fun fullThreadDiff(baseUrl: String, bearerToken: String, threadId: String, toTurnCount: Int): de.chennemann.agentic.t3.contract.ThreadTurnDiff = rpcCall(
+        baseUrl, bearerToken, "orchestration.getFullThreadDiff", buildJsonObject {
+            put("threadId", threadId)
+            put("toTurnCount", toTurnCount)
+            put("ignoreWhitespace", false)
+        }
     )
 
     override fun terminalMetadata(baseUrl: String, bearerToken: String) =
