@@ -12,7 +12,11 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.calculatePan
 import androidx.compose.foundation.gestures.calculateZoom
+import androidx.compose.foundation.gestures.Orientation
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.draggable
+import androidx.compose.foundation.gestures.rememberDraggableState
+import androidx.compose.animation.core.animate
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.Arrangement
@@ -151,9 +155,13 @@ fun ImageViewerDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
         BackHandler { if (annotating) annotating = false else close() }
+        // Pulling an unzoomed image down drags it away; far or fast enough closes the viewer.
+        var dismissDrag by remember { mutableFloatStateOf(0f) }
+        val dismissDistance = with(LocalDensity.current) { DismissDistance.toPx() }
+        val dismissProgress = (dismissDrag / (dismissDistance * 2)).coerceIn(0f, 1f)
         Surface(
             modifier = Modifier.fillMaxSize().testTag(ImageViewerTestTag),
-            color = Color.Black,
+            color = Color.Black.copy(alpha = 1f - dismissProgress * 0.7f),
             contentColor = Color.White,
         ) {
             Column(Modifier.fillMaxSize().systemBarsPadding().imePadding()) {
@@ -180,7 +188,29 @@ fun ImageViewerDialog(
                         TextButton(onClick = { annotating = false }) { Text("Done", color = MarkColor) }
                     }
                 }
-                Box(Modifier.weight(1f).fillMaxWidth()) {
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .draggable(
+                            state = rememberDraggableState { delta -> dismissDrag = (dismissDrag + delta).coerceAtLeast(0f) },
+                            orientation = Orientation.Vertical,
+                            enabled = !annotating && !zoomed,
+                            onDragStopped = { velocity ->
+                                if (dismissDrag > dismissDistance || velocity > DismissVelocity) {
+                                    close()
+                                } else {
+                                    animate(dismissDrag, 0f) { value, _ -> dismissDrag = value }
+                                }
+                            },
+                        )
+                        .graphicsLayer {
+                            translationY = dismissDrag
+                            val shrink = 1f - dismissProgress * 0.15f
+                            scaleX = shrink
+                            scaleY = shrink
+                        },
+                ) {
                     HorizontalPager(
                         state = pager,
                         userScrollEnabled = !annotating && !zoomed,
@@ -615,6 +645,8 @@ fun AnnotationCountBadge(count: Int, modifier: Modifier = Modifier) {
 }
 
 private const val MaxPreviewDimension = 2560
+private val DismissDistance = 120.dp
+private const val DismissVelocity = 2_000f
 
 private sealed interface DecodedImage {
     data object Loading : DecodedImage

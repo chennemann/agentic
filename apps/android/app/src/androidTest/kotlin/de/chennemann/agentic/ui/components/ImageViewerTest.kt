@@ -11,6 +11,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.swipeDown
 import androidx.compose.ui.test.swipeLeft
 import de.chennemann.agentic.domain.attachments.ImageAnnotation
 import java.io.ByteArrayOutputStream
@@ -45,6 +46,19 @@ class ImageViewerTest {
         compose.onNodeWithTag(ImageViewerStageTestTag).performTouchInput { doubleClick() }
         compose.onNodeWithTag(ImageViewerTestTag).performTouchInput { swipeLeft() }
         compose.onNodeWithText("2 of 3").assertIsDisplayed()
+    }
+
+    @Test fun swipingDownClosesUnlessTheImageIsZoomed() {
+        var closes = 0
+        compose.setContent { MaterialTheme { ImageViewerDialog(images, initialIndex = 0, onClose = { closes++ }) } }
+
+        compose.onNodeWithTag(ImageViewerStageTestTag).performTouchInput { doubleClick() }
+        compose.onNodeWithTag(ImageViewerTestTag).performTouchInput { swipeDown() }
+        compose.runOnIdle { assertEquals(0, closes) }
+
+        compose.onNodeWithTag(ImageViewerStageTestTag).performTouchInput { doubleClick() }
+        compose.onNodeWithTag(ImageViewerTestTag).performTouchInput { swipeDown() }
+        compose.runOnIdle { assertEquals(1, closes) }
     }
 
     @Test fun annotatingHoldsThePageAndClosingReportsTheMarks() {
