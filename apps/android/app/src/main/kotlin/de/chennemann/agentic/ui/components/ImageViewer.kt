@@ -10,8 +10,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -33,11 +36,9 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.runtime.Composable
@@ -64,6 +65,7 @@ import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChanged
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
@@ -89,13 +91,12 @@ import de.chennemann.agentic.domain.attachments.withBounds
 import de.chennemann.agentic.icons.Close
 import de.chennemann.agentic.icons.Icons
 import de.chennemann.agentic.icons.MessageCircle
+import de.chennemann.agentic.icons.Pencil
 import de.chennemann.agentic.icons.Trash
 import de.chennemann.agentic.icons.Undo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlin.math.hypot
-
-enum class ImageViewerMode { ZOOM, ANNOTATE }
 
 private val MarkColor = Color(AnnotationColor)
 private val ViewerMuted = Color(0xFFB8B8B8)
@@ -103,43 +104,53 @@ const val ImageViewerTestTag = "image-viewer"
 const val ImageViewerStageTestTag = "image-viewer-stage"
 
 /**
- * Full-screen image preview. Zoom mode pans and pinches; annotate mode places numbered ellipses
- * with comments. The leading [readOnlyCount] marks are already flattened into the pixels: they
- * are listed but neither drawn again nor editable, and new marks continue their numbering.
- * Closing (button, back, or system dismiss) reports the full mark list.
+ * One picture in the viewer. The leading [readOnlyCount] marks are already flattened into the
+ * pixels: they are listed but neither drawn again nor editable, and new marks continue their
+ * numbering.
+ */
+data class ViewerImage(
+    val key: String,
+    val dataUrl: String?,
+    val name: String,
+    val annotations: List<ImageAnnotation> = emptyList(),
+    val readOnlyCount: Int = 0,
+    val annotationHint: String? = null,
+)
+
+/**
+ * Full-screen gallery over [images], starting at [initialIndex]. Swiping moves between images;
+ * double-tap and pinch zoom. The overlay Annotate button switches the current image to placing
+ * numbered ellipses with comments, where one finger draws and two fingers still zoom. Closing
+ * (button, back, or system dismiss) reports every image's marks by [ViewerImage.key].
  */
 @Composable
 fun ImageViewerDialog(
-    dataUrl: String?,
-    name: String,
-    initialAnnotations: List<ImageAnnotation>,
-    readOnlyCount: Int,
-    initialMode: ImageViewerMode,
-    annotationHint: String?,
-    onClose: (List<ImageAnnotation>) -> Unit,
+    images: List<ViewerImage>,
+    initialIndex: Int,
+    onClose: (Map<String, List<ImageAnnotation>>) -> Unit,
 ) {
-    var marks by remember { mutableStateOf(initialAnnotations) }
+    var marksByKey by remember { mutableStateOf(images.associate { it.key to it.annotations }) }
+    var undoByKey by remember { mutableStateOf(emptyMap<String, List<List<ImageAnnotation>>>()) }
     var selectedId by remember { mutableStateOf<String?>(null) }
-    var undo by remember { mutableStateOf(emptyList<List<ImageAnnotation>>()) }
-    var mode by remember { mutableStateOf(initialMode) }
-    val close = { onClose(marks) }
-    val decoded by produceState<DecodedImage>(DecodedImage.Loading, dataUrl) {
-        value = if (dataUrl == null) {
-            DecodedImage.Loading
-        } else {
-            withContext(Dispatchers.Default) { decodeDataUrlBitmap(dataUrl, MaxPreviewDimension) }
-                ?.let { DecodedImage.Ready(it.asImageBitmap()) }
-                ?: DecodedImage.Failed
-        }
+    var annotating by remember { mutableStateOf(false) }
+    var zoomed by remember { mutableStateOf(false) }
+    val pager = rememberPagerState(initialPage = initialIndex.coerceIn(0, (images.size - 1).coerceAtLeast(0))) { images.size }
+    val current = images.getOrNull(pager.currentPage) ?: return
+    val marks = marksByKey[current.key].orEmpty()
+    val undo = undoByKey[current.key].orEmpty()
+    val setMarks = { value: List<ImageAnnotation> -> marksByKey = marksByKey + (current.key to value) }
+    val record = { before: List<ImageAnnotation> -> undoByKey = undoByKey + (current.key to (undo + listOf(before)).takeLast(50)) }
+    val close = { onClose(marksByKey) }
+    LaunchedEffect(pager.currentPage) {
+        selectedId = null
+        zoomed = false
     }
-    val bitmap = (decoded as? DecodedImage.Ready)?.image
-    val record = { before: List<ImageAnnotation> -> undo = (undo + listOf(before)).takeLast(50) }
 
     Dialog(
         onDismissRequest = close,
         properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false),
     ) {
-        BackHandler(onBack = close)
+        BackHandler { if (annotating) annotating = false else close() }
         Surface(
             modifier = Modifier.fillMaxSize().testTag(ImageViewerTestTag),
             color = Color.Black,
@@ -151,79 +162,208 @@ fun ImageViewerDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     IconButton(onClick = close) { Icon(Icons.Close, contentDescription = "Close image") }
-                    Text(
-                        name,
-                        style = MaterialTheme.typography.titleSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                    )
-                    if (mode == ImageViewerMode.ANNOTATE) {
+                    Column(Modifier.weight(1f)) {
+                        Text(current.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        if (images.size > 1) {
+                            Text("${pager.currentPage + 1} of ${images.size}", style = MaterialTheme.typography.labelSmall, color = ViewerMuted)
+                        }
+                    }
+                    if (annotating) {
                         IconButton(
                             onClick = {
-                                marks = undo.last()
-                                undo = undo.dropLast(1)
-                                if (marks.none { it.id == selectedId }) selectedId = null
+                                setMarks(undo.last())
+                                undoByKey = undoByKey + (current.key to undo.dropLast(1))
+                                if (undo.last().none { it.id == selectedId }) selectedId = null
                             },
                             enabled = undo.isNotEmpty(),
                         ) { Icon(Icons.Undo, contentDescription = "Undo", modifier = Modifier.size(20.dp)) }
+                        TextButton(onClick = { annotating = false }) { Text("Done", color = MarkColor) }
                     }
-                    SingleChoiceSegmentedButtonRow(Modifier.padding(end = 8.dp)) {
-                        ImageViewerMode.entries.forEachIndexed { index, entry ->
-                            SegmentedButton(
-                                selected = mode == entry,
-                                onClick = { mode = entry },
-                                enabled = bitmap != null,
-                                shape = SegmentedButtonDefaults.itemShape(index, ImageViewerMode.entries.size),
-                                icon = {},
-                                colors = SegmentedButtonDefaults.colors(
-                                    inactiveContainerColor = Color.Transparent,
-                                    inactiveContentColor = Color.White,
-                                ),
-                                label = { Text(if (entry == ImageViewerMode.ZOOM) "Zoom" else "Annotate", maxLines = 1) },
-                            )
+                }
+                Box(Modifier.weight(1f).fillMaxWidth()) {
+                    HorizontalPager(
+                        state = pager,
+                        userScrollEnabled = !annotating && !zoomed,
+                        key = { images[it].key },
+                        modifier = Modifier.fillMaxSize(),
+                    ) { page ->
+                        val image = images[page]
+                        val isCurrent = page == pager.currentPage
+                        ImagePage(
+                            image = image,
+                            active = isCurrent,
+                            marks = marksByKey[image.key].orEmpty(),
+                            annotating = annotating && isCurrent,
+                            selectedId = selectedId.takeIf { isCurrent },
+                            onSelect = { selectedId = it },
+                            onPreview = setMarks,
+                            onCommit = { before, after ->
+                                setMarks(after)
+                                if (before != after) record(before)
+                            },
+                            onZoomedChange = { if (isCurrent) zoomed = it },
+                        )
+                    }
+                    if (!annotating) {
+                        Surface(
+                            onClick = { annotating = true },
+                            shape = CircleShape,
+                            color = Color.Black.copy(alpha = 0.7f),
+                            contentColor = Color.White,
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .padding(bottom = 20.dp)
+                                .semantics { contentDescription = "Annotate ${current.name}" },
+                        ) {
+                            Row(
+                                Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            ) {
+                                Icon(Icons.Pencil, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Text("Annotate", style = MaterialTheme.typography.labelLarge)
+                            }
                         }
                     }
                 }
-                Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    when (val state = decoded) {
-                        DecodedImage.Loading -> CircularProgressIndicator(Modifier.size(32.dp), strokeWidth = 2.dp)
-                        DecodedImage.Failed -> Text("The image could not be shown.", color = ViewerMuted)
-                        is DecodedImage.Ready -> if (mode == ImageViewerMode.ZOOM) {
-                            ZoomStage(state.image, marks.drop(readOnlyCount), readOnlyCount)
-                        } else {
-                            AnnotateStage(
-                                image = state.image,
-                                marks = marks,
-                                readOnlyCount = readOnlyCount,
-                                selectedId = selectedId,
-                                onSelect = { selectedId = it },
-                                onPreview = { marks = it },
-                                onCommit = { before, after ->
-                                    marks = after
-                                    if (before != after) record(before)
-                                },
-                            )
-                        }
-                    }
-                }
-                if (mode == ImageViewerMode.ANNOTATE) {
+                if (annotating) {
                     AnnotationComments(
                         marks = marks,
-                        readOnlyCount = readOnlyCount,
+                        readOnlyCount = current.readOnlyCount,
                         selectedId = selectedId,
-                        hint = annotationHint,
+                        hint = current.annotationHint,
                         onSelect = { selectedId = it },
-                        onCommentChange = { id, comment -> marks = marks.map { if (it.id == id) it.copy(comment = comment) else it } },
+                        onCommentChange = { id, comment -> setMarks(marks.map { if (it.id == id) it.copy(comment = comment) else it }) },
                         onDelete = { id ->
                             record(marks)
-                            marks = marks.filterNot { it.id == id }
+                            setMarks(marks.filterNot { it.id == id })
                             if (selectedId == id) selectedId = null
                         },
                     )
                 }
             }
         }
+    }
+}
+
+/** One gallery page: decodes its image and zooms it, and in annotation mode draws marks on it. */
+@Composable
+private fun ImagePage(
+    image: ViewerImage,
+    active: Boolean,
+    marks: List<ImageAnnotation>,
+    annotating: Boolean,
+    selectedId: String?,
+    onSelect: (String?) -> Unit,
+    onPreview: (List<ImageAnnotation>) -> Unit,
+    onCommit: (before: List<ImageAnnotation>, after: List<ImageAnnotation>) -> Unit,
+    onZoomedChange: (Boolean) -> Unit,
+) {
+    val decoded by produceState<DecodedImage>(DecodedImage.Loading, image.dataUrl) {
+        value = image.dataUrl?.let { dataUrl ->
+            withContext(Dispatchers.Default) { decodeDataUrlBitmap(dataUrl, MaxPreviewDimension) }
+                ?.let { DecodedImage.Ready(it.asImageBitmap()) }
+                ?: DecodedImage.Failed
+        } ?: DecodedImage.Loading
+    }
+    when (val state = decoded) {
+        DecodedImage.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            CircularProgressIndicator(Modifier.size(32.dp), strokeWidth = 2.dp)
+        }
+        DecodedImage.Failed -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text("The image could not be shown.", color = ViewerMuted)
+        }
+        is DecodedImage.Ready -> ZoomableStage(active, annotating, onZoomedChange) {
+            FittedStage(state.image) { width, height ->
+                Image(state.image, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds)
+                AnnotationOverlay(marks.drop(image.readOnlyCount), image.readOnlyCount, selectedId.takeIf { annotating })
+                if (annotating) {
+                    AnnotationInput(width, height, marks, image.readOnlyCount, selectedId, onSelect, onPreview, onCommit)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Pinch and double-tap zoom with panning. Viewing pans with one finger only while zoomed, so an
+ * unzoomed swipe still turns the page; annotating leaves one finger to drawing and zooms with two.
+ */
+@Composable
+private fun ZoomableStage(
+    active: Boolean,
+    annotating: Boolean,
+    onZoomedChange: (Boolean) -> Unit,
+    content: @Composable () -> Unit,
+) {
+    var scale by remember { mutableFloatStateOf(1f) }
+    var offset by remember { mutableStateOf(Offset.Zero) }
+    LaunchedEffect(active) {
+        if (!active) {
+            scale = 1f
+            offset = Offset.Zero
+        }
+    }
+    val zoomed = scale > 1f
+    LaunchedEffect(zoomed) { onZoomedChange(zoomed) }
+    val currentAnnotating by rememberUpdatedState(annotating)
+    Box(
+        Modifier
+            .fillMaxSize()
+            .clipToBounds()
+            .testTag(ImageViewerStageTestTag)
+            .then(
+                if (annotating) {
+                    Modifier
+                } else {
+                    Modifier.pointerInput(Unit) {
+                        detectTapGestures(
+                            onDoubleTap = { tap ->
+                                if (scale > 1f) {
+                                    scale = 1f
+                                    offset = Offset.Zero
+                                } else {
+                                    scale = 2.5f
+                                    offset = (Offset(size.width / 2f, size.height / 2f) - tap) * 1.5f
+                                }
+                            },
+                        )
+                    }
+                },
+            )
+            .pointerInput(Unit) {
+                awaitEachGesture {
+                    awaitFirstDown(requireUnconsumed = false)
+                    do {
+                        val event = awaitPointerEvent()
+                        val fingers = event.changes.count { it.pressed }
+                        val handles = fingers > 1 || (!currentAnnotating && scale > 1f)
+                        if (handles && event.changes.none { it.isConsumed }) {
+                            scale = (scale * event.calculateZoom()).coerceIn(1f, 6f)
+                            val pan = event.calculatePan()
+                            val maxX = size.width * (scale - 1f) / 2f
+                            val maxY = size.height * (scale - 1f) / 2f
+                            offset = if (scale == 1f) {
+                                Offset.Zero
+                            } else {
+                                Offset((offset.x + pan.x).coerceIn(-maxX, maxX), (offset.y + pan.y).coerceIn(-maxY, maxY))
+                            }
+                            event.changes.forEach { if (it.positionChanged()) it.consume() }
+                        }
+                    } while (event.changes.any { it.pressed })
+                }
+            },
+    ) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    translationX = offset.x
+                    translationY = offset.y
+                },
+        ) { content() }
     }
 }
 
@@ -247,57 +387,6 @@ private fun FittedStage(
 }
 
 @Composable
-private fun ZoomStage(image: ImageBitmap, marks: List<ImageAnnotation>, numberOffset: Int) {
-    var scale by remember { mutableFloatStateOf(1f) }
-    var offset by remember { mutableStateOf(Offset.Zero) }
-    Box(
-        Modifier
-            .fillMaxSize()
-            .clipToBounds()
-            .testTag(ImageViewerStageTestTag)
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onDoubleTap = { tap ->
-                        if (scale > 1f) {
-                            scale = 1f
-                            offset = Offset.Zero
-                        } else {
-                            scale = 2.5f
-                            offset = (Offset(size.width / 2f, size.height / 2f) - tap) * 1.5f
-                        }
-                    },
-                )
-            }
-            .pointerInput(Unit) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    scale = (scale * zoom).coerceIn(1f, 6f)
-                    val maxX = size.width * (scale - 1f) / 2f
-                    val maxY = size.height * (scale - 1f) / 2f
-                    offset = Offset((offset.x + pan.x).coerceIn(-maxX, maxX), (offset.y + pan.y).coerceIn(-maxY, maxY))
-                    if (scale == 1f) offset = Offset.Zero
-                }
-            },
-        contentAlignment = Alignment.Center,
-    ) {
-        Box(
-            Modifier
-                .fillMaxSize()
-                .graphicsLayer {
-                    scaleX = scale
-                    scaleY = scale
-                    translationX = offset.x
-                    translationY = offset.y
-                },
-        ) {
-            FittedStage(image) { _, _ ->
-                Image(image, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds)
-                AnnotationOverlay(marks, numberOffset, selectedId = null)
-            }
-        }
-    }
-}
-
-@Composable
 private fun AnnotationOverlay(marks: List<ImageAnnotation>, numberOffset: Int, selectedId: String?) {
     Canvas(Modifier.fillMaxSize()) {
         drawIntoCanvas { drawAnnotations(it.nativeCanvas, size.width, size.height, marks, numberOffset) }
@@ -316,9 +405,15 @@ private sealed interface MarkTarget {
     data class Resize(override val id: String) : MarkTarget
 }
 
+/**
+ * Places, moves, and resizes marks on a [width] x [height] fitted image with one finger. It sits
+ * inside the zoomed content, so positions are already image-local. A second finger hands the
+ * gesture to zooming and drops the stroke in progress.
+ */
 @Composable
-private fun AnnotateStage(
-    image: ImageBitmap,
+private fun AnnotationInput(
+    width: Float,
+    height: Float,
     marks: List<ImageAnnotation>,
     readOnlyCount: Int,
     selectedId: String?,
@@ -328,14 +423,10 @@ private fun AnnotateStage(
 ) {
     val currentMarks by rememberUpdatedState(marks)
     val currentSelected by rememberUpdatedState(selectedId)
-    FittedStage(image) { width, height ->
-        Image(image, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds)
-        AnnotationOverlay(marks.drop(readOnlyCount), readOnlyCount, selectedId)
-        val cornerSlop = with(LocalDensity.current) { 28.dp.toPx() }
+    val cornerSlop = with(LocalDensity.current) { 28.dp.toPx() }
         Box(
             Modifier
                 .fillMaxSize()
-                .testTag(ImageViewerStageTestTag)
                 .semantics { contentDescription = "Annotation canvas" }
                 .pointerInput(width, height, readOnlyCount) {
                     fun normalized(position: Offset) = AnnotationPoint(
@@ -369,6 +460,11 @@ private fun AnnotateStage(
                         var latest = before
                         while (true) {
                             val event = awaitPointerEvent()
+                            if (event.changes.count { it.pressed } > 1) {
+                                if (dragged) onPreview(before)
+                                while (awaitPointerEvent().changes.any { it.pressed }) Unit
+                                return@awaitEachGesture
+                            }
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
                             if (!change.pressed) break
                             if (!dragged && (change.position - down.position).getDistance() > viewConfiguration.touchSlop) dragged = true
@@ -409,7 +505,6 @@ private fun AnnotateStage(
                     }
                 },
         )
-    }
 }
 
 @Composable

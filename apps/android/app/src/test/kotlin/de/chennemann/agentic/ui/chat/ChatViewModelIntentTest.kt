@@ -2939,10 +2939,6 @@ private class RecordingInterfacePreferencesRepository(initial: InterfacePreferen
         codeScales += scale
         mutablePreferences.value = mutablePreferences.value.copy(codeScale = scale)
     }
-
-    override suspend fun setImageOpenAction(action: de.chennemann.agentic.domain.preferences.ImageOpenAction) {
-        mutablePreferences.value = mutablePreferences.value.copy(imageOpenAction = action)
-    }
 }
 
 private class RecordingEnvironmentCacheActions : EnvironmentCacheActions {

@@ -1,7 +1,6 @@
 package de.chennemann.agentic.ui.chat
 
 import de.chennemann.agentic.domain.preferences.FollowUpBehavior
-import de.chennemann.agentic.domain.preferences.ImageOpenAction
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
@@ -808,21 +807,6 @@ private fun SettingsSheet(
                     }
                     SettingsChipRow(FollowUpBehavior.entries, state.interfaceSettings.followUpBehavior, { it.name.lowercase().replaceFirstChar(Char::uppercase) }) {
                         onEvent(ChatUiEvent.FollowUpBehaviorSelected(it))
-                    }
-                }
-            }
-            item {
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 8.dp)) {
-                    Column(Modifier.weight(1f)) {
-                        Text("Open images in", style = MaterialTheme.typography.bodyMedium)
-                        Text(
-                            "Switch modes from the preview",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
-                    SettingsChipRow(ImageOpenAction.entries, state.interfaceSettings.imageOpenAction, { if (it == ImageOpenAction.ZOOM) "Zoom" else "Annotate" }) {
-                        onEvent(ChatUiEvent.ImageOpenActionSelected(it))
                     }
                 }
             }

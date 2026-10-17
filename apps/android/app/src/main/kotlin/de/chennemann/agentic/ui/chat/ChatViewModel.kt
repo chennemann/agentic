@@ -475,7 +475,6 @@ class ChatViewModel(
                 interfaceScale = display.interfaceScale,
                 codeScale = display.codeScale,
                 followUpBehavior = display.followUpBehavior,
-                imageOpenAction = display.imageOpenAction,
             ),
             cacheClearance = cache.environmentId?.let {
                 CacheClearanceUi(it, cache.categories, cache.clearableBytes, cache.busy, cache.cleared, cache.error)
@@ -796,7 +795,6 @@ class ChatViewModel(
             ChatUiEvent.SharedImportErrorDismissed -> acceptShared(SharedTextWorkflowIntent.DismissError)
             ChatUiEvent.ShortcutErrorDismissed -> shortcutWorkflow?.dismissError()
             is ChatUiEvent.ThemeSelected -> viewModelScope.launch { interfacePreferences?.setTheme(event.value) }
-            is ChatUiEvent.ImageOpenActionSelected -> viewModelScope.launch { interfacePreferences?.setImageOpenAction(event.value) }
             is ChatUiEvent.InlineImageRequested -> loadInlineImage(event.path)
             is ChatUiEvent.AccentSelected -> viewModelScope.launch { interfacePreferences?.setAccent(event.value) }
             is ChatUiEvent.InterfaceScaleSelected -> if (event.value in SupportedDisplayScales) {

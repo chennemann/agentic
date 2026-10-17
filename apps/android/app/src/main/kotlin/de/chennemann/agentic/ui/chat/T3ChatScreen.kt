@@ -35,6 +35,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
@@ -92,10 +93,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import de.chennemann.agentic.streamingmarkdown.StreamingMarkdownText
-import de.chennemann.agentic.domain.preferences.ImageOpenAction
 import de.chennemann.agentic.ui.components.AnnotationCountBadge
 import de.chennemann.agentic.ui.components.ImageViewerDialog
-import de.chennemann.agentic.ui.components.ImageViewerMode
+import de.chennemann.agentic.ui.components.ViewerImage
 import de.chennemann.agentic.ui.components.decodeDataUrlBitmap
 import androidx.compose.foundation.clickable
 import de.chennemann.agentic.ui.components.ChatActivityCard
@@ -471,7 +471,10 @@ fun T3ChatScreen(
                             }
                         }
                     } else IsolatedDraftComposer(
-                        onOpenImage = { openImage(ImageViewerRequest.Draft(it.id)) },
+                        onOpenImage = { opened ->
+                            val drafts = state.composer.imageAttachments.map { ImageViewerItem.Draft(it.id) }
+                            openImage(ImageViewerRequest(drafts, drafts.indexOfFirst { it.imageId == opened.id }))
+                        },
                         state = state.composer,
                         draft = composerDraft,
                         turnRunning = state.isTurnRunning,
@@ -921,9 +924,24 @@ private fun MessageItem(
     onOpenImage: (ImageViewerRequest) -> Unit = {},
 ) {
     val segments = remember(message.content) { splitMessageImages(message.content) }
+    // Every picture of this message, attachments first, so the viewer can swipe between them.
+    val attachmentItems = message.attachments.map {
+        ImageViewerItem.Conversation(it.previewDataUrl, it.name, it.annotations, it.burnedAnnotationCount)
+    }
+    val inlineItems = segments.filterIsInstance<MessageSegment.Image>().associateWith { segment ->
+        (inlineImages[segment.path] as? InlineImageUi.Loaded)?.let {
+            ImageViewerItem.Conversation(it.dataUrl, segment.path.substringAfterLast('/').substringAfterLast('\\'))
+        }
+    }
+    val gallery = attachmentItems + inlineItems.values.filterNotNull()
+    val openInGallery = { item: ImageViewerItem -> onOpenImage(ImageViewerRequest(gallery, gallery.indexOf(item))) }
+    val openAttachment = { index: Int -> openInGallery(attachmentItems[index]) }
     val inlineImage: @Composable (MessageSegment.Image) -> Unit = { segment ->
         InlineMessageImage(segment, inlineImages[segment.path], onRequestInlineImage) { dataUrl ->
-            onOpenImage(ImageViewerRequest.Conversation(dataUrl, segment.path.substringAfterLast('/').substringAfterLast('\\')))
+            openInGallery(
+                inlineItems[segment]
+                    ?: ImageViewerItem.Conversation(dataUrl, segment.path.substringAfterLast('/').substringAfterLast('\\')),
+            )
         }
     }
     val context = LocalContext.current
@@ -950,7 +968,7 @@ private fun MessageItem(
                         ),
                     ) {
                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            MessageImages(message.attachments, onOpenImage)
+                            MessageImages(message.attachments, openAttachment)
                             MessageFiles(message.files)
                             if (message.content.isNotBlank()) segments.forEach { segment ->
                                 when (segment) {
@@ -974,7 +992,7 @@ private fun MessageItem(
 
             ChatMessageAuthorUi.ASSISTANT -> {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    MessageImages(message.attachments, onOpenImage)
+                    MessageImages(message.attachments, openAttachment)
                     MessageFiles(message.files)
                     segments.forEachIndexed { index, segment ->
                         when (segment) {
@@ -1025,7 +1043,7 @@ private fun MessageItem(
             }
             ChatMessageAuthorUi.SYSTEM -> {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    MessageImages(message.attachments, onOpenImage)
+                    MessageImages(message.attachments, openAttachment)
                     MessageFiles(message.files)
                     Text(
                         text = message.content,
@@ -1099,10 +1117,10 @@ private fun MessageFiles(files: List<ChatFileAttachmentUi>) {
 }
 
 @Composable
-private fun MessageImages(attachments: List<ChatImageAttachmentUi>, onOpenImage: (ImageViewerRequest) -> Unit) {
+private fun MessageImages(attachments: List<ChatImageAttachmentUi>, onOpenImage: (index: Int) -> Unit) {
     if (attachments.isEmpty()) return
     LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        items(attachments, key = { it.id }) { attachment ->
+        itemsIndexed(attachments, key = { _, it -> it.id }) { index, attachment ->
             val bitmap = remember(attachment.previewDataUrl) {
                 attachment.previewDataUrl?.let { decodeDataUrlBitmap(it, 720)?.asImageBitmap() }
             }
@@ -1116,16 +1134,7 @@ private fun MessageImages(attachments: List<ChatImageAttachmentUi>, onOpenImage:
                         .width(220.dp)
                         .height(164.dp)
                         .clip(MaterialTheme.shapes.medium)
-                        .clickable(onClickLabel = "Open image") {
-                            onOpenImage(
-                                ImageViewerRequest.Conversation(
-                                    dataUrl = attachment.previewDataUrl,
-                                    name = attachment.name,
-                                    annotations = attachment.annotations,
-                                    burnedAnnotationCount = attachment.burnedAnnotationCount,
-                                ),
-                            )
-                        },
+                        .clickable(onClickLabel = "Open image") { onOpenImage(index) },
                 ) {
                     Image(
                         bitmap = bitmap,
@@ -1189,15 +1198,18 @@ private fun InlineImagePlaceholder(text: String) {
     }
 }
 
-/** What the full-screen viewer shows; drafts are looked up live so edits land on the attachment. */
-sealed interface ImageViewerRequest {
-    data class Draft(val imageId: String) : ImageViewerRequest
+/** The images the viewer swipes through, opened at [index]. */
+data class ImageViewerRequest(val items: List<ImageViewerItem>, val index: Int)
+
+/** One viewer image; drafts are looked up live so edits land on the attachment. */
+sealed interface ImageViewerItem {
+    data class Draft(val imageId: String) : ImageViewerItem
     data class Conversation(
         val dataUrl: String?,
         val name: String,
         val annotations: List<de.chennemann.agentic.domain.attachments.ImageAnnotation> = emptyList(),
         val burnedAnnotationCount: Int = 0,
-    ) : ImageViewerRequest
+    ) : ImageViewerItem
 }
 
 @Composable
@@ -1207,54 +1219,61 @@ private fun ImageViewerHost(
     onEvent: (ChatUiEvent) -> Unit,
     onDismiss: () -> Unit,
 ) {
-    val initialMode = if (state.interfaceSettings.imageOpenAction == ImageOpenAction.ANNOTATE) {
-        ImageViewerMode.ANNOTATE
-    } else {
-        ImageViewerMode.ZOOM
-    }
-    when (request) {
-        is ImageViewerRequest.Draft -> {
-            val image = state.composer.imageAttachments.firstOrNull { it.id == request.imageId }
-            if (image == null) {
-                LaunchedEffect(Unit) { onDismiss() }
-                return
+    val drafts = state.composer.imageAttachments.associateBy { it.id }
+    val entries = request.items.mapIndexedNotNull { index, item ->
+        when (item) {
+            is ImageViewerItem.Draft -> drafts[item.imageId]?.let { image ->
+                item to ViewerImage(
+                    key = "draft:${image.id}",
+                    dataUrl = image.previewDataUrl,
+                    name = image.name,
+                    annotations = image.annotations,
+                    readOnlyCount = image.burnedAnnotationCount,
+                    annotationHint = "Sending burns these marks into a copy and adds the comments to your message.",
+                )
             }
-            ImageViewerDialog(
-                dataUrl = image.previewDataUrl,
-                name = image.name,
-                initialAnnotations = image.annotations,
-                readOnlyCount = image.burnedAnnotationCount,
-                initialMode = initialMode,
-                annotationHint = "Sending burns these marks into a copy and adds the comments to your message.",
-                onClose = { marks ->
-                    if (marks != image.annotations) onEvent(ChatUiEvent.ImageAnnotationsSaved(image.id, marks))
-                    onDismiss()
-                },
+            is ImageViewerItem.Conversation -> item to ViewerImage(
+                key = "conversation:$index",
+                dataUrl = item.dataUrl,
+                name = item.name,
+                annotations = item.annotations,
+                readOnlyCount = item.annotations.size,
+                annotationHint = "Closing adds this image with your annotations to the reply.",
             )
         }
-        is ImageViewerRequest.Conversation -> ImageViewerDialog(
-            dataUrl = request.dataUrl,
-            name = request.name,
-            initialAnnotations = request.annotations,
-            readOnlyCount = request.annotations.size,
-            initialMode = initialMode,
-            annotationHint = "Closing adds this image with your annotations to the reply.",
-            onClose = { marks ->
-                val dataUrl = request.dataUrl
-                if (dataUrl != null && marks.size > request.annotations.size) {
-                    onEvent(
-                        ChatUiEvent.ConversationImageAnnotated(
-                            dataUrl = dataUrl,
-                            name = request.name,
-                            annotations = marks,
-                            burnedAnnotationCount = request.annotations.size,
-                        ),
-                    )
-                }
-                onDismiss()
-            },
-        )
     }
+    if (entries.isEmpty()) {
+        LaunchedEffect(Unit) { onDismiss() }
+        return
+    }
+    val opened = request.items.getOrNull(request.index)
+    ImageViewerDialog(
+        images = entries.map { it.second },
+        initialIndex = entries.indexOfFirst { it.first == opened }.coerceAtLeast(0),
+        onClose = { marksByKey ->
+            entries.forEach { (item, image) ->
+                val marks = marksByKey[image.key] ?: return@forEach
+                when (item) {
+                    is ImageViewerItem.Draft ->
+                        if (marks != image.annotations) onEvent(ChatUiEvent.ImageAnnotationsSaved(item.imageId, marks))
+                    is ImageViewerItem.Conversation -> {
+                        val dataUrl = item.dataUrl
+                        if (dataUrl != null && marks.size > item.annotations.size) {
+                            onEvent(
+                                ChatUiEvent.ConversationImageAnnotated(
+                                    dataUrl = dataUrl,
+                                    name = item.name,
+                                    annotations = marks,
+                                    burnedAnnotationCount = item.annotations.size,
+                                ),
+                            )
+                        }
+                    }
+                }
+            }
+            onDismiss()
+        },
+    )
 }
 
 @Composable
