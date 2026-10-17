@@ -220,11 +220,11 @@ internal fun codeTokensToAnnotatedString(
 ): AnnotatedString = buildAnnotatedString {
     tokens.forEach { token ->
         val tokenStyle = when (token.kind) {
-            CodeTokenKind.PLAIN -> null
-            CodeTokenKind.KEYWORD -> keywordStyle
+            CodeTokenKind.PLAIN, CodeTokenKind.FUNCTION, CodeTokenKind.ATTRIBUTE -> null
+            CodeTokenKind.KEYWORD, CodeTokenKind.ANNOTATION, CodeTokenKind.TAG -> keywordStyle
             CodeTokenKind.STRING -> stringStyle
-            CodeTokenKind.NUMBER -> numberStyle
-            CodeTokenKind.COMMENT -> commentStyle
+            CodeTokenKind.NUMBER, CodeTokenKind.PROPERTY, CodeTokenKind.CONSTANT -> numberStyle
+            CodeTokenKind.COMMENT, CodeTokenKind.DOC_COMMENT -> commentStyle
         }
         if (tokenStyle == null) {
             append(token.value)

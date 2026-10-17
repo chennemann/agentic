@@ -61,7 +61,6 @@ import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontStyle
@@ -78,8 +77,10 @@ import de.chennemann.agentic.icons.ChevronDown
 import de.chennemann.agentic.icons.FilterList
 import de.chennemann.agentic.icons.Icons
 import de.chennemann.agentic.icons.Refresh
-import de.chennemann.agentic.streamingmarkdown.CodeTokenKind
 import de.chennemann.agentic.streamingmarkdown.StreamingMarkdownText
+import de.chennemann.agentic.ui.code.highlightCodeLines
+import de.chennemann.agentic.ui.code.rememberCodeSyntaxStyles
+import de.chennemann.agentic.ui.theme.LocalCodeScale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -327,22 +328,15 @@ private fun WorkspaceFilePreviewContent(state: WorkspaceFilesUiState) {
 @Composable
 private fun CodeView(path: String, contents: String) {
     val scheme = MaterialTheme.colorScheme
-    val lines by produceState<List<AnnotatedString>?>(null, path, contents, scheme) {
-        val keyword = SpanStyle(color = scheme.primary, fontWeight = FontWeight.Medium)
-        val string = SpanStyle(color = scheme.tertiary)
-        val number = SpanStyle(color = scheme.secondary)
-        val comment = SpanStyle(color = scheme.onSurfaceVariant.copy(alpha = 0.7f), fontStyle = FontStyle.Italic)
+    val syntax = rememberCodeSyntaxStyles()
+    val lines by produceState<List<AnnotatedString>?>(null, path, contents, syntax) {
+        val spans = syntax.mapValues { it.value.toSpanStyle() }
         value = withContext(Dispatchers.Default) {
             highlightCodeLines(path, contents).map { tokens ->
                 buildAnnotatedString {
                     tokens.forEach { token ->
-                        when (token.kind) {
-                            CodeTokenKind.PLAIN -> append(token.value)
-                            CodeTokenKind.KEYWORD -> withStyle(keyword) { append(token.value) }
-                            CodeTokenKind.STRING -> withStyle(string) { append(token.value) }
-                            CodeTokenKind.NUMBER -> withStyle(number) { append(token.value) }
-                            CodeTokenKind.COMMENT -> withStyle(comment) { append(token.value) }
-                        }
+                        val span = spans[token.kind]
+                        if (span == null) append(token.value) else withStyle(span) { append(token.value) }
                     }
                 }
             }
@@ -352,7 +346,12 @@ private fun CodeView(path: String, contents: String) {
         Row(Modifier.fillMaxWidth().padding(32.dp), horizontalArrangement = Arrangement.Center) { CircularProgressIndicator() }
         return
     }
-    val textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace, lineHeight = 18.sp)
+    val codeScale = LocalCodeScale.current
+    val textStyle = MaterialTheme.typography.bodySmall.copy(
+        fontFamily = FontFamily.Monospace,
+        fontSize = 13.sp * codeScale,
+        lineHeight = 19.sp * codeScale,
+    )
     val measurer = rememberTextMeasurer()
     val charWidth = remember(textStyle, measurer) { measurer.measure("0".repeat(64), textStyle).size.width / 64f }
     val density = LocalDensity.current

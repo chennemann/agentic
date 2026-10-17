@@ -2,6 +2,7 @@ package de.chennemann.agentic.ui.review
 
 import de.chennemann.agentic.streamingmarkdown.CodeLexerRegistry
 import de.chennemann.agentic.streamingmarkdown.CodeTokenKind
+import de.chennemann.agentic.ui.code.codeLanguageFor
 import expo.modules.t3reviewdiff.T3ReviewDiffView
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
@@ -12,18 +13,14 @@ import kotlinx.serialization.json.put
 internal data class ReviewPayload(val rows: String, val tokens: String)
 private val RowJson = Json { encodeDefaults = true }
 
-internal fun reviewPayload(document: ReviewDocument, colors: Map<CodeTokenKind, String>): ReviewPayload {
+internal fun reviewPayload(
+    document: ReviewDocument,
+    colors: Map<CodeTokenKind, String>,
+    italic: Set<CodeTokenKind> = emptySet()
+): ReviewPayload {
     val tokens = buildJsonObject {
         document.files.forEach { file ->
-            val language = when (file.path.substringAfterLast('.', "").lowercase()) {
-                "kt", "kts" -> "kotlin"
-                "js", "jsx", "mjs", "cjs" -> "javascript"
-                "ts", "tsx" -> "typescript"
-                "py" -> "python"
-                "sh", "bash" -> "bash"
-                "yml" -> "yaml"
-                else -> file.path.substringAfterLast('.', "")
-            }
+            val language = codeLanguageFor(file.path)
             file.rows.filter { it.kind == "line" }.forEach { row ->
                 put(
                     row.id,
@@ -33,7 +30,7 @@ internal fun reviewPayload(document: ReviewDocument, colors: Map<CodeTokenKind, 
                                 buildJsonObject {
                                     put("content", token.value)
                                     put("color", colors.getValue(token.kind))
-                                    put("fontStyle", 0)
+                                    put("fontStyle", if (token.kind in italic) 1 else 0)
                                 }
                             )
                         }

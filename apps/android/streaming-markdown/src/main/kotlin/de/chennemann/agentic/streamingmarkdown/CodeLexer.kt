@@ -7,6 +7,13 @@ enum class CodeTokenKind {
     STRING,
     NUMBER,
     COMMENT,
+    DOC_COMMENT,
+    FUNCTION,
+    PROPERTY,
+    CONSTANT,
+    ANNOTATION,
+    TAG,
+    ATTRIBUTE,
 }
 
 /** A classified source fragment. A lexer's ordered token values must reproduce its input exactly. */

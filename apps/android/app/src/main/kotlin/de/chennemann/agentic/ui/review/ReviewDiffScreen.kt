@@ -52,7 +52,9 @@ fun ReviewDiffScreen(state: ReviewDiffUiState, onBack: () -> Unit, onRefresh: ()
     val appearance = rememberReviewAppearance(wrap)
     var payload by remember(state.document, appearance.tokenColors) { mutableStateOf<ReviewPayload?>(null) }
     LaunchedEffect(state.document, appearance.tokenColors) {
-        payload = withContext(Dispatchers.Default) { reviewPayload(state.document, appearance.tokenColors) }
+        payload = withContext(Dispatchers.Default) {
+            reviewPayload(state.document, appearance.tokenColors, appearance.italicTokens)
+        }
     }
     Scaffold(
         containerColor = MaterialTheme.colorScheme.surface,

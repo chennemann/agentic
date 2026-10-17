@@ -47,6 +47,86 @@ class SimpleCodeLexersTest {
     }
 
     @Test
+    fun classifies_kotlin_calls_members_constants_annotations_and_docs() {
+        val source = """
+            import de.chennemann.agentic.Thing
+            /** Docs. */
+            @Composable
+            fun render(items: List<Item>) = items.map { Item(it.name, MAX_SIZE) }.also(::log)
+        """.trimIndent()
+
+        val tokens = CodeLexerRegistry.Default.tokenize("kotlin", source)
+
+        assertEquals(source, tokens.joinToString(separator = "") { it.value })
+        assertTrue(tokens.none { it.kind == CodeTokenKind.PROPERTY && it.value in setOf("chennemann", "agentic", "Thing") })
+        assertTrue(tokens.any { it == CodeToken("/** Docs. */", CodeTokenKind.DOC_COMMENT) })
+        assertTrue(tokens.any { it == CodeToken("@Composable", CodeTokenKind.ANNOTATION) })
+        assertTrue(tokens.any { it == CodeToken("render", CodeTokenKind.FUNCTION) })
+        assertTrue(tokens.any { it == CodeToken("map", CodeTokenKind.FUNCTION) })
+        assertTrue(tokens.any { it == CodeToken("also", CodeTokenKind.FUNCTION) })
+        assertTrue(tokens.any { it == CodeToken("name", CodeTokenKind.PROPERTY) })
+        assertTrue(tokens.any { it == CodeToken("MAX_SIZE", CodeTokenKind.CONSTANT) })
+        assertTrue(tokens.none { it.value == "Item" && it.kind != CodeTokenKind.PLAIN })
+    }
+
+    @Test
+    fun splits_string_templates_and_escapes() {
+        val source = "\"Hi \$name, \${user.count + 1}\\n\""
+
+        val tokens = CodeLexerRegistry.Default.tokenize("kotlin", source)
+
+        assertEquals(
+            listOf(
+                CodeToken("\"Hi ", CodeTokenKind.STRING),
+                CodeToken("$", CodeTokenKind.KEYWORD),
+                CodeToken("name", CodeTokenKind.PLAIN),
+                CodeToken(", ", CodeTokenKind.STRING),
+                CodeToken("\${", CodeTokenKind.KEYWORD),
+                CodeToken("user.", CodeTokenKind.PLAIN),
+                CodeToken("count", CodeTokenKind.PROPERTY),
+                CodeToken(" + ", CodeTokenKind.PLAIN),
+                CodeToken("1", CodeTokenKind.NUMBER),
+                CodeToken("}\\n", CodeTokenKind.KEYWORD),
+                CodeToken("\"", CodeTokenKind.STRING),
+            ),
+            tokens,
+        )
+    }
+
+    @Test
+    fun highlights_markup_tags_attributes_and_comments() {
+        val source = "<!-- note -->\n<item name=\"x\">Don't &amp; go</item>"
+
+        val tokens = CodeLexerRegistry.Default.tokenize("xml", source)
+
+        assertEquals(source, tokens.joinToString(separator = "") { it.value })
+        assertTrue(tokens.any { it == CodeToken("<!-- note -->", CodeTokenKind.COMMENT) })
+        assertTrue(tokens.count { it == CodeToken("item", CodeTokenKind.TAG) } == 2)
+        assertTrue(tokens.any { it == CodeToken("name", CodeTokenKind.ATTRIBUTE) })
+        assertTrue(tokens.any { it == CodeToken("\"x\"", CodeTokenKind.STRING) })
+        assertTrue(tokens.any { it == CodeToken("&amp;", CodeTokenKind.KEYWORD) })
+        assertTrue(tokens.none { it.kind == CodeTokenKind.STRING && it.value.startsWith("'") })
+    }
+
+    @Test
+    fun marks_configuration_keys_sections_and_shell_variables() {
+        val yaml = CodeLexerRegistry.Default.tokenize("yaml", "jobs:\n  - name: build\n    \"on\": push")
+        val toml = CodeLexerRegistry.Default.tokenize("toml", "[versions]\nagp = \"9.1.1\"")
+        val shell = CodeLexerRegistry.Default.tokenize("shell", "echo \$HOME \${PATH} \"\$USER\"")
+        val json = CodeLexerRegistry.Default.tokenize("json", "{\"url\": \"x\"}")
+
+        assertTrue(yaml.any { it == CodeToken("jobs", CodeTokenKind.PROPERTY) })
+        assertTrue(yaml.any { it == CodeToken("name", CodeTokenKind.PROPERTY) })
+        assertTrue(yaml.any { it == CodeToken("\"on\"", CodeTokenKind.PROPERTY) })
+        assertTrue(toml.any { it == CodeToken("[versions]", CodeTokenKind.KEYWORD) })
+        assertTrue(toml.any { it == CodeToken("agp", CodeTokenKind.PROPERTY) })
+        assertTrue(shell.any { it == CodeToken("\$HOME", CodeTokenKind.PROPERTY) })
+        assertTrue(shell.any { it == CodeToken("\${PATH}", CodeTokenKind.PROPERTY) })
+        assertTrue(shell.any { it == CodeToken("USER", CodeTokenKind.PLAIN) })
+        assertTrue(json.any { it == CodeToken("\"url\"", CodeTokenKind.PROPERTY) })
+    }
+
+    @Test
     fun treats_json_comment_markers_as_plain_text() {
         val source = "{\"url\": \"https://example.com\"}"
 

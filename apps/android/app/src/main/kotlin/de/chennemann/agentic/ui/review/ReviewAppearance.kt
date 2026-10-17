@@ -10,12 +10,18 @@ import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import de.chennemann.agentic.streamingmarkdown.CodeTokenKind
+import de.chennemann.agentic.ui.code.codeSyntaxStyles
 import de.chennemann.agentic.ui.theme.LocalCodeScale
 import java.util.Locale
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 
-internal data class ReviewAppearance(val theme: String, val style: String, val tokenColors: Map<CodeTokenKind, String>)
+internal data class ReviewAppearance(
+    val theme: String,
+    val style: String,
+    val tokenColors: Map<CodeTokenKind, String>,
+    val italicTokens: Set<CodeTokenKind>
+)
 
 @Composable
 internal fun rememberReviewAppearance(wrap: Boolean): ReviewAppearance {
@@ -27,6 +33,7 @@ internal fun rememberReviewAppearance(wrap: Boolean): ReviewAppearance {
     val codeScale = textScale * LocalCodeScale.current
     return remember(colors, wrap, interfaceScale, textScale, codeScale) {
         val dark = colors.surface.luminance() < 0.5f
+        val syntax = codeSyntaxStyles(dark)
         val green = if (dark) Color(0xFFA0CC5B) else Color(0xFF326B1D)
         val red = colors.error
         ReviewAppearance(
@@ -60,13 +67,8 @@ internal fun rememberReviewAppearance(wrap: Boolean): ReviewAppearance {
                 put("fileHeaderMetaFontSize", 10f * textScale)
                 put("fileHeaderSubtextFontSize", 11f * textScale)
             }.toString(),
-            tokenColors = mapOf(
-                CodeTokenKind.PLAIN to colors.onSurface.hex(),
-                CodeTokenKind.KEYWORD to colors.primary.hex(),
-                CodeTokenKind.STRING to green.hex(),
-                CodeTokenKind.NUMBER to colors.tertiary.hex(),
-                CodeTokenKind.COMMENT to colors.onSurfaceVariant.hex()
-            )
+            tokenColors = CodeTokenKind.entries.associateWith { (syntax[it]?.color ?: colors.onSurface).hex() },
+            italicTokens = syntax.filterValues { it.italic }.keys
         )
     }
 }
