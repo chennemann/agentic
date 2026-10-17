@@ -76,11 +76,20 @@ private fun MutableList<CodeToken>.append(
     }
 }
 
+/**
+ * Triple-quoted and backtick strings may span lines; other unterminated strings end at the line break so a
+ * stray apostrophe in prose does not color the rest of the file.
+ */
 private fun stringEnd(
     source: String,
     start: Int,
     delimiter: Char,
 ): Int {
+    val triple = delimiter.toString().repeat(3)
+    if (source.startsWith(triple, start)) {
+        val closing = source.indexOf(triple, start + triple.length)
+        return if (closing < 0) source.length else closing + triple.length
+    }
     var index = start + 1
     var escaped = false
     while (index < source.length) {
@@ -91,6 +100,8 @@ private fun stringEnd(
             escaped = true
         } else if (character == delimiter) {
             return index + 1
+        } else if (character == '\n' && delimiter != '`') {
+            return index
         }
         index += 1
     }
@@ -196,6 +207,78 @@ internal fun defaultCodeLexerPlugins(): List<CodeLexerPlugin> = listOf(
             fallthrough if range type continue for import return var true false nil
         """.keywords(),
         lineCommentPrefixes = listOf("//"),
+        blockComment = "/*" to "*/",
+    ),
+    definition(
+        aliases = setOf("swift"),
+        keywords = """
+            associatedtype class deinit enum extension fileprivate func import init inout internal let open operator
+            private protocol public rethrows static struct subscript typealias var break case continue default defer
+            do else fallthrough for guard if in repeat return switch where while as Any catch false is nil super self
+            Self throw throws true try async await actor some any final lazy mutating override required weak
+        """.keywords(),
+        lineCommentPrefixes = listOf("//"),
+        blockComment = "/*" to "*/",
+    ),
+    definition(
+        aliases = setOf("cpp", "c++", "c", "h", "hpp", "objc"),
+        keywords = """
+            auto break case char const continue default do double else enum extern float for goto if inline int long
+            register restrict return short signed sizeof static struct switch typedef union unsigned void volatile
+            while bool class constexpr delete explicit false friend mutable namespace new noexcept nullptr operator
+            private protected public template this throw true try typename using virtual override final
+        """.keywords(),
+        lineCommentPrefixes = listOf("//"),
+        blockComment = "/*" to "*/",
+    ),
+    definition(
+        aliases = setOf("csharp", "cs", "c#"),
+        keywords = """
+            abstract as async await base bool break byte case catch char checked class const continue decimal default
+            delegate do double else enum event explicit extern false finally fixed float for foreach goto if implicit
+            in int interface internal is lock long namespace new null object operator out override params private
+            protected public readonly record ref return sealed short sizeof static string struct switch this throw
+            true try typeof uint ulong unchecked unsafe ushort using var virtual void volatile while yield
+        """.keywords(),
+        lineCommentPrefixes = listOf("//"),
+        blockComment = "/*" to "*/",
+    ),
+    definition(
+        aliases = setOf("sql", "sq", "sqm"),
+        keywords = """
+            select from where insert into values update set delete create table index view trigger drop alter add
+            primary key foreign references unique not null default and or in is like between join left right inner
+            outer cross on as order by group having limit offset union all distinct case when then else end exists
+            integer text real blob boolean begin commit rollback transaction if replace returning with
+        """.keywords().let { keywords -> keywords + keywords.map { it.uppercase() } },
+        lineCommentPrefixes = listOf("--"),
+        blockComment = "/*" to "*/",
+    ),
+    definition(
+        aliases = setOf("xml", "html", "svg"),
+        keywords = emptySet(),
+        blockComment = "<!--" to "-->",
+        stringDelimiters = setOf('"'),
+    ),
+    definition(
+        aliases = setOf("yaml", "yml"),
+        keywords = setOf("true", "false", "null", "yes", "no", "on", "off"),
+        lineCommentPrefixes = listOf("#"),
+    ),
+    definition(
+        aliases = setOf("toml"),
+        keywords = setOf("true", "false"),
+        lineCommentPrefixes = listOf("#"),
+    ),
+    definition(
+        aliases = setOf("properties", "ini", "env"),
+        keywords = emptySet(),
+        lineCommentPrefixes = listOf("#"),
+        stringDelimiters = emptySet(),
+    ),
+    definition(
+        aliases = setOf("css", "scss", "less"),
+        keywords = setOf("important", "inherit", "initial", "unset", "none", "auto"),
         blockComment = "/*" to "*/",
     ),
 )
