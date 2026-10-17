@@ -112,7 +112,9 @@ import de.chennemann.agentic.icons.ArchiveRestore
 import de.chennemann.agentic.icons.Copy
 import de.chennemann.agentic.icons.DoubleChevronDown
 import de.chennemann.agentic.icons.Icons
+import de.chennemann.agentic.icons.Paperclip
 import de.chennemann.agentic.icons.Rename
+import de.chennemann.agentic.domain.attachments.formatByteSize
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.StateFlow
@@ -949,6 +951,7 @@ private fun MessageItem(
                     ) {
                         Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             MessageImages(message.attachments, onOpenImage)
+                            MessageFiles(message.files)
                             if (message.content.isNotBlank()) segments.forEach { segment ->
                                 when (segment) {
                                     is MessageSegment.Image -> inlineImage(segment)
@@ -972,6 +975,7 @@ private fun MessageItem(
             ChatMessageAuthorUi.ASSISTANT -> {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     MessageImages(message.attachments, onOpenImage)
+                    MessageFiles(message.files)
                     segments.forEachIndexed { index, segment ->
                         when (segment) {
                             is MessageSegment.Image -> inlineImage(segment)
@@ -1022,6 +1026,7 @@ private fun MessageItem(
             ChatMessageAuthorUi.SYSTEM -> {
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     MessageImages(message.attachments, onOpenImage)
+                    MessageFiles(message.files)
                     Text(
                         text = message.content,
                         style = MaterialTheme.typography.bodySmall,
@@ -1060,6 +1065,36 @@ private fun MessageCopyButton(
                 MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
             },
         )
+    }
+}
+
+@Composable
+private fun MessageFiles(files: List<ChatFileAttachmentUi>) {
+    if (files.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        files.forEach { file ->
+            Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceVariant) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(Icons.Paperclip, contentDescription = null, modifier = Modifier.size(14.dp))
+                    Text(
+                        text = file.name,
+                        style = MaterialTheme.typography.labelMedium,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false),
+                    )
+                    Text(
+                        text = formatByteSize(file.sizeBytes),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
     }
 }
 

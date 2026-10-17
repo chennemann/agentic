@@ -1,12 +1,16 @@
 package de.chennemann.agentic.data.cache
 
+import de.chennemann.agentic.domain.attachments.ComposerFileName
 import de.chennemann.agentic.domain.composer.ComposerDocument
 import de.chennemann.agentic.domain.composer.decodeComposerDocument
 import java.io.File
 import java.security.MessageDigest
 
-/** Keep attachment bytes out of SQLite cursor windows; only relative content hashes are cached. */
-class ComposerPastePayloads(private val directory: File) {
+/**
+ * Keep attachment bytes out of SQLite cursor windows; only relative content hashes are cached.
+ * Also prunes picked draft files in [fileDirectory] once no persisted draft references them.
+ */
+class ComposerPastePayloads(private val directory: File, private val fileDirectory: File? = null) {
     private val storedNames = java.util.WeakHashMap<String, String>()
 
     fun store(document: ComposerDocument): ComposerDocument = document.copy(
@@ -48,14 +52,19 @@ class ComposerPastePayloads(private val directory: File) {
         }
     )
 
-    fun prune(persistedDrafts: List<String>) {
-        val retained = persistedDrafts.flatMap {
-            decodeComposerDocument(it).pastes
-        }.mapNotNull { it.payloadFile }.toSet()
+    fun prune(persistedDrafts: List<String>, now: Long = System.currentTimeMillis()) {
+        val documents = persistedDrafts.map(::decodeComposerDocument)
+        val retained = documents.flatMap { it.pastes }.mapNotNull { it.payloadFile }.toSet()
         directory.listFiles()?.filter { PayloadName.matches(it.name) && it.name !in retained }?.forEach { it.delete() }
+        // A file is picked before its draft is persisted, so only stale copies may be unreferenced.
+        val files = documents.flatMap { it.files }.map { it.localFile }.toSet()
+        fileDirectory?.listFiles()
+            ?.filter { ComposerFileName.matches(it.name) && it.name !in files && now - it.lastModified() > UnreferencedFileGraceMillis }
+            ?.forEach { it.delete() }
     }
 
     private companion object {
         val PayloadName = Regex("[a-f0-9]{64}\\.txt")
+        const val UnreferencedFileGraceMillis = 60 * 60 * 1000L
     }
 }

@@ -144,6 +144,9 @@ fun T3MessageComposer(
     val imagePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetMultipleContents()) { uris ->
         if (uris.isNotEmpty()) onEvent(ChatUiEvent.ImagesSelected(uris.map(Any::toString)))
     }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        if (uris.isNotEmpty()) onEvent(ChatUiEvent.FilesSelected(uris.map(Any::toString)))
+    }
     val selectedModel = state.providerModels.firstOrNull {
         it.id == state.selectedProviderModelId
     }
@@ -265,15 +268,38 @@ fun T3MessageComposer(
                     modifier = Modifier.padding(bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    IconButton(
-                        onClick = { imagePicker.launch("image/*") },
-                        enabled = state.enabled && !state.sending && state.imageAttachments.size < 8,
-                    ) {
-                        Icon(
-                            imageVector = Icons.Paperclip,
-                            contentDescription = "Attach images",
-                            modifier = Modifier.size(22.dp),
-                        )
+                    Box {
+                        var attachMenuOpen by remember { mutableStateOf(false) }
+                        IconButton(
+                            onClick = {
+                                if (state.fileAttachmentsAvailable) attachMenuOpen = true else imagePicker.launch("image/*")
+                            },
+                            enabled = state.enabled && !state.sending &&
+                                (state.fileAttachmentsAvailable || state.imageAttachments.size < 8),
+                        ) {
+                            Icon(
+                                imageVector = Icons.Paperclip,
+                                contentDescription = if (state.fileAttachmentsAvailable) "Attach" else "Attach images",
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        DropdownMenu(expanded = attachMenuOpen, onDismissRequest = { attachMenuOpen = false }) {
+                            DropdownMenuItem(
+                                text = { Text("Photos") },
+                                enabled = state.imageAttachments.size < 8,
+                                onClick = {
+                                    attachMenuOpen = false
+                                    imagePicker.launch("image/*")
+                                },
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Files") },
+                                onClick = {
+                                    attachMenuOpen = false
+                                    filePicker.launch(arrayOf("*/*"))
+                                },
+                            )
+                        }
                     }
                     if (turnRunning && hasMessage) {
                         IconButton(onClick = { onEvent(ChatUiEvent.TurnInterruptRequested) }, enabled = state.enabled) {

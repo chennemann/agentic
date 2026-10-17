@@ -30,11 +30,16 @@ import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.Parameters
+import io.ktor.http.content.ByteArrayContent
+import io.ktor.http.content.OutgoingContent
 import io.ktor.http.isSuccess
+import io.ktor.util.cio.readChannel
+import io.ktor.utils.io.ByteReadChannel
 import io.ktor.serialization.JsonConvertException
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
 import io.ktor.websocket.readText
+import java.io.File
 import java.net.URI
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
@@ -288,6 +293,30 @@ class KtorT3Client(
 
     override suspend fun uploadPastedText(baseUrl: String, token: String, name: String, text: String): String {
         val bytes = text.toByteArray(Charsets.UTF_8)
+        return uploadFileAttachment(baseUrl, token, name, "text/plain", bytes.size.toLong(), ByteArrayContent(bytes, ContentType.Text.Plain))
+    }
+
+    override suspend fun uploadFile(baseUrl: String, token: String, name: String, mimeType: String, file: File): String {
+        val size = file.length()
+        // Streamed with an exact length: the server rejects a body that differs from the announced size.
+        val body = object : OutgoingContent.ReadChannelContent() {
+            override val contentLength: Long = size
+            override val contentType: ContentType =
+                runCatching { ContentType.parse(mimeType) }.getOrDefault(ContentType.Application.OctetStream)
+
+            override fun readFrom(): ByteReadChannel = file.readChannel()
+        }
+        return uploadFileAttachment(baseUrl, token, name, mimeType, size, body)
+    }
+
+    private suspend fun uploadFileAttachment(
+        baseUrl: String,
+        token: String,
+        name: String,
+        mimeType: String,
+        sizeBytes: Long,
+        body: OutgoingContent,
+    ): String {
         val upload: de.chennemann.agentic.t3.contract.AttachmentUploadUrl = rpcCall(
             baseUrl,
             token,
@@ -295,8 +324,8 @@ class KtorT3Client(
             buildJsonObject {
                 put("type", "file")
                 put("name", name)
-                put("mimeType", "text/plain")
-                put("sizeBytes", bytes.size)
+                put("mimeType", mimeType)
+                put("sizeBytes", sizeBytes)
             }
         )
         val relative = URI(upload.relativeUrl)
@@ -306,8 +335,7 @@ class KtorT3Client(
             "The environment returned an invalid upload URL."
         }
         val response = httpClients.client(baseUrl).post(url(baseUrl, upload.relativeUrl)) {
-            headers.append("Content-Type", "text/plain")
-            setBody(bytes)
+            setBody(body)
         }
         response.checked()
         return upload.attachmentId

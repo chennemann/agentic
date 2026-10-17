@@ -29,6 +29,10 @@ import androidx.lifecycle.viewModelScope
 import de.chennemann.agentic.domain.connection.ConnectionState
 import de.chennemann.agentic.domain.connection.ConnectionController
 import de.chennemann.agentic.domain.attachments.ImageAttachmentReader
+import de.chennemann.agentic.domain.attachments.ComposerFileStore
+import de.chennemann.agentic.domain.attachments.MaxMessageAttachmentCount
+import de.chennemann.agentic.domain.attachments.formatByteSize
+import de.chennemann.agentic.domain.composer.composerFileRecord
 import de.chennemann.agentic.domain.attachments.MaxImageAttachmentCount
 import de.chennemann.agentic.data.t3.AttachmentAssetClient
 import de.chennemann.agentic.data.auth.CredentialStore
@@ -136,6 +140,7 @@ class ChatViewModel(
     private val annotatedImages: AnnotatedImageRenderer? = null,
     private val workspaceFiles: WorkspaceFilesBrowser? = null,
     private val composerContext: ComposerContextActions? = null,
+    private val composerFiles: ComposerFileStore? = null,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
     private val knownComposerSkills = mutableMapOf<String, ComposerSuggestionUi>()
@@ -278,7 +283,7 @@ class ChatViewModel(
             }.collectLatest { (state, environment) ->
                 environment ?: return@collectLatest
                 val token = credentials.read(environment.id) ?: return@collectLatest
-                state.value?.thread?.messages.orEmpty().flatMap { it.attachments }.forEach { attachment ->
+                state.value?.thread?.messages.orEmpty().flatMap { it.attachments }.filter { it.isImage() }.forEach { attachment ->
                     if (attachment.id in local.value.attachmentDataUrls) return@forEach
                     try {
                         val dataUrl = attachmentAssets.loadDataUrl(environment.baseUrl, token, attachment.id, attachment.mimeType)
@@ -517,6 +522,7 @@ class ChatViewModel(
             is ChatUiEvent.QueuedMessageSendRequested -> messageQueue?.sendNow(event.id)
             is ChatUiEvent.QueuedMessageRemoved -> messageQueue?.remove(event.id)
             is ChatUiEvent.ImagesSelected -> addImages(event.uris)
+            is ChatUiEvent.FilesSelected -> addFiles(event.uris)
             is ChatUiEvent.ImageRemoved -> {
                 val recordIds = currentDocument().records.filter { it.string("attachmentId") == event.id }.mapNotNull { it.string("contextId") }.toSet()
                 var text = mutableDraft.value
@@ -1086,6 +1092,43 @@ class ChatViewModel(
         }
     }
 
+    /** Copies picked documents into the draft and references each one with an inline file chip. */
+    private fun addFiles(uris: List<String>) {
+        val store = composerFiles ?: return submissionUnavailable("File attachments are unavailable.")
+        val maxBytes = composerContext?.maxFileUploadBytes() ?: 0
+        if (maxBytes <= 0) return submissionUnavailable("This environment does not support file attachments.")
+        val key = displayedDraftKey
+        viewModelScope.launch {
+            val problems = mutableListOf<String>()
+            for (uri in uris) {
+                val document = currentDocument().retained()
+                if (document.pastes.size + document.files.size + local.value.draftImages.size >= MaxMessageAttachmentCount) {
+                    problems += "You can attach up to $MaxMessageAttachmentCount files per message."
+                    break
+                }
+                if (document.records.size >= COMPOSER_CONTEXT_MAX_RECORDS) {
+                    problems += "Remove some context items before attaching more."
+                    break
+                }
+                try {
+                    val file = store.import(uri, maxBytes)
+                    // A copy left behind by a switched draft is pruned with the other unreferenced files.
+                    if (key != displayedDraftKey) return@launch
+                    val current = currentDocument()
+                    documentCache[key] = current.copy(records = current.records + composerFileRecord(file), files = current.files + file)
+                    insertComposerText(composerContextReference("file", file.id, file.name) + " ")
+                } catch (cause: CancellationException) {
+                    throw cause
+                } catch (cause: Exception) {
+                    problems += cause.message ?: "The selected file could not be attached."
+                }
+            }
+            if (problems.isNotEmpty() && key == displayedDraftKey) {
+                update { copy(commandError = problems.distinct().joinToString("\n")) }
+            }
+        }
+    }
+
     private fun loadInlineImage(path: String) {
         val threadId = repository.focusedThreadId.value ?: return
         val files = workspaceFiles ?: return
@@ -1576,7 +1619,8 @@ class ChatViewModel(
 
     private fun updateComposerItems(document: ComposerDocument) {
         val imageIds = local.value.draftImages.map { it.id }.toSet()
-        val pastedIds = document.pastes.filter { it.text.isNotEmpty() }.map { it.id }.toSet()
+        val pastedIds = document.pastes.filter { it.text.isNotEmpty() }.map { it.id }.toSet() +
+            document.files.filter { composerFiles?.stored(it) != null }.map { it.id }
         val items = document.records.mapNotNull { record ->
             val id = record.string("contextId") ?: return@mapNotNull null
             val kind = record.string("kind") ?: return@mapNotNull null
@@ -1729,8 +1773,9 @@ class ChatViewModel(
         val exceedsLimit = event.value.length - (event.end - event.start) + event.text.length > COMPOSER_INPUT_MAX_CHARS
         val bytes = event.text.toByteArray(Charsets.UTF_8).size.toLong()
         val canAttach =
-            bytes <= (composerContext?.maxPasteBytes() ?: 0) &&
-                currentDocument().retained().pastes.size + local.value.draftImages.size < 100
+            bytes <= (composerContext?.maxFileUploadBytes() ?: 0) &&
+                currentDocument().retained().let { it.pastes.size + it.files.size } + local.value.draftImages.size <
+                MaxMessageAttachmentCount
         if (canAttach && (bytes >= PASTED_TEXT_ATTACHMENT_THRESHOLD_BYTES || exceedsLimit)) {
             val document = currentDocument()
             if (document.referencedRecords().size >=
@@ -1769,10 +1814,13 @@ class ChatViewModel(
             }
             val originals = documentCache.values.flatMap { it.pastes }.associateBy { it.id }
             val importedPastes = records.mapNotNull { originals[it.string("attachmentId")] }.distinctBy { it.id }
+            val pickedFiles = documentCache.values.flatMap { it.files }.associateBy { it.id }
+            val importedFiles = records.mapNotNull { pickedFiles[it.string("attachmentId")] }.distinctBy { it.id }
             require(
                 records.none {
                     it.string("attachmentId") != null &&
                         it.string("attachmentId") !in importedPastes.map { file -> file.id } &&
+                        it.string("attachmentId") !in importedFiles.map { file -> file.id } &&
                         it.string("attachmentId") !in local.value.draftImages.map { image -> image.id }
                 }
             ) { "Paste this attachment from its original draft or attach it again." }
@@ -1783,7 +1831,8 @@ class ChatViewModel(
                     pastes = (
                         doc.pastes +
                             importedPastes
-                        ).distinctBy { it.id }
+                        ).distinctBy { it.id },
+                    files = (doc.files + importedFiles).distinctBy { it.id },
                 )
             insertComposerText(event.text, event.start, event.end)
         } catch (cause: Exception) {
@@ -1796,9 +1845,17 @@ class ChatViewModel(
         val document = currentDocument()
         val record = document.records.firstOrNull { it.string("contextId") == token.contextId }
         val file = document.pastes.firstOrNull { it.id == record?.string("attachmentId") }
+        val picked = document.files.firstOrNull { it.id == record?.string("attachmentId") }
         val title = record?.string("label") ?: token.label
         val contents =
-            file?.text?.ifEmpty { "Pasted text is unavailable. Remove this chip and paste it again." }
+            picked?.let {
+                if (composerFiles?.stored(it) == null) {
+                    "This file is no longer available. Remove its chip and attach it again."
+                } else {
+                    "${it.mimeType} · ${formatByteSize(it.sizeBytes)}\n\nUploads when you send the message."
+                }
+            }
+                ?: file?.text?.ifEmpty { "Pasted text is unavailable. Remove this chip and paste it again." }
                 ?: record?.string("text")
                 ?: record?.string("path")
                 ?: record?.string("description")
@@ -2093,6 +2150,7 @@ class ChatViewModel(
                         burnedAnnotationCount = it.burnedAnnotationCount,
                     )
                 },
+                fileAttachmentsAvailable = composerFiles != null && (composerContext?.maxFileUploadBytes() ?: 0) > 0,
             ),
             environmentPicker = EnvironmentPickerUiState(
                 environments = environment.all.map {
@@ -2319,8 +2377,9 @@ class ChatViewModel(
                         isStreaming = it.streaming,
                         canCopy = it.id in copyableAssistantMessageIds,
                         timestamp = if (it.role == "user") it.createdAt else it.updatedAt,
+                        files = it.unreferencedFiles(),
                         attachments = messageImageAnnotations(it.context).let { annotationsById ->
-                            it.attachments.map { attachment ->
+                            it.attachments.filter { attachment -> attachment.isImage() }.map { attachment ->
                                 val saved = annotationsById[attachment.id]
                                 ChatImageAttachmentUi(
                                     id = attachment.id,
@@ -2923,6 +2982,18 @@ private data class ActiveProject(
 
 private fun de.chennemann.agentic.t3.contract.OrchestrationThreadShell.isSettled(): Boolean =
     settledOverride == "settled" || (settledOverride != "active" && settledAt != null)
+
+private fun de.chennemann.agentic.t3.contract.ChatAttachment.isImage(): Boolean = type == "image"
+
+/** Files the message text does not already show through an inline context reference. */
+private fun de.chennemann.agentic.t3.contract.OrchestrationMessage.unreferencedFiles(): List<ChatFileAttachmentUi> {
+    val referenced = context?.get("records")?.let { it as? JsonArray }.orEmpty()
+        .mapNotNull { (it as? JsonObject)?.string("attachmentId") }
+        .toSet()
+    return attachments.filter { !it.isImage() && it.id !in referenced }.map {
+        ChatFileAttachmentUi(id = it.id, name = it.name, sizeBytes = it.sizeBytes)
+    }
+}
 
 private data class ModelChoice(
     val options: List<ProviderModelOptionUi>,

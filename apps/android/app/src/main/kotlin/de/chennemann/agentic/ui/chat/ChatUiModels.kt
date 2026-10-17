@@ -231,7 +231,14 @@ data class ChatMessageUi(
     val canCopy: Boolean = false,
     val supportingText: String? = null,
     val attachments: List<ChatImageAttachmentUi> = emptyList(),
+    val files: List<ChatFileAttachmentUi> = emptyList(),
     val timestamp: String? = null,
+)
+
+data class ChatFileAttachmentUi(
+    val id: String,
+    val name: String,
+    val sizeBytes: Long,
 )
 
 data class ChatImageAttachmentUi(
@@ -454,6 +461,8 @@ data class ComposerUiState(
     val voiceInputAvailable: Boolean = false,
     val voiceInputStatus: VoiceInputStatusUi = VoiceInputStatusUi.IDLE,
     val imageAttachments: List<ChatImageAttachmentUi> = emptyList(),
+    /** The environment accepts files of any type next to images. */
+    val fileAttachmentsAvailable: Boolean = false,
 )
 
 data class ComposerContextItemUi(val id: String, val kind: String, val label: String, val detail: String, val available: Boolean = true, val attachmentId: String? = null)
@@ -622,6 +631,9 @@ sealed interface ChatUiEvent {
     data class QueuedMessageRemoved(val id: String) : ChatUiEvent
 
     data class ImagesSelected(val uris: List<String>) : ChatUiEvent
+
+    /** Documents of any type picked to attach to the draft as files. */
+    data class FilesSelected(val uris: List<String>) : ChatUiEvent
 
     data class ImageRemoved(val id: String) : ChatUiEvent
 

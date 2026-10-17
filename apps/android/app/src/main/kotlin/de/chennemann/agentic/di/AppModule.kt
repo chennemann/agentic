@@ -115,6 +115,8 @@ import org.koin.androidx.viewmodel.dsl.viewModel
 import org.koin.core.qualifier.named
 import org.koin.dsl.module
 
+private fun composerFileDirectory(context: android.content.Context) = java.io.File(context.filesDir, "composer-files")
+
 val appModule = module {
     single<DispatcherProvider> { DefaultDispatcherProvider() }
     single<CoroutineScope>(named(AppScopeName)) {
@@ -159,6 +161,13 @@ val appModule = module {
             ioDispatcher = get<DispatcherProvider>().io,
         )
     }
+    single<de.chennemann.agentic.domain.attachments.ComposerFileStore> {
+        de.chennemann.agentic.domain.attachments.AndroidComposerFileStore(
+            contentResolver = get<android.content.Context>().contentResolver,
+            directory = composerFileDirectory(get()),
+            ioDispatcher = get<DispatcherProvider>().io,
+        )
+    }
     single<de.chennemann.agentic.domain.attachments.ImageAttachmentReader> {
         de.chennemann.agentic.domain.attachments.AndroidImageAttachmentReader(
             contentResolver = get<android.content.Context>().contentResolver,
@@ -180,7 +189,7 @@ val appModule = module {
     single<de.chennemann.agentic.data.t3.ReviewDiffRpcClient> { get<KtorT3Client>() }
     single<ThreadWorkspaceRpcClient> { get<KtorT3Client>() }
     single<de.chennemann.agentic.data.t3.ComposerRpcClient> { get<KtorT3Client>() }
-    single<de.chennemann.agentic.domain.composer.ComposerContextActions> { de.chennemann.agentic.domain.composer.ComposerContextService(get(), get(), get(), get()) }
+    single<de.chennemann.agentic.domain.composer.ComposerContextActions> { de.chennemann.agentic.domain.composer.ComposerContextService(get(), get(), get(), get(), get()) }
     single<WorkspaceFilesRpcClient> { get<KtorT3Client>() }
     single<de.chennemann.agentic.data.t3.AttachmentAssetClient> { get<KtorT3Client>() }
     single<ProjectDestinationRpcClient> { get<KtorT3Client>() }
@@ -213,7 +222,10 @@ val appModule = module {
         SqlComposerDraftRepository(
             database = get(),
             dispatcher = get<DispatcherProvider>().io,
-            payloads = de.chennemann.agentic.data.cache.ComposerPastePayloads(java.io.File(get<android.content.Context>().filesDir, "composer-pastes")),
+            payloads = de.chennemann.agentic.data.cache.ComposerPastePayloads(
+                java.io.File(get<android.content.Context>().filesDir, "composer-pastes"),
+                composerFileDirectory(get()),
+            ),
         )
     }
     single<CommandOutbox> { SqlCommandOutbox(get(), get<DispatcherProvider>().io) }
@@ -345,6 +357,7 @@ val appModule = module {
             annotatedImages = get(),
             workspaceFiles = get(),
             composerContext = get(),
+            composerFiles = get(),
         )
     }
 }

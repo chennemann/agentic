@@ -18,7 +18,8 @@ const val COMPOSER_CONTEXT_MAX_RECORDS = 200
 data class ComposerDocument(
     val text: String = "",
     val records: List<JsonObject> = emptyList(),
-    val pastes: List<PastedTextFile> = emptyList()
+    val pastes: List<PastedTextFile> = emptyList(),
+    val files: List<ComposerFile> = emptyList()
 ) {
     fun withText(value: String): ComposerDocument {
         val next = copy(text = value)
@@ -29,7 +30,11 @@ data class ComposerDocument(
         }.takeLast((COMPOSER_CONTEXT_MAX_RECORDS - live.size).coerceAtLeast(0))
         val retained = records.filter { it.string("contextId") in live } + history
         val attachments = retained.mapNotNull { it.string("attachmentId") }.toSet()
-        return next.copy(records = retained, pastes = pastes.filter { it.id in attachments })
+        return next.copy(
+            records = retained,
+            pastes = pastes.filter { it.id in attachments },
+            files = files.filter { it.id in attachments },
+        )
     }
 
     fun referencedRecords(): List<JsonObject> {
@@ -40,12 +45,22 @@ data class ComposerDocument(
     fun retained(): ComposerDocument {
         val live = referencedRecords()
         val ids = live.mapNotNull { it.string("attachmentId") }.toSet()
-        return copy(records = live, pastes = pastes.filter { it.id in ids })
+        return copy(records = live, pastes = pastes.filter { it.id in ids }, files = files.filter { it.id in ids })
     }
 }
 
 @Serializable
 data class PastedTextFile(val id: String, val name: String, val text: String, val payloadFile: String? = null)
+
+/** A file picked into a draft. Its bytes stay in app storage as [localFile] until the draft is sent. */
+@Serializable
+data class ComposerFile(
+    val id: String,
+    val name: String,
+    val mimeType: String,
+    val sizeBytes: Long,
+    val localFile: String
+)
 
 data class ComposerToken(
     val source: String,
@@ -177,6 +192,17 @@ fun pastedTextRecord(file: PastedTextFile): JsonObject = buildJsonObject {
     put("name", file.name)
     put("mimeType", "text/plain")
     put("sizeBytes", file.text.toByteArray(Charsets.UTF_8).size)
+}
+
+fun composerFileRecord(file: ComposerFile): JsonObject = buildJsonObject {
+    put("version", 1)
+    put("kind", "file")
+    put("contextId", file.id)
+    put("label", file.name)
+    put("attachmentId", file.id)
+    put("name", file.name)
+    put("mimeType", file.mimeType)
+    put("sizeBytes", file.sizeBytes)
 }
 
 fun messageContext(records: List<JsonObject>): JsonObject? = records.takeIf { it.isNotEmpty() }?.let {

@@ -2,6 +2,7 @@ package de.chennemann.agentic.domain.composer
 
 import de.chennemann.agentic.data.auth.CredentialStore
 import de.chennemann.agentic.data.t3.ComposerRpcClient
+import de.chennemann.agentic.domain.attachments.ComposerFileStore
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
 import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.t3.contract.ProviderSkill
@@ -24,7 +25,8 @@ data class ComposerSuggestion(
 data class PreparedComposerContext(val attachments: List<UploadChatAttachment>, val records: List<JsonObject>)
 
 interface ComposerContextActions {
-    fun maxPasteBytes(): Long
+    /** The largest pasted text or picked file the environment accepts; 0 when it takes no files. */
+    fun maxFileUploadBytes(): Long
 
     fun inlineContextAvailable(): Boolean
 
@@ -37,11 +39,12 @@ class ComposerContextService(
     private val environments: EnvironmentRepository,
     private val credentials: CredentialStore,
     private val repository: OrchestrationRepository,
-    private val rpc: ComposerRpcClient
+    private val rpc: ComposerRpcClient,
+    private val files: ComposerFileStore? = null
 ) : ComposerContextActions {
     private val skillCache = mutableMapOf<Triple<String, String, String>, List<ProviderSkill>>()
 
-    override fun maxPasteBytes(): Long {
+    override fun maxFileUploadBytes(): Long {
         val active = environments.activeEnvironment.value ?: return 0
         val config =
             repository.clientConfig.value.value?.takeIf { it.environment.environmentId == active.id } ?: return 0
@@ -115,7 +118,7 @@ class ComposerContextService(
         val attachments = retained.pastes.map { file ->
             require(file.text.isNotEmpty()) { "Pasted text is unavailable. Remove its chip and paste it again." }
             val size = file.text.toByteArray(Charsets.UTF_8).size.toLong()
-            require(size <= maxPasteBytes()) {
+            require(size <= maxFileUploadBytes()) {
                 "This environment cannot upload this pasted text. Remove it or use a smaller paste."
             }
             val id = rpc.uploadPastedText(context.baseUrl, context.token, file.name, file.text)
@@ -131,6 +134,18 @@ class ComposerContextService(
                 sizeBytes = size,
                 source = buildJsonObject { put("_tag", "pasted-text") }
             )
+        } + retained.files.map { file ->
+            val stored = files?.stored(file)?.takeIf { it.length() == file.sizeBytes }
+                ?: throw IllegalArgumentException("'${file.name}' is no longer available. Remove it and attach it again.")
+            require(file.sizeBytes <= maxFileUploadBytes()) {
+                "This environment cannot upload '${file.name}'. Remove it or attach a smaller file."
+            }
+            val id = rpc.uploadFile(context.baseUrl, context.token, file.name, file.mimeType, stored)
+            require(environmentId == environments.activeEnvironment.value?.id) {
+                "The environment changed during upload."
+            }
+            ids[file.id] = id
+            UploadChatAttachment(type = "file", id = id, name = file.name, mimeType = file.mimeType, sizeBytes = file.sizeBytes)
         }
         val records = retained.records.map { record ->
             val replacement = ids[record.string("attachmentId")]

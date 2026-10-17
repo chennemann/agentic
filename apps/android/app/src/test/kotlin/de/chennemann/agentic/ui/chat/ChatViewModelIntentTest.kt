@@ -134,6 +134,74 @@ class ChatViewModelIntentTest {
     }
 
     @Test
+    fun `picked files upload with their own type and bind their chips to server ids`() = runTest(dispatcher) {
+        val directory = java.nio.file.Files.createTempDirectory("composer-files-test").toFile()
+        try {
+            val repository = submissionRepository(ModelSelection("provider", "model"))
+            val config = repository.clientConfig.value.value!!
+            repository.clientConfig.value = repository.clientConfig.value.copy(value = config.copy(environment = config.environment.copy(capabilities = ExecutionEnvironmentCapabilities(attachmentUploads = true, inlineMessageContext = true, fileAttachments = de.chennemann.agentic.t3.contract.FileAttachmentCapability(5000000)))))
+            val rpc = RecordingComposerRpc()
+            val store = FakeComposerFileStore(directory)
+            val service = de.chennemann.agentic.domain.composer.ComposerContextService(FakeViewModelEnvironmentRepository(), ComposerTestCredentials(), repository, rpc, store)
+            val file = store.import("%PDF-1.7", 1024)
+            val doc = de.chennemann.agentic.domain.composer.ComposerDocument(
+                text = de.chennemann.agentic.domain.composer.composerContextReference("file", file.id, file.name),
+                records = listOf(de.chennemann.agentic.domain.composer.composerFileRecord(file)),
+                files = listOf(file),
+            )
+
+            val prepared = service.prepare("environment", doc)
+
+            assertEquals(listOf(Triple("report.pdf", "application/pdf", "%PDF-1.7")), rpc.uploadedFiles)
+            assertEquals(
+                de.chennemann.agentic.t3.contract.UploadChatAttachment(type = "file", id = "uploaded-picked-file", name = "report.pdf", mimeType = "application/pdf", sizeBytes = 8),
+                prepared.attachments.single(),
+            )
+            assertEquals(JsonPrimitive("uploaded-picked-file"), prepared.records.single()["attachmentId"])
+
+            java.io.File(directory, file.localFile).delete()
+            val missing = runCatching { service.prepare("environment", doc) }.exceptionOrNull()
+            assertTrue(missing?.message.orEmpty().contains("no longer available"))
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
+    fun `picked files join the draft as file chips and travel with the next message`() = runTest(dispatcher) {
+        val directory = java.nio.file.Files.createTempDirectory("composer-files-test").toFile()
+        try {
+            val repository = submissionRepository(ModelSelection("provider", "model"))
+            val chat = NoOpChatActions()
+            val actions = RecordingComposerContext()
+            val viewModel = ChatViewModel(
+                environments = FakeViewModelEnvironmentRepository(), repository = repository,
+                connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+                threads = RecordingThreadActions(repository), chat = chat, mappingDispatcher = dispatcher,
+                composerContext = actions, composerFiles = FakeComposerFileStore(directory),
+            )
+            advanceUntilIdle()
+            assertTrue(viewModel.state.value.composer.fileAttachmentsAvailable)
+
+            viewModel.onEvent(ChatUiEvent.DraftChanged("Review "))
+            viewModel.onEvent(ChatUiEvent.ComposerSelectionChanged("Review ", 7, 7))
+            viewModel.onEvent(ChatUiEvent.FilesSelected(listOf("%PDF-1.7")))
+            advanceUntilIdle()
+
+            assertTrue(viewModel.draft.value.startsWith("Review [report.pdf](t3-context://v1/file/"))
+            assertEquals(listOf(true), viewModel.state.value.composer.contextItems.map { it.available })
+
+            viewModel.onEvent(ChatUiEvent.MessageSubmitted)
+            advanceUntilIdle()
+
+            assertEquals(listOf("report.pdf"), actions.prepared.single().retained().files.map { it.name })
+            assertEquals(1, chat.startTurnCalls.size)
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `composer completion replaces only the active token and restores the caret`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model"))
         val actions = RecordingComposerContext()
@@ -3480,7 +3548,7 @@ private class QueueFixture(scope: CoroutineScope) {
 private class RecordingComposerContext : de.chennemann.agentic.domain.composer.ComposerContextActions {
     val queries = mutableListOf<Pair<String, String>>()
     val prepared = mutableListOf<de.chennemann.agentic.domain.composer.ComposerDocument>()
-    override fun maxPasteBytes() = 50L * 1024 * 1024
+    override fun maxFileUploadBytes() = 50L * 1024 * 1024
     override fun inlineContextAvailable() = true
     override suspend fun suggestions(kind: String, query: String, instanceId: String?): List<de.chennemann.agentic.domain.composer.ComposerSuggestion> {
         queries += kind to query
@@ -3488,7 +3556,8 @@ private class RecordingComposerContext : de.chennemann.agentic.domain.composer.C
     }
     override suspend fun prepare(environmentId: String, document: de.chennemann.agentic.domain.composer.ComposerDocument): de.chennemann.agentic.domain.composer.PreparedComposerContext {
         prepared += document
-        val uploads = document.retained().pastes.map { de.chennemann.agentic.t3.contract.UploadChatAttachment(type = "file", id = it.id, name = it.name, mimeType = "text/plain", sizeBytes = it.text.toByteArray().size.toLong()) }
+        val uploads = document.retained().pastes.map { de.chennemann.agentic.t3.contract.UploadChatAttachment(type = "file", id = it.id, name = it.name, mimeType = "text/plain", sizeBytes = it.text.toByteArray().size.toLong()) } +
+            document.retained().files.map { de.chennemann.agentic.t3.contract.UploadChatAttachment(type = "file", id = it.id, name = it.name, mimeType = it.mimeType, sizeBytes = it.sizeBytes) }
         return de.chennemann.agentic.domain.composer.PreparedComposerContext(uploads, document.referencedRecords())
     }
 }
@@ -3512,4 +3581,21 @@ private class RecordingComposerRpc : de.chennemann.agentic.data.t3.ComposerRpcCl
         onUpload()
         return "uploaded-file"
     }
+    val uploadedFiles = mutableListOf<Triple<String, String, String>>()
+    override suspend fun uploadFile(baseUrl: String, token: String, name: String, mimeType: String, file: java.io.File): String {
+        uploadedFiles += Triple(name, mimeType, file.readText())
+        return "uploaded-picked-file"
+    }
+}
+
+/** Keeps "picked" files in a temp directory; the uri is the file's content. */
+private class FakeComposerFileStore(private val directory: java.io.File) : de.chennemann.agentic.domain.attachments.ComposerFileStore {
+    override suspend fun import(uri: String, maxBytes: Long): de.chennemann.agentic.domain.composer.ComposerFile {
+        require(uri.length <= maxBytes) { "too large" }
+        val id = java.util.UUID.randomUUID().toString()
+        java.io.File(directory, id).writeText(uri)
+        return de.chennemann.agentic.domain.composer.ComposerFile(id, "report.pdf", "application/pdf", uri.length.toLong(), id)
+    }
+    override fun stored(file: de.chennemann.agentic.domain.composer.ComposerFile) =
+        java.io.File(directory, file.localFile).takeIf { it.isFile }
 }

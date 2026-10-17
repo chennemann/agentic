@@ -39,6 +39,40 @@ class SqlComposerDraftRepositoryTest {
     }
 
     @Test
+    fun `picked files survive a reload and are pruned once no draft references them`() = runTest {
+        val pastes = java.nio.file.Files.createTempDirectory("composer-payload-test").toFile()
+        val files = java.nio.file.Files.createTempDirectory("composer-files-test").toFile()
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        try {
+            AgenticDb.Schema.create(driver)
+            val db = AgenticDb(driver)
+            val payloads = ComposerPastePayloads(pastes, files)
+            val repository = SqlComposerDraftRepository(db, StandardTestDispatcher(testScheduler), payloads)
+            val kept = java.util.UUID.randomUUID().toString()
+            val stale = java.util.UUID.randomUUID().toString()
+            val fresh = java.util.UUID.randomUUID().toString()
+            listOf(kept, stale, fresh).forEach { java.io.File(files, it).writeText("bytes") }
+            java.io.File(files, stale).setLastModified(System.currentTimeMillis() - 2 * 60 * 60 * 1000L)
+            val file = de.chennemann.agentic.domain.composer.ComposerFile(kept, "report.pdf", "application/pdf", 5, kept)
+            val doc = de.chennemann.agentic.domain.composer.ComposerDocument(
+                text = de.chennemann.agentic.domain.composer.composerContextReference("file", file.id, file.name),
+                records = listOf(de.chennemann.agentic.domain.composer.composerFileRecord(file)),
+                files = listOf(file),
+            )
+
+            repository.setDocument("env", "thread", doc)
+
+            assertEquals(doc, SqlComposerDraftRepository(db, StandardTestDispatcher(testScheduler)).observeDocument("env", "thread").first())
+            // The stale unreferenced copy goes; a just-picked one waits for its draft to be written.
+            assertEquals(setOf(kept, fresh), files.listFiles()!!.map { it.name }.toSet())
+        } finally {
+            driver.close()
+            pastes.deleteRecursively()
+            files.deleteRecursively()
+        }
+    }
+
+    @Test
     fun `pasted text and context survive a draft reload without keeping deleted payloads`() = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         try {
