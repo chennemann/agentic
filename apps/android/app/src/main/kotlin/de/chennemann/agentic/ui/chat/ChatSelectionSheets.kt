@@ -77,8 +77,6 @@ import de.chennemann.agentic.icons.ArchiveRestore
 import de.chennemann.agentic.icons.Check
 import de.chennemann.agentic.icons.Icons
 import de.chennemann.agentic.icons.Undo
-import de.chennemann.agentic.icons.Star
-import de.chennemann.agentic.icons.StarOutline
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import de.chennemann.agentic.domain.preferences.AccentPreference
@@ -156,31 +154,8 @@ fun ChatSelectionSheets(
         // Rendered by the chat screen as a panel sliding down from the top.
         ChatPickerUi.PROJECT_THREAD -> Unit
 
-        ChatPickerUi.PROVIDER_MODEL -> {
-            PickerSheet(
-                title = "Provider and model",
-                onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
-            ) {
-                items(
-                    items = state.composer.providerModels,
-                    key = { "provider-model:${it.id}" },
-                ) { option ->
-                    ModelPickerRow(
-                        option = option,
-                        selected = option.id == state.composer.selectedProviderModelId,
-                        onSelect = { onEvent(ChatUiEvent.ProviderModelSelected(option.id)) },
-                        onFavoriteChanged = {
-                            onEvent(
-                                ChatUiEvent.ProviderModelFavoriteChanged(
-                                    id = option.id,
-                                    favorite = it,
-                                ),
-                            )
-                        },
-                    )
-                }
-            }
-        }
+        // Rendered by the composer as a panel unfolding under its run controls.
+        ChatPickerUi.PROVIDER_MODEL -> Unit
 
         ChatPickerUi.RUNTIME_MODE -> {
             PickerSheet(
@@ -321,53 +296,6 @@ fun ChatSelectionSheets(
             confirmButton = { TextButton(enabled = !cache.clearing && cache.clearableBytes > 0, onClick = { onEvent(ChatUiEvent.CacheClearConfirmed) }) { Text(if (cache.clearing) "Working…" else "Clear cache") } },
             dismissButton = { TextButton(enabled = !cache.clearing, onClick = { onEvent(ChatUiEvent.CacheClearDismissed) }) { Text("Cancel") } },
         )
-    }
-}
-
-@Composable
-private fun ModelPickerRow(
-    option: ProviderModelOptionUi,
-    selected: Boolean,
-    onSelect: () -> Unit,
-    onFavoriteChanged: (Boolean) -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onSelect)
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = option.modelLabel,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            Text(
-                text = option.supportingText ?: option.providerLabel,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        IconButton(onClick = { onFavoriteChanged(!option.favorite) }) {
-            Icon(
-                imageVector = if (option.favorite) Icons.Star else Icons.StarOutline,
-                contentDescription = if (option.favorite) {
-                    "Remove ${option.modelLabel} from favorites"
-                } else {
-                    "Add ${option.modelLabel} to favorites"
-                },
-            )
-        }
     }
 }
 

@@ -1763,6 +1763,61 @@ class ChatViewModelIntentTest {
     }
 
     @Test
+    fun `started threads switch models within their provider and keep the choice to themselves`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model")).apply {
+            val config = requireNotNull(clientConfig.value.value)
+            val provider = config.providers.single()
+            clientConfig.value = clientConfig.value.copy(
+                value = config.copy(
+                    providers = listOf(
+                        provider.copy(driver = "codex", models = provider.models + ProviderModel("model-2", "Model 2")),
+                        ProviderInstance("other", displayName = "Other", driver = "claudeAgent", models = listOf(ProviderModel("opus", "Opus"))),
+                    ),
+                ),
+            )
+            val detail = requireNotNull(focusedThread.value.value)
+            focusedThread.value = focusedThread.value.copy(
+                value = detail.copy(
+                    thread = detail.thread.copy(
+                        session = ThreadSession("thread-1", "ready", "codex", "provider", updatedAt = "now"),
+                    ),
+                ),
+            )
+        }
+        val chat = NoOpChatActions()
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(),
+            repository = repository,
+            connection = FakeConnectionController(),
+            environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository),
+            chat = chat,
+            mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+
+        assertEquals(listOf("provider/model", "provider/model-2"), viewModel.state.value.composer.providerModels.map { it.id })
+        assertEquals(listOf("codex", "codex"), viewModel.state.value.composer.providerModels.map { it.providerDriver })
+        assertEquals("Provider", viewModel.state.value.composer.modelLockLabel)
+
+        viewModel.onEvent(ChatUiEvent.ProviderModelSelected("provider/model-2"))
+        viewModel.onEvent(ChatUiEvent.ProviderModelSelected("other/opus"))
+        viewModel.onEvent(ChatUiEvent.DraftChanged("use the other model"))
+        viewModel.onEvent(ChatUiEvent.MessageSubmitted)
+        advanceUntilIdle()
+
+        assertEquals("provider/model-2", viewModel.state.value.composer.selectedProviderModelId)
+        assertEquals(ModelSelection("provider", "model-2"), chat.startTurnCalls.single().modelSelection.copy(options = null))
+
+        viewModel.onEvent(ChatUiEvent.ThreadSelected("thread-2"))
+        advanceUntilIdle()
+
+        assertNull(viewModel.state.value.composer.modelLockLabel)
+        assertEquals(3, viewModel.state.value.composer.providerModels.size)
+        assertEquals("provider/model", viewModel.state.value.composer.selectedProviderModelId)
+    }
+
+    @Test
     fun `message submission preserves inherited model options and runtime mode`() = runTest(dispatcher) {
         val selection = ModelSelection(
             instanceId = "provider",

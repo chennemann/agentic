@@ -43,6 +43,7 @@ import de.chennemann.agentic.domain.orchestration.ProjectionState
 import de.chennemann.agentic.domain.orchestration.ThreadService
 import de.chennemann.agentic.domain.orchestration.ThreadActions
 import de.chennemann.agentic.domain.orchestration.ThreadHistory
+import de.chennemann.agentic.domain.orchestration.ThreadModelLock
 import de.chennemann.agentic.domain.orchestration.NewThreadWorkspace
 import de.chennemann.agentic.domain.orchestration.ThreadWorkspaceBrowser
 import de.chennemann.agentic.domain.orchestration.ThreadWorkspaceChoice
@@ -564,8 +565,10 @@ class ChatViewModel(
             ChatUiEvent.SessionTerminationRequested -> terminateSession()
 
             is ChatUiEvent.ProviderModelSelected -> {
+                val key = currentModelOverrideKey() ?: return
+                if (currentModelChoice().options.none { it.id == event.id }) return
                 knownComposerSkills.clear()
-                update { copy(providerModelId = event.id, activePicker = null) }
+                update { copy(providerModelIds = providerModelIds + (key to event.id), activePicker = null) }
                 composerSelectionChanged(mutableDraft.value, composerSelectionStart, composerSelectionEnd)
             }
 
@@ -1502,19 +1505,15 @@ class ChatViewModel(
     private fun selectedModel(): ModelSelection? {
         val config = repository.clientConfig.value.value ?: return null
         val inheritedSelections = listOfNotNull(
-            repository.focusedThread.value.value?.thread?.modelSelection,
+            focusedThreadDetail()?.modelSelection ?: focusedThreadShell()?.modelSelection,
             repository.shell.value.value?.projects
                 ?.firstOrNull { it.id == repository.selectedProjectId.value }
                 ?.defaultModelSelection,
         )
-        val selectedId = local.value.providerModelId
-            ?: inheritedSelections.firstOrNull()?.optionId()
+        val selectedId = selectedModelId()
         val pair = config.providers.flatMap { provider ->
             provider.models.map { model -> provider.instanceId to model.slug }
         }.firstOrNull { (instanceId, model) -> optionId(instanceId, model) == selectedId }
-            ?: config.providers.firstNotNullOfOrNull { provider ->
-                provider.models.firstOrNull()?.let { provider.instanceId to it.slug }
-            }
         return pair?.let { selected ->
             val base = inheritedSelections.firstOrNull { selection ->
                 selection.instanceId == selected.first && selection.model == selected.second
@@ -1531,15 +1530,28 @@ class ChatViewModel(
         }
     }
 
-    private fun selectedModelId(): String? {
-        val detail = repository.focusedThread.value.value?.thread
-        val project = repository.shell.value.value?.projects
-            ?.firstOrNull { it.id == repository.selectedProjectId.value }
-        return local.value.providerModelId
-            ?: detail?.modelSelection?.optionId()
-            ?: project?.defaultModelSelection?.optionId()
-            ?: modelOptions(repository.clientConfig.value.value).firstOrNull()?.id
+    private fun selectedModelId(): String? = currentModelChoice().selectedId
+
+    private fun currentModelOverrideKey(): String? = modelOverrideKey(
+        environments.activeEnvironment.value?.id,
+        repository.focusedThreadId.value,
+        repository.selectedProjectId.value,
+    )
+
+    private fun currentModelChoice(): ModelChoice = resolveModelChoice(
+        config = repository.clientConfig.value.value,
+        override = currentModelOverrideKey()?.let(local.value.providerModelIds::get),
+        thread = focusedThreadShell(),
+        detail = focusedThreadDetail(),
+        project = repository.shell.value.value?.projects?.firstOrNull { it.id == repository.selectedProjectId.value },
+    )
+
+    private fun focusedThreadShell() = repository.focusedThreadId.value?.let { threadId ->
+        repository.shell.value.value?.threads?.firstOrNull { it.id == threadId }
     }
+
+    private fun focusedThreadDetail() = repository.focusedThread.value.value?.thread
+        ?.takeIf { it.id == repository.focusedThreadId.value }
 
     private fun launchCommand(block: suspend () -> Unit) {
         viewModelScope.launch {
@@ -1985,11 +1997,17 @@ class ChatViewModel(
             ?: shellThread?.projectId
             ?: shell?.projects?.firstOrNull()?.id
         val project = shell?.projects?.firstOrNull { it.id == projectId }
-        val modelOptions = modelOptions(orchestration.config.value, favorites.models)
-        val selectedModelId = local.providerModelId
-            ?: detail?.modelSelection?.optionId()
-            ?: project?.defaultModelSelection?.optionId()
-            ?: modelOptions.firstOrNull()?.id
+        val modelChoice = resolveModelChoice(
+            config = orchestration.config.value,
+            override = modelOverrideKey(environment.active?.id, orchestration.threadId, orchestration.projectId)
+                ?.let(local.providerModelIds::get),
+            thread = shellThread,
+            detail = detail,
+            project = project,
+            favorites = favorites.models,
+        )
+        val modelOptions = modelChoice.options
+        val selectedModelId = modelChoice.selectedId
         val runtime = local.runtimeModeId ?: DefaultRuntimeMode
         val inheritedOptions = listOfNotNull(
             detail?.modelSelection?.takeIf { it.optionId() == selectedModelId },
@@ -2042,6 +2060,7 @@ class ChatViewModel(
                 contextPreview = local.composerPreview,
                 selectedProviderModelId = selectedModelId,
                 providerModels = modelOptions,
+                modelLockLabel = modelChoice.lock?.providerLabel,
                 providerOptions = providerOptions,
                 selectedRuntimeModeId = runtime,
                 runtimeModes = RuntimeModes,
@@ -2591,7 +2610,8 @@ class ChatViewModel(
         val activePicker: ChatPickerUi? = null,
         val showArchived: Boolean = false,
         val showSettled: Boolean = false,
-        val providerModelId: String? = null,
+        /** Explicit model choices keyed by [modelOverrideKey], so each conversation keeps its own. */
+        val providerModelIds: Map<String, String> = emptyMap(),
         val providerOptionValues: Map<String, JsonPrimitive> = emptyMap(),
         val runtimeModeId: String? = null,
         val workspaceChoices: List<ThreadWorkspaceChoice> = emptyList(),
@@ -2904,18 +2924,71 @@ private data class ActiveProject(
 private fun de.chennemann.agentic.t3.contract.OrchestrationThreadShell.isSettled(): Boolean =
     settledOverride == "settled" || (settledOverride != "active" && settledAt != null)
 
+private data class ModelChoice(
+    val options: List<ProviderModelOptionUi>,
+    val selectedId: String?,
+    val lock: ThreadModelLock?,
+)
+
+private fun modelOverrideKey(
+    environmentId: String?,
+    threadId: String?,
+    projectId: String?,
+): String? = when {
+    environmentId == null -> null
+    threadId != null -> "$environmentId/$threadId"
+    projectId != null -> "$environmentId/$NewThreadDraftPrefix$projectId"
+    else -> null
+}
+
+/**
+ * Offers only models the server would accept for the conversation and picks the explicit choice,
+ * then the thread's model, then the project default, whichever is still offered.
+ */
+private fun resolveModelChoice(
+    config: ServerConfig?,
+    override: String?,
+    thread: de.chennemann.agentic.t3.contract.OrchestrationThreadShell?,
+    detail: de.chennemann.agentic.t3.contract.OrchestrationThreadDetail?,
+    project: de.chennemann.agentic.t3.contract.OrchestrationProject?,
+    favorites: List<FavoriteModelId> = emptyList(),
+): ModelChoice {
+    val threadSelection = detail?.modelSelection ?: thread?.modelSelection
+    val lock = ThreadModelLock.of(
+        providers = config?.providers.orEmpty(),
+        modelSelection = threadSelection,
+        session = detail?.session ?: thread?.session,
+        started = thread?.latestTurn != null ||
+            thread?.latestUserMessageAt != null ||
+            thread?.session != null ||
+            detail?.latestTurn != null ||
+            detail?.session != null ||
+            detail?.messages?.isNotEmpty() == true,
+    )
+    val options = modelOptions(config, favorites, lock)
+    val offered = options.mapTo(mutableSetOf(), ProviderModelOptionUi::id)
+    val selectedId = listOfNotNull(
+        override,
+        threadSelection?.optionId(),
+        project?.defaultModelSelection?.optionId(),
+    ).firstOrNull { it in offered } ?: options.firstOrNull()?.id
+    return ModelChoice(options, selectedId, lock)
+}
+
 private fun modelOptions(
     config: ServerConfig?,
-    favorites: List<FavoriteModelId> = emptyList(),
+    favorites: List<FavoriteModelId>,
+    lock: ThreadModelLock?,
 ): List<ProviderModelOptionUi> = config
     ?.providers
     .orEmpty()
     .filter { it.enabled && it.installed }
     .flatMap { provider ->
-        provider.models.map { model ->
+        provider.models.filter { lock?.allows(provider, it.slug) != false }.map { model ->
             ProviderModelOptionUi(
                 id = optionId(provider.instanceId, model.slug),
                 providerInstanceId = provider.instanceId,
+                providerDriver = provider.driver,
                 providerLabel = provider.displayName?.takeIf(String::isNotBlank) ?: provider.instanceId,
                 modelLabel = model.name,
                 supportingText = model.slug,

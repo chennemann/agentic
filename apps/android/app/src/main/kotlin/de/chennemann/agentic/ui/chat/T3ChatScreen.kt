@@ -483,6 +483,7 @@ fun T3ChatScreen(
                             if (threadPanelVisible) ChatUiEvent.PickerDismissed else ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD),
                         )
                     },
+                        modelsOpen = state.activePicker == ChatPickerUi.PROVIDER_MODEL,
                         modifier = Modifier,
                         inputFocusRequested = inputFocusRequested,
                         onInputFocusedManually = {
@@ -796,6 +797,7 @@ private fun IsolatedDraftComposer(
     onOpenProjectPicker: () -> Unit,
     threadsOpen: Boolean,
     onOpenThreads: () -> Unit,
+    modelsOpen: Boolean,
     modifier: Modifier = Modifier,
     inputFocusRequested: Boolean? = null,
     onInputFocusedManually: () -> Unit = {},
@@ -810,6 +812,7 @@ private fun IsolatedDraftComposer(
             onOpenProjectPicker = onOpenProjectPicker,
             threadsOpen = threadsOpen,
             onOpenThreads = onOpenThreads,
+            modelsOpen = modelsOpen,
             modifier = modifier,
             inputFocusRequested = inputFocusRequested,
             onInputFocusedManually = onInputFocusedManually,
@@ -826,6 +829,7 @@ private fun IsolatedDraftComposer(
             onOpenProjectPicker = onOpenProjectPicker,
             threadsOpen = threadsOpen,
             onOpenThreads = onOpenThreads,
+            modelsOpen = modelsOpen,
             modifier = modifier,
             inputFocusRequested = inputFocusRequested,
             onInputFocusedManually = onInputFocusedManually,

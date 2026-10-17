@@ -259,6 +259,9 @@ data class ProviderInstance(
     val instanceId: String,
     val displayName: String? = null,
     val driver: String? = null,
+    val accentColor: String? = null,
+    val continuation: ProviderContinuation? = null,
+    val requiresNewThreadForModelChange: Boolean = false,
     val enabled: Boolean = true,
     val installed: Boolean = true,
     val availability: String? = null,
@@ -271,6 +274,10 @@ data class ProviderInstance(
     val skills: List<JsonElement> = emptyList(),
     val workspaceSnapshots: List<ProviderWorkspaceSnapshot> = emptyList()
 )
+
+/** Instances sharing a group key can resume each other's sessions, so a thread may move between them. */
+@Serializable
+data class ProviderContinuation(val groupKey: String)
 
 @Serializable
 data class ProviderModel(

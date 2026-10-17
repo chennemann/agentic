@@ -438,6 +438,8 @@ data class ComposerUiState(
     val draft: String = "",
     val selectedProviderModelId: String? = null,
     val providerModels: List<ProviderModelOptionUi> = emptyList(),
+    /** Set once a thread has started: the provider whose models [providerModels] is limited to. */
+    val modelLockLabel: String? = null,
     val providerOptions: List<ProviderOptionUi> = emptyList(),
     val selectedRuntimeModeId: String? = null,
     val runtimeModes: List<RuntimeModeOptionUi> = emptyList(),
@@ -487,6 +489,8 @@ data class ProviderModelOptionUi(
     val providerInstanceId: String,
     val providerLabel: String,
     val modelLabel: String,
+    /** Server-reported driver kind; only used to draw the provider's mark. */
+    val providerDriver: String? = null,
     val supportingText: String? = null,
     val favorite: Boolean = false,
     val favoriteOrder: Int? = null,

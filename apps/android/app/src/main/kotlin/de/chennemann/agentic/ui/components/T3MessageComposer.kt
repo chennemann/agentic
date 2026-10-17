@@ -5,6 +5,17 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.unit.Dp
+import de.chennemann.agentic.icons.Lock
+import de.chennemann.agentic.icons.Star
+import de.chennemann.agentic.icons.StarOutline
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.Image
@@ -34,7 +45,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -119,6 +129,7 @@ fun T3MessageComposer(
     onOpenThreads: () -> Unit = {
         onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD))
     },
+    modelsOpen: Boolean = false,
     inputFocusRequested: Boolean? = null,
     onInputFocusedManually: () -> Unit = {},
     onOpenImage: (ChatImageAttachmentUi) -> Unit = {},
@@ -146,6 +157,14 @@ fun T3MessageComposer(
         onRecordingCancelled = { onEvent(ChatUiEvent.VoiceInputCancelled) },
     )
     BackHandler(enabled = controlsOpen) { controlsOpen = false }
+    BackHandler(enabled = modelsOpen) { onEvent(ChatUiEvent.PickerDismissed) }
+    LaunchedEffect(modelsOpen) {
+        if (modelsOpen) {
+            focusManager.clearFocus(force = true)
+            keyboardController?.hide()
+            controlsOpen = true
+        }
+    }
     Surface(
         modifier = modifier.fillMaxWidth(),
         color = ComposerBackground,
@@ -233,7 +252,11 @@ fun T3MessageComposer(
                             val image = binding?.let { id -> state.imageAttachments.firstOrNull { it.id == id } }
                             if (image != null) onOpenImage(image) else onEvent(event)
                         },
-                        onFocus = { controlsOpen = false; onInputFocusedManually() },
+                        onFocus = {
+                            controlsOpen = false
+                            if (modelsOpen) onEvent(ChatUiEvent.PickerDismissed)
+                            onInputFocusedManually()
+                        },
                         focusRequested = if (controlsOpen) false else inputFocusRequested,
                         modifier = Modifier.weight(1f).testTag(ComposerInputTestTag),
                     )
@@ -320,8 +343,12 @@ fun T3MessageComposer(
                     RunControlStrip(
                         state = state,
                         selectedModel = selectedModel,
+                        modelsOpen = modelsOpen,
                         onEvent = onEvent,
-                        onClose = { controlsOpen = false },
+                        onClose = {
+                            controlsOpen = false
+                            if (modelsOpen) onEvent(ChatUiEvent.PickerDismissed)
+                        },
                     )
                 } else {
                     ComposerSummary(
@@ -335,6 +362,18 @@ fun T3MessageComposer(
                         },
                     )
                 }
+            }
+            AnimatedVisibility(
+                visible = modelsOpen && controlsOpen,
+                enter = expandVertically(expandFrom = Alignment.Top) + fadeIn(),
+                exit = shrinkVertically(shrinkTowards = Alignment.Top) + fadeOut(),
+            ) {
+                ModelPanel(
+                    models = state.providerModels,
+                    selectedId = state.selectedProviderModelId,
+                    lockLabel = state.modelLockLabel,
+                    onEvent = onEvent,
+                )
             }
 
             state.errorMessage?.let { error ->
@@ -503,6 +542,7 @@ private fun AttachmentPreview(
 }
 
 const val ComposerInputTestTag = "composer-input"
+const val ComposerModelPanelTestTag = "composer-model-panel"
 
 @Composable
 private fun ComposerSummary(
@@ -520,68 +560,50 @@ private fun ComposerSummary(
         horizontalArrangement = Arrangement.spacedBy(14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        SummaryItem(
-            icon = Icons.Brain,
-            contentDescription = "Model ${selectedModel?.modelLabel ?: "not selected"}",
-            label = selectedModel?.modelLabel ?: "Choose model",
-        )
-        providerOptions.forEach { option ->
-            val valueLabel = when (option) {
-                is ProviderOptionUi.Select -> option.selectedLabel()
-                is ProviderOptionUi.Toggle -> if (option.selected) "On" else "Off"
-            }
-            SummaryItem(
-                icon = option.icon(),
-                contentDescription = "${option.label}: $valueLabel",
-            )
-        }
-    }
-}
-
-@Composable
-private fun SummaryItem(
-    icon: ImageVector,
-    contentDescription: String,
-    label: String? = null,
-) {
-    Row(
-        modifier = Modifier.semantics { this.contentDescription = contentDescription },
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            modifier = Modifier.size(16.dp),
-            tint = MaterialTheme.colorScheme.primary,
-        )
-        label?.let {
+        Row(
+            modifier = Modifier.semantics {
+                contentDescription = selectedModel?.let { "Model ${it.modelLabel} from ${it.providerLabel}" }
+                    ?: "Model not selected"
+            },
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ModelMark(selectedModel)
             Text(
-                text = it,
+                text = selectedModel?.modelLabel ?: "Choose model",
                 style = MaterialTheme.typography.labelMedium,
                 color = ComposerContent,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
         }
+        providerOptions.forEach { option ->
+            val valueLabel = when (option) {
+                is ProviderOptionUi.Select -> option.selectedLabel()
+                is ProviderOptionUi.Toggle -> if (option.selected) "On" else "Off"
+            }
+            Icon(
+                imageVector = option.icon(),
+                contentDescription = "${option.label}: $valueLabel",
+                modifier = Modifier.size(16.dp),
+                tint = MaterialTheme.colorScheme.primary,
+            )
+        }
     }
 }
 
 /**
- * One row of chips in place of the summary; each chip opens a dropdown anchored to itself so
- * nothing covers the conversation.
+ * One row of chips in place of the summary. The model chip unfolds the model panel below the
+ * strip; the other chips open a dropdown anchored to themselves so nothing covers the conversation.
  */
 @Composable
 private fun RunControlStrip(
     state: ComposerUiState,
     selectedModel: ProviderModelOptionUi?,
+    modelsOpen: Boolean,
     onEvent: (ChatUiEvent) -> Unit,
     onClose: () -> Unit,
 ) {
-    val favorites = state.providerModels
-        .filter(ProviderModelOptionUi::favorite)
-        .sortedBy { it.favoriteOrder }
-        .ifEmpty { listOfNotNull(selectedModel) }
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -592,22 +614,21 @@ private fun RunControlStrip(
     ) {
         StripChip(
             icon = Icons.Brain,
+            leading = { ModelMark(selectedModel, size = 14.dp) },
             label = selectedModel?.modelLabel ?: "Model",
-            contentDescription = "Model ${selectedModel?.modelLabel ?: "not selected"}",
+            contentDescription = if (modelsOpen) {
+                "Close models"
+            } else {
+                selectedModel?.let { "Model ${it.modelLabel} from ${it.providerLabel}" } ?: "Choose model"
+            },
             enabled = state.enabled && state.providerModels.isNotEmpty(),
-        ) { close ->
-            favorites.forEach { model ->
-                DropdownMenuItem(
-                    text = { Text(model.modelLabel) },
-                    onClick = { close(); onEvent(ChatUiEvent.ProviderModelSelected(model.id)) },
+            expanded = modelsOpen,
+            onClick = {
+                onEvent(
+                    if (modelsOpen) ChatUiEvent.PickerDismissed else ChatUiEvent.PickerRequested(ChatPickerUi.PROVIDER_MODEL),
                 )
-            }
-            HorizontalDivider()
-            DropdownMenuItem(
-                text = { Text("All models…") },
-                onClick = { close(); onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.PROVIDER_MODEL)) },
-            )
-        }
+            },
+        ) {}
         state.providerOptions.forEach { option ->
             when (option) {
                 is ProviderOptionUi.Select -> StripChip(
@@ -680,10 +701,13 @@ private fun StripChip(
     label: String,
     contentDescription: String,
     enabled: Boolean,
+    leading: (@Composable () -> Unit)? = null,
+    expanded: Boolean = false,
     onClick: (() -> Unit)? = null,
     menu: @Composable (close: () -> Unit) -> Unit,
 ) {
     var open by remember { mutableStateOf(false) }
+    val chevronRotation by animateFloatAsState(if (expanded || open) 180f else 0f, label = "chip chevron")
     Box {
         Row(
             modifier = Modifier
@@ -695,11 +719,135 @@ private fun StripChip(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(5.dp),
         ) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
+            leading?.invoke()
+                ?: Icon(icon, contentDescription = null, modifier = Modifier.size(14.dp), tint = MaterialTheme.colorScheme.primary)
             Text(label, style = MaterialTheme.typography.labelMedium, maxLines = 1, color = if (enabled) ComposerContent else ComposerDisabled)
-            Icon(Icons.ChevronDown, contentDescription = null, modifier = Modifier.size(12.dp), tint = ComposerMuted)
+            Icon(
+                Icons.ChevronDown,
+                contentDescription = null,
+                modifier = Modifier.size(12.dp).rotate(chevronRotation),
+                tint = ComposerMuted,
+            )
         }
         DropdownMenu(expanded = open, onDismissRequest = { open = false }) { menu { open = false } }
+    }
+}
+
+@Composable
+private fun ModelMark(model: ProviderModelOptionUi?, size: Dp = 16.dp) {
+    if (model == null) {
+        Icon(Icons.Brain, contentDescription = null, modifier = Modifier.size(size), tint = MaterialTheme.colorScheme.primary)
+    } else {
+        ProviderMark(driver = model.providerDriver, label = model.providerLabel, size = size, tint = ComposerContent)
+    }
+}
+
+/**
+ * Every model the conversation may use, favorites first, unfolding under the run controls. A
+ * started thread only lists models of the provider it is bound to.
+ */
+@Composable
+private fun ModelPanel(
+    models: List<ProviderModelOptionUi>,
+    selectedId: String?,
+    lockLabel: String?,
+    onEvent: (ChatUiEvent) -> Unit,
+) {
+    val favorites = models.filter(ProviderModelOptionUi::favorite).sortedBy { it.favoriteOrder }
+    val others = models.filterNot(ProviderModelOptionUi::favorite)
+    LazyColumn(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(max = 320.dp)
+            .testTag(ComposerModelPanelTestTag),
+        contentPadding = PaddingValues(vertical = 4.dp),
+    ) {
+        lockLabel?.let { provider ->
+            item(key = "lock") {
+                Row(
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Icon(Icons.Lock, contentDescription = null, modifier = Modifier.size(12.dp), tint = ComposerMuted)
+                    Text(
+                        text = "This thread stays on $provider",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = ComposerMuted,
+                    )
+                }
+            }
+        }
+        if (favorites.isNotEmpty()) {
+            item(key = "favorites") { ModelSectionLabel("Favorites") }
+            items(favorites, key = { "favorite:${it.id}" }) { model ->
+                ModelPanelRow(model, selected = model.id == selectedId, onEvent = onEvent)
+            }
+            if (others.isNotEmpty()) item(key = "all") { ModelSectionLabel("All models") }
+        }
+        items(others, key = { "model:${it.id}" }) { model ->
+            ModelPanelRow(model, selected = model.id == selectedId, onEvent = onEvent)
+        }
+    }
+}
+
+@Composable
+private fun ModelSectionLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = ComposerMuted,
+        modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 2.dp),
+    )
+}
+
+@Composable
+private fun ModelPanelRow(
+    model: ProviderModelOptionUi,
+    selected: Boolean,
+    onEvent: (ChatUiEvent) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(if (selected) ComposerSelected else Color.Transparent)
+            .clickable { onEvent(ChatUiEvent.ProviderModelSelected(model.id)) }
+            .semantics { contentDescription = "${model.modelLabel} from ${model.providerLabel}" }
+            .padding(start = 16.dp, end = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        ProviderMark(driver = model.providerDriver, label = model.providerLabel, size = 18.dp, tint = ComposerContent)
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = model.modelLabel,
+                style = MaterialTheme.typography.bodyMedium,
+                color = if (selected) MaterialTheme.colorScheme.primary else ComposerContent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = model.providerLabel,
+                style = MaterialTheme.typography.labelSmall,
+                color = ComposerMuted,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        IconButton(
+            onClick = { onEvent(ChatUiEvent.ProviderModelFavoriteChanged(model.id, !model.favorite)) },
+        ) {
+            Icon(
+                imageVector = if (model.favorite) Icons.Star else Icons.StarOutline,
+                contentDescription = if (model.favorite) {
+                    "Remove ${model.modelLabel} from favorites"
+                } else {
+                    "Add ${model.modelLabel} to favorites"
+                },
+                modifier = Modifier.size(18.dp),
+                tint = if (model.favorite) MaterialTheme.colorScheme.primary else ComposerMuted,
+            )
+        }
     }
 }
 
