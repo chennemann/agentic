@@ -8,6 +8,11 @@ import de.chennemann.agentic.domain.orchestration.OrchestrationRepository
 import de.chennemann.agentic.t3.contract.ProviderSkill
 import de.chennemann.agentic.t3.contract.T3Json
 import de.chennemann.agentic.t3.contract.UploadChatAttachment
+import java.util.concurrent.ConcurrentHashMap
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Deferred
+import kotlinx.coroutines.async
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
@@ -33,6 +38,9 @@ interface ComposerContextActions {
     suspend fun suggestions(kind: String, query: String, instanceId: String?): List<ComposerSuggestion>
 
     suspend fun prepare(environmentId: String, document: ComposerDocument): PreparedComposerContext
+
+    /** Uploads a picked file in the background so [prepare] can reuse it instead of waiting. */
+    fun startUpload(environmentId: String, file: ComposerFile) = Unit
 }
 
 class ComposerContextService(
@@ -40,9 +48,50 @@ class ComposerContextService(
     private val credentials: CredentialStore,
     private val repository: OrchestrationRepository,
     private val rpc: ComposerRpcClient,
-    private val files: ComposerFileStore? = null
+    private val files: ComposerFileStore? = null,
+    private val uploadScope: CoroutineScope? = null,
+    private val clock: () -> Long = System::currentTimeMillis
 ) : ComposerContextActions {
     private val skillCache = mutableMapOf<Triple<String, String, String>, List<ProviderSkill>>()
+    private val earlyUploads = ConcurrentHashMap<Pair<String, String>, EarlyUpload>()
+
+    override fun startUpload(environmentId: String, file: ComposerFile) {
+        val scope = uploadScope ?: return
+        earlyUploads.computeIfAbsent(environmentId to file.id) {
+            EarlyUpload(clock(), scope.async { uploadPicked(environmentId, file) })
+        }
+    }
+
+    /** The pending id from [startUpload], if it finished and the server still holds it. */
+    private suspend fun earlyUpload(environmentId: String, file: ComposerFile): String? {
+        val upload = earlyUploads.remove(environmentId to file.id) ?: return null
+        if (clock() - upload.startedAt > EarlyUploadMaxAgeMillis) return null
+        return try {
+            upload.id.await()
+        } catch (cause: CancellationException) {
+            throw cause
+        } catch (_: Exception) {
+            // Sending uploads again and reports that failure instead.
+            null
+        }
+    }
+
+    private suspend fun uploadPicked(environmentId: String, file: ComposerFile): String {
+        val stored = files?.stored(file)?.takeIf { it.length() == file.sizeBytes }
+            ?: throw IllegalArgumentException("'${file.name}' is no longer available. Remove it and attach it again.")
+        require(file.sizeBytes <= maxFileUploadBytes()) {
+            "This environment cannot upload '${file.name}'. Remove it or attach a smaller file."
+        }
+        val active = requireNotNull(environments.activeEnvironment.value?.takeIf { it.id == environmentId }) {
+            "The environment changed during upload."
+        }
+        val token = requireNotNull(credentials.read(active.id)) { "Pair the environment again." }
+        val id = rpc.uploadFile(active.baseUrl, token, file.name, file.mimeType, stored)
+        require(environmentId == environments.activeEnvironment.value?.id) { "The environment changed during upload." }
+        return id
+    }
+
+    private class EarlyUpload(val startedAt: Long, val id: Deferred<String>)
 
     override fun maxFileUploadBytes(): Long {
         val active = environments.activeEnvironment.value ?: return 0
@@ -135,15 +184,7 @@ class ComposerContextService(
                 source = buildJsonObject { put("_tag", "pasted-text") }
             )
         } + retained.files.map { file ->
-            val stored = files?.stored(file)?.takeIf { it.length() == file.sizeBytes }
-                ?: throw IllegalArgumentException("'${file.name}' is no longer available. Remove it and attach it again.")
-            require(file.sizeBytes <= maxFileUploadBytes()) {
-                "This environment cannot upload '${file.name}'. Remove it or attach a smaller file."
-            }
-            val id = rpc.uploadFile(context.baseUrl, context.token, file.name, file.mimeType, stored)
-            require(environmentId == environments.activeEnvironment.value?.id) {
-                "The environment changed during upload."
-            }
+            val id = earlyUpload(environmentId, file) ?: uploadPicked(environmentId, file)
             ids[file.id] = id
             UploadChatAttachment(type = "file", id = id, name = file.name, mimeType = file.mimeType, sizeBytes = file.sizeBytes)
         }
@@ -183,4 +224,9 @@ class ComposerContextService(
     }
 
     private data class Context(val environmentId: String, val baseUrl: String, val token: String, val cwd: String)
+
+    private companion object {
+        /** The server sweeps pending uploads after a day; reusing one near that age risks a dead id. */
+        const val EarlyUploadMaxAgeMillis = 20 * 60 * 60 * 1000L
+    }
 }

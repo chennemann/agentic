@@ -22,7 +22,16 @@ fun formatByteSize(bytes: Long): String = when {
     else -> "%.1f MiB".format(java.util.Locale.ROOT, bytes / (1024.0 * 1024.0))
 }
 
+/** What the picker reports about a document before any bytes are read. */
+data class PickedDocument(val name: String, val mimeType: String, val sizeBytes: Long?)
+
+/** Pictures picked through Files travel as images when the provider can show them. */
+fun PickedDocument.isInlineImage(): Boolean =
+    mimeType.lowercase() in SupportedImageMimeTypes && (sizeBytes ?: Long.MAX_VALUE) <= MaxImageAttachmentBytes
+
 interface ComposerFileStore {
+    suspend fun describe(uri: String): PickedDocument
+
     /** Copies a picked document into app storage, so the draft survives losing the picker's grant. */
     suspend fun import(uri: String, maxBytes: Long): ComposerFile
 
@@ -35,10 +44,22 @@ class AndroidComposerFileStore(
     private val directory: File,
     private val ioDispatcher: CoroutineDispatcher,
 ) : ComposerFileStore {
-    override suspend fun import(uri: String, maxBytes: Long): ComposerFile = withContext(ioDispatcher) {
+    override suspend fun describe(uri: String): PickedDocument = withContext(ioDispatcher) {
         val contentUri = Uri.parse(uri)
-        val name = contentResolver.query(contentUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
-            ?.use { cursor -> cursor.takeIf { it.moveToFirst() }?.getString(0) }
+        val (displayName, size) = contentResolver.query(
+            contentUri,
+            arrayOf(OpenableColumns.DISPLAY_NAME, OpenableColumns.SIZE),
+            null,
+            null,
+            null,
+        )?.use { cursor ->
+            if (!cursor.moveToFirst()) {
+                null to null
+            } else {
+                cursor.getString(0) to cursor.takeUnless { it.isNull(1) }?.getLong(1)
+            }
+        } ?: (null to null)
+        val name = displayName
             ?.replace(Regex("[\\r\\n/\\\\]"), " ")
             ?.trim()
             ?.take(255)
@@ -47,6 +68,12 @@ class AndroidComposerFileStore(
         val mimeType = contentResolver.getType(contentUri)?.takeIf { it.length <= 100 }
             ?: MimeTypeMap.getSingleton().getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase())
             ?: "application/octet-stream"
+        PickedDocument(name, mimeType, size)
+    }
+
+    override suspend fun import(uri: String, maxBytes: Long): ComposerFile = withContext(ioDispatcher) {
+        val contentUri = Uri.parse(uri)
+        val (name, mimeType) = describe(uri)
         check(directory.isDirectory || directory.mkdirs()) { "Draft attachment storage is unavailable." }
         val id = UUID.randomUUID().toString()
         val target = File(directory, id)

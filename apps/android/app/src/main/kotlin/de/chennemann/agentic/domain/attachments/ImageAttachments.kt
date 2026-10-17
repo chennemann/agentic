@@ -11,6 +11,9 @@ import kotlinx.coroutines.withContext
 const val MaxImageAttachmentCount = 8
 const val MaxImageAttachmentBytes = 10L * 1024 * 1024
 
+/** Image types T3 hands to providers inline (PROVIDER_SEND_TURN_SUPPORTED_IMAGE_MIME_TYPES). */
+val SupportedImageMimeTypes = setOf("image/gif", "image/jpeg", "image/png", "image/webp")
+
 fun interface ImageAttachmentReader {
     suspend fun read(uri: String): UploadChatAttachment
 }
@@ -21,15 +24,19 @@ class AndroidImageAttachmentReader(
 ) : ImageAttachmentReader {
     override suspend fun read(uri: String): UploadChatAttachment = withContext(ioDispatcher) {
         val contentUri = Uri.parse(uri)
-        val mimeType = contentResolver.getType(contentUri)
-            ?.takeIf { it.startsWith("image/") }
-            ?: throw IllegalArgumentException("Only images can be attached.")
         val name = contentResolver.query(contentUri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
             ?.use { cursor ->
                 cursor.takeIf { it.moveToFirst() }?.getString(0)
             }
             ?.take(255)
             ?: "image"
+        val mimeType = (
+            contentResolver.getType(contentUri)
+                ?: android.webkit.MimeTypeMap.getSingleton()
+                    .getMimeTypeFromExtension(name.substringAfterLast('.', "").lowercase())
+            )
+            ?.takeIf { it.startsWith("image/") }
+            ?: throw IllegalArgumentException("Only images can be attached.")
         val bytes = contentResolver.openInputStream(contentUri)?.use { stream ->
             val buffer = ByteArray(MaxImageAttachmentBytes.toInt() + 1)
             var offset = 0

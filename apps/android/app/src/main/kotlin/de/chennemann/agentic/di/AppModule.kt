@@ -189,7 +189,16 @@ val appModule = module {
     single<de.chennemann.agentic.data.t3.ReviewDiffRpcClient> { get<KtorT3Client>() }
     single<ThreadWorkspaceRpcClient> { get<KtorT3Client>() }
     single<de.chennemann.agentic.data.t3.ComposerRpcClient> { get<KtorT3Client>() }
-    single<de.chennemann.agentic.domain.composer.ComposerContextActions> { de.chennemann.agentic.domain.composer.ComposerContextService(get(), get(), get(), get(), get()) }
+    single<de.chennemann.agentic.domain.composer.ComposerContextActions> {
+        de.chennemann.agentic.domain.composer.ComposerContextService(
+            environments = get(),
+            credentials = get(),
+            repository = get(),
+            rpc = get(),
+            files = get(),
+            uploadScope = get(named(AppScopeName)),
+        )
+    }
     single<WorkspaceFilesRpcClient> { get<KtorT3Client>() }
     single<de.chennemann.agentic.data.t3.AttachmentAssetClient> { get<KtorT3Client>() }
     single<ProjectDestinationRpcClient> { get<KtorT3Client>() }

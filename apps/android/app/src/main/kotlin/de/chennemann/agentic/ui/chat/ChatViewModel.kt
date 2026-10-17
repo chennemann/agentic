@@ -32,6 +32,7 @@ import de.chennemann.agentic.domain.attachments.ImageAttachmentReader
 import de.chennemann.agentic.domain.attachments.ComposerFileStore
 import de.chennemann.agentic.domain.attachments.MaxMessageAttachmentCount
 import de.chennemann.agentic.domain.attachments.formatByteSize
+import de.chennemann.agentic.domain.attachments.isInlineImage
 import de.chennemann.agentic.domain.composer.composerFileRecord
 import de.chennemann.agentic.domain.attachments.MaxImageAttachmentCount
 import de.chennemann.agentic.data.t3.AttachmentAssetClient
@@ -1092,7 +1093,11 @@ class ChatViewModel(
         }
     }
 
-    /** Copies picked documents into the draft and references each one with an inline file chip. */
+    /**
+     * Copies picked documents into the draft and references each one with an inline file chip,
+     * then starts uploading it so sending does not wait for the bytes. Pictures the provider can
+     * show inline join the draft as images instead, so they keep their thumbnail.
+     */
     private fun addFiles(uris: List<String>) {
         val store = composerFiles ?: return submissionUnavailable("File attachments are unavailable.")
         val maxBytes = composerContext?.maxFileUploadBytes() ?: 0
@@ -1100,7 +1105,15 @@ class ChatViewModel(
         val key = displayedDraftKey
         viewModelScope.launch {
             val problems = mutableListOf<String>()
-            for (uri in uris) {
+            val imageSlots = (MaxImageAttachmentCount - local.value.draftImages.size).coerceAtLeast(0)
+            val images = if (imageAttachments == null) {
+                emptyList()
+            } else {
+                uris.filter { runCatching { store.describe(it).isInlineImage() }.getOrDefault(false) }.take(imageSlots)
+            }
+            if (key != displayedDraftKey) return@launch
+            if (images.isNotEmpty()) addImages(images)
+            for (uri in uris - images.toSet()) {
                 val document = currentDocument().retained()
                 if (document.pastes.size + document.files.size + local.value.draftImages.size >= MaxMessageAttachmentCount) {
                     problems += "You can attach up to $MaxMessageAttachmentCount files per message."
@@ -1117,6 +1130,7 @@ class ChatViewModel(
                     val current = currentDocument()
                     documentCache[key] = current.copy(records = current.records + composerFileRecord(file), files = current.files + file)
                     insertComposerText(composerContextReference("file", file.id, file.name) + " ")
+                    environments.activeEnvironment.value?.id?.let { composerContext?.startUpload(it, file) }
                 } catch (cause: CancellationException) {
                     throw cause
                 } catch (cause: Exception) {
