@@ -315,7 +315,7 @@ private fun WorkspaceFilePreviewContent(state: WorkspaceFilesUiState) {
                         StreamingMarkdownText(preview.contents)
                     }
                 } else {
-                    CodeView(preview.path, preview.contents)
+                    CodeView(preview.path, preview.contents, state.selectedLine)
                 }
             }
             is WorkspaceFilePreview.Unsupported -> Text(preview.reason, modifier = Modifier.padding(24.dp))
@@ -324,9 +324,12 @@ private fun WorkspaceFilePreviewContent(state: WorkspaceFilesUiState) {
     }
 }
 
-/** Line-numbered, syntax-highlighted source with a fixed gutter and shared horizontal scrolling. */
+/**
+ * Line-numbered, syntax-highlighted source with a fixed gutter and shared horizontal scrolling. A [line]
+ * is highlighted and opened with a few lines of context above it.
+ */
 @Composable
-private fun CodeView(path: String, contents: String) {
+private fun CodeView(path: String, contents: String, line: Int?) {
     val scheme = MaterialTheme.colorScheme
     val syntax = rememberCodeSyntaxStyles()
     val lines by produceState<List<AnnotatedString>?>(null, path, contents, syntax) {
@@ -366,16 +369,20 @@ private fun CodeView(path: String, contents: String) {
         offset = (offset - delta).coerceIn(0f, maxOffset)
         previous - offset
     }
+    val targetIndex = line?.minus(1)?.takeIf { it in current.indices }
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = ((targetIndex ?: 0) - 3).coerceAtLeast(0))
     SelectionContainer {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
                 .onSizeChanged { viewportWidth = it.width }
                 .scrollable(horizontal, Orientation.Horizontal),
+            state = listState,
             contentPadding = PaddingValues(vertical = 8.dp),
         ) {
             items(current.size) { index ->
-                Row(Modifier.fillMaxWidth()) {
+                val target = index == targetIndex
+                Row(Modifier.fillMaxWidth().then(if (target) Modifier.background(scheme.primary.copy(alpha = 0.16f)) else Modifier)) {
                     Text(
                         (index + 1).toString(),
                         modifier = Modifier.width(gutterWidth).padding(end = 12.dp),

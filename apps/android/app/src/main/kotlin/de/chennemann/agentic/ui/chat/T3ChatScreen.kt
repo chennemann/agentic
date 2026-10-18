@@ -66,6 +66,7 @@ import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -92,6 +93,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.zIndex
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import de.chennemann.agentic.streamingmarkdown.LocalMarkdownLinkHandler
 import de.chennemann.agentic.streamingmarkdown.StreamingMarkdownText
 import de.chennemann.agentic.ui.components.AnnotationCountBadge
 import de.chennemann.agentic.ui.components.ImageViewerDialog
@@ -115,6 +117,8 @@ import de.chennemann.agentic.icons.Icons
 import de.chennemann.agentic.icons.Paperclip
 import de.chennemann.agentic.icons.Rename
 import de.chennemann.agentic.domain.attachments.formatByteSize
+import de.chennemann.agentic.domain.orchestration.FileLinkTarget
+import de.chennemann.agentic.domain.orchestration.parseMarkdownFileLink
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.StateFlow
@@ -129,6 +133,7 @@ fun T3ChatScreen(
     composerDraft: StateFlow<String>? = null,
     modifier: Modifier = Modifier,
     onOpenFiles: (String) -> Unit = {},
+    onOpenFileLink: (threadId: String, target: FileLinkTarget) -> Unit = { _, _ -> },
     onOpenUpdater: () -> Unit = {},
     onOpenUsage: () -> Unit = {},
     onOpenTerminal: (String) -> Unit = {},
@@ -136,6 +141,16 @@ fun T3ChatScreen(
     onRunProjectScript: (String, ProjectScriptUi) -> Unit = { _, _ -> },
 ) {
     val listState = rememberLazyListState()
+    val currentThreadId by rememberUpdatedState(state.threadId)
+    val currentOpenFileLink by rememberUpdatedState(onOpenFileLink)
+    // Stable so streaming recompositions do not invalidate every markdown text that reads it.
+    val openFileLink = remember {
+        { href: String ->
+            val threadId = currentThreadId
+            val target = parseMarkdownFileLink(href)
+            if (threadId != null && target != null) currentOpenFileLink(threadId, target)
+        }
+    }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     var imageViewer by remember { mutableStateOf<ImageViewerRequest?>(null) }
     val openImage = { request: ImageViewerRequest -> imageViewer = request }
@@ -340,6 +355,7 @@ fun T3ChatScreen(
                         items = timeline,
                         key = { it.lazyKey },
                     ) { item ->
+                        CompositionLocalProvider(LocalMarkdownLinkHandler provides openFileLink) {
                         when (item) {
                             is ChatTimelineItemUi.WorkSummary -> TextButton(
                                 onClick = { expandedActivities[item.lazyKey] = expandedActivities[item.lazyKey] != true },
@@ -380,6 +396,7 @@ fun T3ChatScreen(
                                     },
                                 )
                             }
+                        }
                         }
                     }
 

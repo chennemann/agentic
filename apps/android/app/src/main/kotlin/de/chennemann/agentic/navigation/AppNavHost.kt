@@ -17,6 +17,7 @@ import androidx.navigation3.ui.NavDisplay
 import de.chennemann.agentic.data.auth.AndroidClientCertificateSelector
 import de.chennemann.agentic.data.auth.ClientCertificateStore
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
+import de.chennemann.agentic.domain.orchestration.FileLinkTarget
 import de.chennemann.agentic.t3.contract.ProjectScript
 import de.chennemann.agentic.t3.contract.ProjectScriptIcon
 import de.chennemann.agentic.ui.chat.ChatViewModel
@@ -93,6 +94,9 @@ fun AppNavHost() {
                         }
                     }
                     val onOpenFiles: (String) -> Unit = { threadId -> stack.add(WorkspaceFilesRoute(threadId)) }
+                    val onOpenFileLink: (String, FileLinkTarget) -> Unit = { threadId, target ->
+                        stack.add(WorkspaceFilesRoute(threadId, target.path, target.line))
+                    }
                     val onOpenUpdater: () -> Unit = { stack.add(StorUpdaterRoute) }
                     val onOpenUsage: () -> Unit = { viewModel.onEvent(ChatUiEvent.PickerDismissed); stack.add(UsageRoute) }
                     val onOpenTerminal: (String) -> Unit = { threadId -> stack.add(TerminalRoute(threadId)) }
@@ -115,6 +119,7 @@ fun AppNavHost() {
                         composerDraft = viewModel.draft,
                         onEvent = onEvent,
                         onOpenFiles = onOpenFiles,
+                        onOpenFileLink = onOpenFileLink,
                         onOpenUpdater = onOpenUpdater,
                         onOpenUsage = onOpenUsage,
                         onOpenTerminal = onOpenTerminal,
@@ -126,13 +131,19 @@ fun AppNavHost() {
                 is WorkspaceFilesRoute -> NavEntry(route) {
                     val viewModel: WorkspaceFilesViewModel = koinViewModel()
                     val state by viewModel.state.collectAsStateWithLifecycle()
-                    LaunchedEffect(route.threadId) { viewModel.load(route.threadId) }
+                    val linkedPath = route.path
+                    LaunchedEffect(route) {
+                        if (linkedPath == null) viewModel.load(route.threadId) else viewModel.show(route.threadId, linkedPath, route.line)
+                    }
                     WorkspaceFilesScreen(
                         state = state,
                         onBack = { stack.removeLastOrNull() },
                         onRefresh = viewModel::refresh,
-                        onOpenFile = viewModel::open,
-                        onClosePreview = viewModel::closePreview,
+                        onOpenFile = { viewModel.open(it) },
+                        // A linked file has no tree behind it, so closing it returns to the chat.
+                        onClosePreview = {
+                            if (linkedPath == null) viewModel.closePreview() else stack.removeLastOrNull()
+                        },
                     )
                 }
 

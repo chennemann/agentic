@@ -2,6 +2,7 @@ package de.chennemann.agentic.streamingmarkdown
 
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.LinkInteractionListener
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontStyle
 import org.junit.jupiter.api.Assertions.assertEquals
@@ -183,6 +184,22 @@ class StreamingMarkdownTextTest {
         assertEquals("Open T3ChatScreen.kt", text.text)
         val annotation = text.getStringAnnotations(tag = "URL", start = 0, end = text.length).single()
         assertEquals("/workspace/My App/T3ChatScreen.kt:324", annotation.item)
+        assertTrue(text.getLinkAnnotations(start = 0, end = text.length).isEmpty())
+    }
+
+    @Test
+    fun makes_non_web_links_clickable_when_a_listener_is_given() {
+        val listener = LinkInteractionListener {}
+        val text = toAnnotatedString(
+            runs = listOf(MarkdownRun(MarkdownKind.TEXT, "See [App.kt](src/App.kt:12) and [docs](https://example.com)")),
+            linkListener = listener,
+        )
+
+        val links = text.getLinkAnnotations(start = 0, end = text.length).map { it.item }
+        val clickable = links.filterIsInstance<LinkAnnotation.Clickable>().single()
+        assertEquals("src/App.kt:12", clickable.tag)
+        assertEquals(listener, clickable.linkInteractionListener)
+        assertEquals("https://example.com", links.filterIsInstance<LinkAnnotation.Url>().single().url)
     }
 
     @Test

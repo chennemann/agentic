@@ -74,6 +74,22 @@ class WorkspaceFilesViewModelTest {
     }
 
     @Test
+    fun `show opens a linked file at its line without listing the workspace`() = runTest(dispatcher) {
+        val preview = WorkspaceFilePreview.Text("src/App.kt", "fun main() {}", 13, false, false)
+        val browser = FakeWorkspaceFilesBrowser(Result.failure(IllegalStateException("Not listed")), Result.success(preview))
+        val viewModel = WorkspaceFilesViewModel(browser)
+
+        viewModel.show("thread-1", "/worktree/src/App.kt", 12)
+        advanceUntilIdle()
+
+        assertEquals("/worktree/src/App.kt", browser.previewPath)
+        assertEquals("src/App.kt", viewModel.state.value.selectedPath)
+        assertEquals(12, viewModel.state.value.selectedLine)
+        assertEquals(preview, viewModel.state.value.preview)
+        assertEquals(null, viewModel.state.value.listing)
+    }
+
+    @Test
     fun `failed reload preserves the last successful preview`() = runTest(dispatcher) {
         val preview = WorkspaceFilePreview.Text("README.md", "hello", 5, false, true)
         val browser = FakeWorkspaceFilesBrowser(Result.success(listing()), Result.success(preview))
@@ -104,9 +120,9 @@ private class FakeWorkspaceFilesBrowser(
         return result.getOrThrow()
     }
 
-    override suspend fun preview(threadId: String, relativePath: String): WorkspaceFilePreview {
+    override suspend fun preview(threadId: String, path: String): WorkspaceFilePreview {
         this.threadId = threadId
-        previewPath = relativePath
+        previewPath = path
         return previewResult.getOrThrow()
     }
 

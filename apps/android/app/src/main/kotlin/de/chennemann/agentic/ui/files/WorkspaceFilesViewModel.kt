@@ -15,6 +15,7 @@ data class WorkspaceFilesUiState(
     val loading: Boolean = false,
     val errorMessage: String? = null,
     val selectedPath: String? = null,
+    val selectedLine: Int? = null,
     val preview: WorkspaceFilePreview? = null,
     val previewLoading: Boolean = false,
     val previewErrorMessage: String? = null,
@@ -24,11 +25,21 @@ class WorkspaceFilesViewModel(private val files: WorkspaceFilesBrowser) : ViewMo
     private val mutableState = MutableStateFlow(WorkspaceFilesUiState())
     val state: StateFlow<WorkspaceFilesUiState> = mutableState.asStateFlow()
     private var threadId: String? = null
+    private var shownLink: Triple<String, String, Int?>? = null
 
     fun load(threadId: String) {
         if (this.threadId == threadId && mutableState.value.listing != null) return
         this.threadId = threadId
         refresh()
+    }
+
+    /** Opens one file without listing the workspace, as when following a link from chat. */
+    fun show(threadId: String, path: String, line: Int?) {
+        val link = Triple(threadId, path, line)
+        if (shownLink == link) return
+        shownLink = link
+        this.threadId = threadId
+        open(path, line)
     }
 
     fun refresh() {
@@ -46,18 +57,19 @@ class WorkspaceFilesViewModel(private val files: WorkspaceFilesBrowser) : ViewMo
         }
     }
 
-    fun open(path: String) {
+    fun open(path: String, line: Int? = null) {
         val currentThreadId = threadId ?: return
         viewModelScope.launch {
             mutableState.value = mutableState.value.copy(
                 selectedPath = path,
+                selectedLine = line,
                 previewLoading = true,
                 previewErrorMessage = null,
                 preview = mutableState.value.preview?.takeIf { it.path == path },
             )
             runCatching { files.preview(currentThreadId, path) }
                 .onSuccess {
-                    mutableState.value = mutableState.value.copy(preview = it, previewLoading = false)
+                    mutableState.value = mutableState.value.copy(preview = it, selectedPath = it.path, previewLoading = false)
                 }
                 .onFailure {
                     mutableState.value = mutableState.value.copy(
@@ -71,6 +83,7 @@ class WorkspaceFilesViewModel(private val files: WorkspaceFilesBrowser) : ViewMo
     fun closePreview() {
         mutableState.value = mutableState.value.copy(
             selectedPath = null,
+            selectedLine = null,
             preview = null,
             previewLoading = false,
             previewErrorMessage = null,

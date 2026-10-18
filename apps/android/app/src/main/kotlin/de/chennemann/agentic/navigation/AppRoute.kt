@@ -17,7 +17,12 @@ data object ChatRoute : AppRoute
 data object StorUpdaterRoute : AppRoute
 
 @Serializable
-data class WorkspaceFilesRoute(val threadId: String) : AppRoute
+data class WorkspaceFilesRoute(
+    val threadId: String,
+    /** Opens this file directly, as linked from chat, instead of the file tree. */
+    val path: String? = null,
+    val line: Int? = null,
+) : AppRoute
 
 @Serializable
 data class TerminalRoute(val threadId: String, val script: ProjectScript? = null) : AppRoute

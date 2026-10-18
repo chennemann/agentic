@@ -34,7 +34,9 @@ sealed interface WorkspaceFilePreview {
 
 interface WorkspaceFilesBrowser {
     suspend fun list(threadId: String): WorkspaceFileListing
-    suspend fun preview(threadId: String, relativePath: String): WorkspaceFilePreview
+
+    /** Previews a file by its workspace-relative path or by an absolute path inside the workspace. */
+    suspend fun preview(threadId: String, path: String): WorkspaceFilePreview
 
     /** Loads an image a message refers to: an absolute path on the environment or one relative to the workspace. */
     suspend fun image(threadId: String, path: String): WorkspaceFilePreview.Image
@@ -56,9 +58,9 @@ class WorkspaceFilesService(
         )
     }
 
-    override suspend fun preview(threadId: String, relativePath: String): WorkspaceFilePreview {
-        require(isSafeRelativePath(relativePath)) { "This file path is invalid." }
+    override suspend fun preview(threadId: String, path: String): WorkspaceFilePreview {
         val context = context(threadId)
+        val relativePath = workspacePath(path, context.cwd)
         val type = previewType(relativePath)
         if (type is PreviewType.Unsupported) return WorkspaceFilePreview.Unsupported(relativePath, type.reason)
         if (type is PreviewType.Image) {
@@ -111,6 +113,18 @@ class WorkspaceFilesService(
 }
 
 private data class WorkspaceContext(val baseUrl: String, val token: String, val cwd: String)
+
+/** Resolves a path written by the user or an agent to one inside the workspace root [cwd]. */
+internal fun workspacePath(path: String, cwd: String): String {
+    val outside = "This file is outside the thread's workspace."
+    val relative = when {
+        isAbsoluteEnvironmentPath(path) -> requireNotNull(workspaceRelativeFilePath(path, cwd)) { outside }
+        path.startsWith("~/") || path.startsWith("~\\") -> throw IllegalArgumentException(outside)
+        else -> path.replace('\\', '/').removePrefix("./")
+    }
+    require(isSafeRelativePath(relative)) { "This file path is invalid." }
+    return relative
+}
 
 private val WindowsDrivePath = Regex("^[A-Za-z]:[\\\\/].*")
 
