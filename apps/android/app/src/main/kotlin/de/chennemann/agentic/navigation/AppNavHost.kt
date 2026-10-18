@@ -95,7 +95,7 @@ fun AppNavHost() {
                     }
                     val onOpenFiles: (String) -> Unit = { threadId -> stack.add(WorkspaceFilesRoute(threadId)) }
                     val onOpenFileLink: (String, FileLinkTarget) -> Unit = { threadId, target ->
-                        stack.add(WorkspaceFilesRoute(threadId, target.path, target.line))
+                        stack.add(WorkspaceFilesRoute(threadId, target.path, target.line, target.column))
                     }
                     val onOpenUpdater: () -> Unit = { stack.add(StorUpdaterRoute) }
                     val onOpenUsage: () -> Unit = { viewModel.onEvent(ChatUiEvent.PickerDismissed); stack.add(UsageRoute) }
@@ -133,13 +133,20 @@ fun AppNavHost() {
                     val state by viewModel.state.collectAsStateWithLifecycle()
                     val linkedPath = route.path
                     LaunchedEffect(route) {
-                        if (linkedPath == null) viewModel.load(route.threadId) else viewModel.show(route.threadId, linkedPath, route.line)
+                        if (linkedPath == null) {
+                            viewModel.load(route.threadId)
+                        } else {
+                            viewModel.show(route.threadId, FileLinkTarget(linkedPath, route.line, route.column))
+                        }
                     }
                     WorkspaceFilesScreen(
                         state = state,
                         onBack = { stack.removeLastOrNull() },
                         onRefresh = viewModel::refresh,
-                        onOpenFile = { viewModel.open(it) },
+                        onOpenFile = viewModel::open,
+                        onOpenFileLink = { target ->
+                            stack.add(WorkspaceFilesRoute(route.threadId, target.path, target.line, target.column))
+                        },
                         // A linked file has no tree behind it, so closing it returns to the chat.
                         onClosePreview = {
                             if (linkedPath == null) viewModel.closePreview() else stack.removeLastOrNull()

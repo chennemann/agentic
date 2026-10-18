@@ -36,6 +36,42 @@ class WorkspaceFileLinksTest {
     }
 
     @Test
+    fun `distinguishes inline code file paths from code and hostnames`() {
+        listOf(
+            "src\\main.ts" to "src/main.ts",
+            "C:\\Users\\demo\\image.png" to "C:\\Users\\demo\\image.png",
+            "\\\\server\\share\\image.png" to "\\\\server\\share\\image.png",
+            "conf.d/nginx.conf" to "conf.d/nginx.conf",
+            "script.pl:10" to "script.pl:10",
+            "node.meta" to null,
+            "Recorded evidence here: /tmp/image.png" to null,
+            "origin/main" to null,
+            "127.0.0.1:3000" to null,
+            "example.com/index.html" to null,
+            "example.pl/index.html" to null,
+            "z-ai/glm-5.3" to null,
+            "z-ai/glm-5.3:12" to null,
+            "python/3.12" to null,
+            "Qwen/Qwen2.5-Coder" to null,
+            "meta-llama/Llama-3.1-8B" to null,
+            "share/man/ls.1" to "share/man/ls.1",
+            "usr/lib/libfoo.so.1" to "usr/lib/libfoo.so.1",
+            "vendor/jquery-3.6.0.min.js" to "vendor/jquery-3.6.0.min.js",
+            "./models/glm-5.3" to "./models/glm-5.3",
+        ).forEach { (code, candidate) -> assertEquals(candidate, inlineCodeFilePathCandidate(code), code) }
+    }
+
+    @Test
+    fun `resolves links inside a document against its directory`() {
+        assertEquals(FileLinkTarget("docs/guide/setup.md", 4), resolveDocumentLink(FileLinkTarget("setup.md", 4), "docs/guide/README.md"))
+        assertEquals(FileLinkTarget("docs/api.md"), resolveDocumentLink(FileLinkTarget("../api.md"), "docs/guide/README.md"))
+        assertEquals(FileLinkTarget("src/App.kt"), resolveDocumentLink(FileLinkTarget("./src/App.kt"), "README.md"))
+        assertEquals(FileLinkTarget("../outside.md"), resolveDocumentLink(FileLinkTarget("../outside.md"), "README.md"))
+        assertEquals(FileLinkTarget("/repo/a.md"), resolveDocumentLink(FileLinkTarget("/repo/a.md"), "docs/README.md"))
+        assertEquals(FileLinkTarget("~/a.md"), resolveDocumentLink(FileLinkTarget("~/a.md"), "docs/README.md"))
+    }
+
+    @Test
     fun `rejects links that are not files`() {
         listOf(
             "", "#anchor", "//cdn.example.com/clip.mp4", "https://example.com/docs", "mailto:someone@example.com",

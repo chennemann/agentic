@@ -203,6 +203,25 @@ class StreamingMarkdownTextTest {
     }
 
     @Test
+    fun links_inline_code_that_names_a_destination() {
+        val listener = LinkInteractionListener {}
+        val text = toAnnotatedString(
+            runs = listOf(
+                MarkdownRun(MarkdownKind.TEXT, "Edit "),
+                MarkdownRun(MarkdownKind.INLINE_CODE, "src/App.kt:3"),
+                MarkdownRun(MarkdownKind.TEXT, " not "),
+                MarkdownRun(MarkdownKind.INLINE_CODE, "val x"),
+            ),
+            linkListener = listener,
+            inlineCodeDestination = { code -> code.takeIf { '/' in it } },
+        )
+
+        val link = text.getLinkAnnotations(start = 0, end = text.length).single()
+        assertEquals("src/App.kt:3", (link.item as LinkAnnotation.Clickable).tag)
+        assertEquals("src/App.kt:3", text.text.substring(link.start, link.end))
+    }
+
+    @Test
     fun renders_incomplete_streamed_link_as_literal_text() {
         val content = "["
         val runs = StreamingMarkdownState(streaming = true).update(content)

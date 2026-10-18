@@ -42,11 +42,17 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
-/**
- * Receives taps on links that are not web, mail or phone URLs, such as file paths. Screens provide it once
- * so every markdown text below them can resolve its own link destinations.
- */
-val LocalMarkdownLinkHandler = compositionLocalOf<((String) -> Unit)?> { null }
+/** Resolves and opens destinations that markdown cannot open on its own, such as file paths. */
+interface MarkdownLinkHandler {
+    /** Called for taps on links that are not web, mail or phone URLs, and on linked inline code. */
+    fun onLinkClick(href: String)
+
+    /** The destination an inline code span names, such as a file path, or null to leave it as plain code. */
+    fun inlineCodeDestination(code: String): String? = null
+}
+
+/** Screens provide a handler once so every markdown text below them can open its own link destinations. */
+val LocalMarkdownLinkHandler = compositionLocalOf<MarkdownLinkHandler?> { null }
 
 @Composable
 fun StreamingMarkdownText(
@@ -64,14 +70,19 @@ fun StreamingMarkdownText(
     blockCode: SpanStyle = StreamingMarkdownTextDefaults.blockCodeStyle(),
     codeLexerRegistry: CodeLexerRegistry = CodeLexerRegistry.Default,
     onCopyCode: ((String) -> Unit)? = null,
-    onLinkClick: ((String) -> Unit)? = LocalMarkdownLinkHandler.current,
+    linkHandler: MarkdownLinkHandler? = LocalMarkdownLinkHandler.current,
 ) {
-    val currentLinkClick by rememberUpdatedState(onLinkClick)
-    val linkListener = remember(onLinkClick != null) {
-        if (onLinkClick == null) {
+    val currentLinkHandler by rememberUpdatedState(linkHandler)
+    val links = remember(linkHandler != null) {
+        if (linkHandler == null) {
             null
         } else {
-            LinkInteractionListener { link -> (link as? LinkAnnotation.Clickable)?.tag?.let { currentLinkClick?.invoke(it) } }
+            MarkdownLinks(
+                listener = LinkInteractionListener { link ->
+                    (link as? LinkAnnotation.Clickable)?.tag?.let { currentLinkHandler?.onLinkClick(it) }
+                },
+                inlineCodeDestination = { code -> currentLinkHandler?.inlineCodeDestination(code) },
+            )
         }
     }
     val markdownInlineCode = StreamingMarkdownTextDefaults.inlineCodeStyle().merge(inlineCode)
@@ -93,7 +104,7 @@ fun StreamingMarkdownText(
     val copyCode = onCopyCode ?: { value: String ->
         clipboard.setPrimaryClip(ClipData.newPlainText("Code", value))
     }
-    CompositionLocalProvider(LocalLinkListener provides linkListener) {
+    CompositionLocalProvider(LocalMarkdownLinks provides links) {
         MarkdownBlocksColumn(
             blocks = blocks,
             modifier = modifier,
@@ -113,7 +124,12 @@ fun StreamingMarkdownText(
     }
 }
 
-private val LocalLinkListener = compositionLocalOf<LinkInteractionListener?> { null }
+private class MarkdownLinks(
+    val listener: LinkInteractionListener,
+    val inlineCodeDestination: (String) -> String?,
+)
+
+private val LocalMarkdownLinks = compositionLocalOf<MarkdownLinks?> { null }
 
 @Composable
 private fun MarkdownBlocksColumn(
@@ -197,9 +213,9 @@ private fun MarkdownRunsText(
     link: SpanStyle,
     blockCode: SpanStyle,
 ) {
-    val linkListener = LocalLinkListener.current
-    val text = remember(runs, inlineCode, emphasis, strong, link, blockCode, linkListener) {
-        toAnnotatedString(runs, inlineCode, emphasis, strong, link, blockCode, linkListener)
+    val links = LocalMarkdownLinks.current
+    val text = remember(runs, inlineCode, emphasis, strong, link, blockCode, links) {
+        toAnnotatedString(runs, inlineCode, emphasis, strong, link, blockCode, links?.listener, links?.inlineCodeDestination)
     }
     Text(text, modifier, color, style = style, maxLines = maxLines, overflow = overflow)
 }
@@ -473,6 +489,8 @@ fun toAnnotatedString(
     ),
     /** Makes links that are not web, mail or phone URLs clickable, tagged with their destination. */
     linkListener: LinkInteractionListener? = null,
+    /** Names the destination of an inline code span, which then becomes an underlined link. */
+    inlineCodeDestination: ((String) -> String?)? = null,
 ): AnnotatedString = buildAnnotatedString {
     linkify(decorate(runs)).forEach { run ->
         val start = length
@@ -484,6 +502,11 @@ fun toAnnotatedString(
             pushStyle(inlineCode)
             append(run.value)
             pop()
+            val destination = linkListener?.let { inlineCodeDestination?.invoke(run.value) }
+            if (destination != null) {
+                addStyle(SpanStyle(textDecoration = TextDecoration.Underline), start, length)
+                addLink(LinkAnnotation.Clickable(tag = destination, linkInteractionListener = linkListener), start, length)
+            }
             return@forEach
         }
         if (run.kind == MarkdownKind.EMPHASIS) {

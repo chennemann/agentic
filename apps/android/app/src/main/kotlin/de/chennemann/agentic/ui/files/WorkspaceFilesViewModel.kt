@@ -2,6 +2,7 @@ package de.chennemann.agentic.ui.files
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import de.chennemann.agentic.domain.orchestration.FileLinkTarget
 import de.chennemann.agentic.domain.orchestration.WorkspaceFileListing
 import de.chennemann.agentic.domain.orchestration.WorkspaceFilesBrowser
 import de.chennemann.agentic.domain.orchestration.WorkspaceFilePreview
@@ -16,6 +17,7 @@ data class WorkspaceFilesUiState(
     val errorMessage: String? = null,
     val selectedPath: String? = null,
     val selectedLine: Int? = null,
+    val selectedColumn: Int? = null,
     val preview: WorkspaceFilePreview? = null,
     val previewLoading: Boolean = false,
     val previewErrorMessage: String? = null,
@@ -25,7 +27,7 @@ class WorkspaceFilesViewModel(private val files: WorkspaceFilesBrowser) : ViewMo
     private val mutableState = MutableStateFlow(WorkspaceFilesUiState())
     val state: StateFlow<WorkspaceFilesUiState> = mutableState.asStateFlow()
     private var threadId: String? = null
-    private var shownLink: Triple<String, String, Int?>? = null
+    private var shownLink: Pair<String, FileLinkTarget>? = null
 
     fun load(threadId: String) {
         if (this.threadId == threadId && mutableState.value.listing != null) return
@@ -34,12 +36,12 @@ class WorkspaceFilesViewModel(private val files: WorkspaceFilesBrowser) : ViewMo
     }
 
     /** Opens one file without listing the workspace, as when following a link from chat. */
-    fun show(threadId: String, path: String, line: Int?) {
-        val link = Triple(threadId, path, line)
+    fun show(threadId: String, target: FileLinkTarget) {
+        val link = threadId to target
         if (shownLink == link) return
         shownLink = link
         this.threadId = threadId
-        open(path, line)
+        open(target)
     }
 
     fun refresh() {
@@ -57,12 +59,16 @@ class WorkspaceFilesViewModel(private val files: WorkspaceFilesBrowser) : ViewMo
         }
     }
 
-    fun open(path: String, line: Int? = null) {
+    fun open(path: String) = open(FileLinkTarget(path))
+
+    private fun open(target: FileLinkTarget) {
         val currentThreadId = threadId ?: return
+        val path = target.path
         viewModelScope.launch {
             mutableState.value = mutableState.value.copy(
                 selectedPath = path,
-                selectedLine = line,
+                selectedLine = target.line,
+                selectedColumn = target.column,
                 previewLoading = true,
                 previewErrorMessage = null,
                 preview = mutableState.value.preview?.takeIf { it.path == path },
@@ -84,6 +90,7 @@ class WorkspaceFilesViewModel(private val files: WorkspaceFilesBrowser) : ViewMo
         mutableState.value = mutableState.value.copy(
             selectedPath = null,
             selectedLine = null,
+            selectedColumn = null,
             preview = null,
             previewLoading = false,
             previewErrorMessage = null,

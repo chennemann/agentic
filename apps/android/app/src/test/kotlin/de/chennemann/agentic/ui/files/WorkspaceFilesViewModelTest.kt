@@ -1,5 +1,6 @@
 package de.chennemann.agentic.ui.files
 
+import de.chennemann.agentic.domain.orchestration.FileLinkTarget
 import de.chennemann.agentic.domain.orchestration.WorkspaceFileEntry
 import de.chennemann.agentic.domain.orchestration.WorkspaceFileListing
 import de.chennemann.agentic.domain.orchestration.WorkspaceFilePreview
@@ -79,12 +80,13 @@ class WorkspaceFilesViewModelTest {
         val browser = FakeWorkspaceFilesBrowser(Result.failure(IllegalStateException("Not listed")), Result.success(preview))
         val viewModel = WorkspaceFilesViewModel(browser)
 
-        viewModel.show("thread-1", "/worktree/src/App.kt", 12)
+        viewModel.show("thread-1", FileLinkTarget("/worktree/src/App.kt", line = 12, column = 5))
         advanceUntilIdle()
 
         assertEquals("/worktree/src/App.kt", browser.previewPath)
         assertEquals("src/App.kt", viewModel.state.value.selectedPath)
         assertEquals(12, viewModel.state.value.selectedLine)
+        assertEquals(5, viewModel.state.value.selectedColumn)
         assertEquals(preview, viewModel.state.value.preview)
         assertEquals(null, viewModel.state.value.listing)
     }

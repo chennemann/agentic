@@ -22,6 +22,7 @@ data class WorkspaceFilesRoute(
     /** Opens this file directly, as linked from chat, instead of the file tree. */
     val path: String? = null,
     val line: Int? = null,
+    val column: Int? = null,
 ) : AppRoute
 
 @Serializable

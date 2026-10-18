@@ -118,7 +118,7 @@ import de.chennemann.agentic.icons.Paperclip
 import de.chennemann.agentic.icons.Rename
 import de.chennemann.agentic.domain.attachments.formatByteSize
 import de.chennemann.agentic.domain.orchestration.FileLinkTarget
-import de.chennemann.agentic.domain.orchestration.parseMarkdownFileLink
+import de.chennemann.agentic.ui.files.FileLinkHandler
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.StateFlow
@@ -145,11 +145,7 @@ fun T3ChatScreen(
     val currentOpenFileLink by rememberUpdatedState(onOpenFileLink)
     // Stable so streaming recompositions do not invalidate every markdown text that reads it.
     val openFileLink = remember {
-        { href: String ->
-            val threadId = currentThreadId
-            val target = parseMarkdownFileLink(href)
-            if (threadId != null && target != null) currentOpenFileLink(threadId, target)
-        }
+        FileLinkHandler { target -> currentThreadId?.let { currentOpenFileLink(it, target) } }
     }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     var imageViewer by remember { mutableStateOf<ImageViewerRequest?>(null) }

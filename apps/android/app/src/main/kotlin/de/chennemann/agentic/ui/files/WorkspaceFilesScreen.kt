@@ -41,12 +41,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -71,7 +73,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import de.chennemann.agentic.domain.orchestration.FileLinkTarget
 import de.chennemann.agentic.domain.orchestration.WorkspaceFilePreview
+import de.chennemann.agentic.domain.orchestration.resolveDocumentLink
 import de.chennemann.agentic.icons.Check
 import de.chennemann.agentic.icons.ChevronDown
 import de.chennemann.agentic.icons.FilterList
@@ -93,6 +97,7 @@ fun WorkspaceFilesScreen(
     onOpenFile: (String) -> Unit,
     onClosePreview: () -> Unit,
     modifier: Modifier = Modifier,
+    onOpenFileLink: (FileLinkTarget) -> Unit = {},
 ) {
     val cwd = state.listing?.cwd
     var query by rememberSaveable { mutableStateOf("") }
@@ -171,7 +176,7 @@ fun WorkspaceFilesScreen(
     ) { padding ->
         Column(Modifier.fillMaxSize().padding(padding)) {
             if (state.selectedPath != null) {
-                WorkspaceFilePreviewContent(state)
+                WorkspaceFilePreviewContent(state, onOpenFileLink)
                 return@Column
             }
             OutlinedTextField(
@@ -274,7 +279,7 @@ private fun FileTreeRowItem(row: FileTreeRow, colors: FileTreeColors, onClick: (
 }
 
 @Composable
-private fun WorkspaceFilePreviewContent(state: WorkspaceFilesUiState) {
+private fun WorkspaceFilePreviewContent(state: WorkspaceFilesUiState, onOpenFileLink: (FileLinkTarget) -> Unit) {
     Column(Modifier.fillMaxSize()) {
         state.previewErrorMessage?.let {
             Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(16.dp))
@@ -311,11 +316,15 @@ private fun WorkspaceFilePreviewContent(state: WorkspaceFilesUiState) {
                     )
                 }
                 if (preview.markdown) {
+                    val currentOpenFileLink by rememberUpdatedState(onOpenFileLink)
+                    val linkHandler = remember(preview.path) {
+                        FileLinkHandler { target -> currentOpenFileLink(resolveDocumentLink(target, preview.path)) }
+                    }
                     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp)) {
-                        StreamingMarkdownText(preview.contents)
+                        StreamingMarkdownText(preview.contents, streaming = false, linkHandler = linkHandler)
                     }
                 } else {
-                    CodeView(preview.path, preview.contents, state.selectedLine)
+                    CodeView(preview.path, preview.contents, state.selectedLine, state.selectedColumn)
                 }
             }
             is WorkspaceFilePreview.Unsupported -> Text(preview.reason, modifier = Modifier.padding(24.dp))
@@ -326,10 +335,10 @@ private fun WorkspaceFilePreviewContent(state: WorkspaceFilesUiState) {
 
 /**
  * Line-numbered, syntax-highlighted source with a fixed gutter and shared horizontal scrolling. A [line]
- * is highlighted and opened with a few lines of context above it.
+ * is highlighted and opened with a few lines of context above it, scrolled sideways so [column] shows.
  */
 @Composable
-private fun CodeView(path: String, contents: String, line: Int?) {
+private fun CodeView(path: String, contents: String, line: Int?, column: Int?) {
     val scheme = MaterialTheme.colorScheme
     val syntax = rememberCodeSyntaxStyles()
     val lines by produceState<List<AnnotatedString>?>(null, path, contents, syntax) {
@@ -368,6 +377,13 @@ private fun CodeView(path: String, contents: String, line: Int?) {
         val previous = offset
         offset = (offset - delta).coerceIn(0f, maxOffset)
         previous - offset
+    }
+    var columnRevealed by remember(path, line, column) { mutableStateOf(column == null) }
+    LaunchedEffect(viewportWidth, maxOffset, columnRevealed) {
+        if (columnRevealed || viewportWidth == 0 || column == null) return@LaunchedEffect
+        val contentWidth = viewportWidth - with(density) { gutterWidth.toPx() }
+        offset = ((column - 1) * charWidth - contentWidth / 3).coerceIn(0f, maxOffset)
+        columnRevealed = true
     }
     val targetIndex = line?.minus(1)?.takeIf { it in current.indices }
     val listState = rememberLazyListState(initialFirstVisibleItemIndex = ((targetIndex ?: 0) - 3).coerceAtLeast(0))
