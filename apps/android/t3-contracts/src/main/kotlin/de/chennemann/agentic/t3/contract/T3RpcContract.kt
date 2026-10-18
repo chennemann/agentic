@@ -30,7 +30,8 @@ data class ExecutionEnvironmentDescriptor(
     val label: String,
     val platform: EnvironmentPlatform,
     val serverVersion: String,
-    val capabilities: ExecutionEnvironmentCapabilities
+    val capabilities: ExecutionEnvironmentCapabilities,
+    val orchestrationProtocolVersion: Int = 1
 )
 
 @Serializable
@@ -87,8 +88,6 @@ data class ServerConfig(
     val settings: ServerSettings = ServerSettings(),
     val shellResumeCompletionMarker: Boolean = false,
     val threadResumeCompletionMarker: Boolean = false,
-    val threadSnapshotPagination: Boolean = false,
-    val reasoningMessages: Boolean = false,
     val scratchWorkspaceRoot: String? = null,
     val usageLimitSources: List<UsageLimitSource> = emptyList(),
     val newProjectsRoot: String? = null
@@ -393,7 +392,8 @@ data class OrchestrationShellSnapshot(
     val projects: List<OrchestrationProject>,
     val threads: List<OrchestrationThreadShell>,
     val snapshotSequence: Long,
-    val updatedAt: String
+    val updatedAt: String = "",
+    val archivedSequence: Long? = null
 )
 
 @OptIn(ExperimentalSerializationApi::class)
@@ -402,43 +402,54 @@ data class OrchestrationShellSnapshot(
 sealed interface OrchestrationShellStreamItem {
     @Serializable
     @SerialName("snapshot")
-    data class Snapshot(val snapshot: OrchestrationShellSnapshot) : OrchestrationShellStreamItem
+    data class Snapshot(val snapshot: OrchestrationShellSnapshot, val repositoryIdentityRefresh: Boolean = false) :
+        OrchestrationShellStreamItem
 
     @Serializable
-    @SerialName("project-upserted")
+    @SerialName("archive-snapshot")
+    data class ArchiveSnapshot(val sequence: Long, val threads: List<OrchestrationThreadShell>) :
+        OrchestrationShellStreamItem
+
+    @Serializable
+    @SerialName("archive-change")
+    data class ArchiveChange(val sequence: Long, val threadId: String, val thread: OrchestrationThreadShell? = null) :
+        OrchestrationShellStreamItem
+
+    @Serializable
+    @SerialName("project.updated")
     data class ProjectUpserted(val sequence: Long, val project: OrchestrationProject) : OrchestrationShellStreamItem
 
     @Serializable
-    @SerialName("project-removed")
+    @SerialName("project.removed")
     data class ProjectRemoved(val sequence: Long, val projectId: String) : OrchestrationShellStreamItem
 
     @Serializable
-    @SerialName("thread-upserted")
+    @SerialName("thread.updated")
     data class ThreadUpserted(val sequence: Long, val thread: OrchestrationThreadShell) : OrchestrationShellStreamItem
 
     @Serializable
-    @SerialName("thread-removed")
+    @SerialName("thread.removed")
     data class ThreadRemoved(val sequence: Long, val threadId: String) : OrchestrationShellStreamItem
 
     @Serializable
     @SerialName("synchronized")
     data object Synchronized : OrchestrationShellStreamItem
+
+    @Serializable
+    @SerialName("ignored")
+    data class Ignored(val sequence: Long) : OrchestrationShellStreamItem
 }
 
 @Serializable
 data class OrchestrationThreadDetailSnapshot(
     val snapshotSequence: Long,
     val thread: OrchestrationThreadDetail,
-    val page: OrchestrationThreadDetailPage? = null
+    val page: OrchestrationThreadDetailPage? = null,
+    val projection: V2Projection
 )
 
 @Serializable
-data class OrchestrationThreadDetailPage(
-    val beforeCursor: String?,
-    val hasMore: Boolean,
-    val snapshotSequence: Long,
-    val threadSequence: Long? = null
-)
+data class OrchestrationThreadDetailPage(val beforeCursor: String?, val hasMore: Boolean, val snapshotSequence: Long)
 
 @Serializable
 data class OrchestrationThreadDetail(
@@ -524,32 +535,17 @@ data class ProposedPlan(
     val updatedAt: String
 )
 
-@Serializable
-data class OrchestrationEvent(
-    val aggregateId: String,
-    val aggregateKind: String,
-    val eventId: String,
-    val commandId: String,
-    val correlationId: String,
-    val causationEventId: String? = null,
-    val sequence: Long,
-    val type: String,
-    val payload: JsonObject,
-    val metadata: JsonObject = JsonObject(emptyMap()),
-    val occurredAt: String
-)
-
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
 @JsonClassDiscriminator("kind")
 sealed interface OrchestrationThreadStreamItem {
     @Serializable
-    @SerialName("snapshot")
-    data class Snapshot(val snapshot: OrchestrationThreadDetailSnapshot) : OrchestrationThreadStreamItem
+    @SerialName("event")
+    data class Event(val sequence: Long, val event: V2EventPayload) : OrchestrationThreadStreamItem
 
     @Serializable
-    @SerialName("event")
-    data class Event(val event: OrchestrationEvent) : OrchestrationThreadStreamItem
+    @SerialName("snapshot")
+    data class Snapshot(val snapshot: OrchestrationThreadDetailSnapshot) : OrchestrationThreadStreamItem
 
     @Serializable
     @SerialName("synchronized")

@@ -78,6 +78,11 @@ SELECT sequence, payload_json FROM projection_cache
 WHERE environment_id = ? AND cache_kind = ? AND cache_key = ?
 LIMIT 1;
 
+selectProjectionSchemaVersion:
+SELECT schema_version FROM projection_cache
+WHERE environment_id = ? AND cache_kind = ? AND cache_key = ?
+LIMIT 1;
+
 selectProjectionPayloadByteCount:
 SELECT length(CAST(payload_json AS BLOB)) FROM projection_cache
 WHERE environment_id = ? AND cache_kind = ? AND cache_key = ?

@@ -65,7 +65,7 @@
     }
   },
   {
-    "kind": "project-upserted",
+    "kind": "project.updated",
     "project": {
       "createdAt": "2026-01-01T00:00:00.000Z",
       "defaultModelSelection": {
@@ -81,12 +81,12 @@
     "sequence": 41
   },
   {
-    "kind": "project-removed",
+    "kind": "project.removed",
     "projectId": "project-golden",
     "sequence": 42
   },
   {
-    "kind": "thread-upserted",
+    "kind": "thread.updated",
     "sequence": 43,
     "thread": {
       "archivedAt": null,
@@ -132,7 +132,7 @@
     }
   },
   {
-    "kind": "thread-removed",
+    "kind": "thread.removed",
     "sequence": 44,
     "threadId": "thread-golden"
   },

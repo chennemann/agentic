@@ -34,7 +34,6 @@ import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.ServerAuthDescriptor
 import de.chennemann.agentic.t3.contract.ThreadSession
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailPage
-import de.chennemann.agentic.t3.contract.OrchestrationEvent
 import de.chennemann.agentic.t3.contract.OrchestrationProject
 import de.chennemann.agentic.t3.contract.ProjectCreateNewResult
 import de.chennemann.agentic.t3.contract.ServerConfigStreamEvent
@@ -57,8 +56,8 @@ import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assertions.assertFalse
 import org.junit.jupiter.api.Test
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.JsonObject
-import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.encodeToJsonElement
 import de.chennemann.agentic.t3.contract.T3Json
 
@@ -95,34 +94,28 @@ class ConnectionSupervisorTest {
     }
 
     @Test
-    fun `history waits for the thread watermark before merging an older page`() = runTest {
+    fun `history merges without waiting for the removed v1 thread watermark`() = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         AgenticDb.Schema.create(driver)
         val environment = savedEnvironment("one")
         val repository = SqlOrchestrationRepository(AgenticDb(driver), StandardTestDispatcher(testScheduler), backgroundScope)
         val transport = SupervisorTransport()
         repository.loadCached(environment.id)
-        repository.setClientConfig(environment.id, transport.serverConfig(environment.baseUrl, "token").copy(threadSnapshotPagination = true), ProjectionSource.LIVE)
+        repository.setClientConfig(environment.id, transport.serverConfig(environment.baseUrl, "token"), ProjectionSource.LIVE)
         repository.focusThread(environment.id, "thread-one")
-        val initial = threadSnapshot("thread-one").copy(snapshotSequence = 10, page = OrchestrationThreadDetailPage("cursor", true, 10, 10))
+        val initial = threadSnapshot("thread-one").copy(snapshotSequence = 10, page = OrchestrationThreadDetailPage("cursor", true, 10))
         repository.setThreadSnapshot(environment.id, initial, ProjectionSource.LIVE)
         val rpc = object : T3RpcClient by transport {
-            override suspend fun threadHistory(baseUrl: String, bearerToken: String, threadId: String, beforeCursor: String?, turnLimit: Int, reasoningMessages: Boolean) =
-                initial.copy(snapshotSequence = 12, page = OrchestrationThreadDetailPage("older-cursor", true, 12, 11))
+            override suspend fun threadHistory(baseUrl: String, bearerToken: String, threadId: String, beforeCursor: String?, projection: de.chennemann.agentic.t3.contract.V2Projection?) =
+                initial.copy(snapshotSequence = 12, page = OrchestrationThreadDetailPage("older-cursor", true, 12))
         }
         val service = ThreadHistoryService(SupervisorEnvironmentRepository(environment), SupervisorCredentialStore("token"), repository, rpc)
         val loading = async { service.loadOlder() }
         runCurrent()
-        assertFalse(loading.isCompleted)
-        assertEquals("cursor", repository.focusedThread.value.value?.page?.beforeCursor)
-        repository.applyThreadItem(environment.id, "thread-one", OrchestrationThreadStreamItem.Event(OrchestrationEvent(
-            type = "thread.session-set", sequence = 11, aggregateId = "thread-one", occurredAt = "2026-01-01T00:00:00Z",
-            aggregateKind = "thread", eventId = "event", commandId = "command", correlationId = "correlation",
-            payload = JsonObject(mapOf("session" to JsonNull)),
-        )))
+        assertTrue(loading.isCompleted)
         loading.await()
         assertEquals("older-cursor", repository.focusedThread.value.value?.page?.beforeCursor)
-        assertEquals(11, repository.focusedThread.value.sequence)
+        assertEquals(10, repository.focusedThread.value.sequence)
         driver.close()
     }
 
@@ -660,7 +653,7 @@ private class RetryCommandClient(
         bearerToken: String,
         threadId: String,
         afterSequence: Long?,
-        requestCompletionMarker: Boolean, turnLimit: Int?, reasoningMessages: Boolean
+        requestCompletionMarker: Boolean
     ): Flow<OrchestrationThreadStreamItem> = flowOf()
 }
 
@@ -815,7 +808,7 @@ private class SupervisorTransport(
         bearerToken: String,
         threadId: String,
         afterSequence: Long?,
-        requestCompletionMarker: Boolean, turnLimit: Int?, reasoningMessages: Boolean
+        requestCompletionMarker: Boolean
     ): Flow<OrchestrationThreadStreamItem> {
         threadStreamRequests++
         threadAfterSequences += afterSequence
@@ -956,6 +949,10 @@ private fun descriptor(id: String): ExecutionEnvironmentDescriptor = ExecutionEn
 private fun threadSnapshot(threadId: String): OrchestrationThreadDetailSnapshot =
     OrchestrationThreadDetailSnapshot(
         snapshotSequence = 0,
+        projection = de.chennemann.agentic.t3.contract.V2Projection(
+            T3Json.parseToJsonElement("""{"id":"$threadId","projectId":"project","title":"$threadId","createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z"}""").jsonObject,
+            updatedAt = "2026-01-01T00:00:00Z",
+        ),
         thread = OrchestrationThreadDetail(
             id = threadId,
             projectId = "project",

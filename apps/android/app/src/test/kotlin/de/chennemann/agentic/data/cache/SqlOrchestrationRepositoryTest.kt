@@ -20,6 +20,7 @@ import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import org.junit.jupiter.api.Assertions.assertEquals
 import org.junit.jupiter.api.Assertions.assertNull
@@ -28,6 +29,21 @@ import org.junit.jupiter.api.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class SqlOrchestrationRepositoryTest {
     @Test
+    fun `v1 cache cursors are not resumed after a protocol upgrade`() = runTest {
+        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
+        AgenticDb.Schema.create(driver)
+        val database = AgenticDb(driver)
+        database.agenticT3Queries.upsertProjection(EnvironmentId, "shell", "current", 1, 999,
+            T3Json.encodeToString(shellSnapshot()), 1)
+        database.agenticT3Queries.upsertPreference(EnvironmentId, "composer-draft-v1:thread", "unsent text")
+        val repository = SqlOrchestrationRepository(database, StandardTestDispatcher(testScheduler), backgroundScope)
+        repository.loadCached(EnvironmentId)
+        assertNull(repository.shell.value.sequence)
+        assertEquals("unsent text", database.agenticT3Queries.selectPreference(EnvironmentId, "composer-draft-v1:thread").executeAsOne())
+        driver.close()
+    }
+
+    @Test
     fun `older history persists its cursor and rejects replaced or differently focused snapshots`() = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         AgenticDb.Schema.create(driver)
@@ -35,7 +51,7 @@ class SqlOrchestrationRepositoryTest {
         val repository = SqlOrchestrationRepository(database, StandardTestDispatcher(testScheduler), backgroundScope)
         repository.loadCached(EnvironmentId)
         repository.focusThread(EnvironmentId, ThreadId)
-        val page = de.chennemann.agentic.t3.contract.OrchestrationThreadDetailPage("cursor", true, 10, 10)
+        val page = de.chennemann.agentic.t3.contract.OrchestrationThreadDetailPage("cursor", true, 10)
         val initial = threadSnapshot().copy(snapshotSequence = 10, page = page)
         repository.setThreadSnapshot(EnvironmentId, initial, ProjectionSource.LIVE)
         val generation = repository.focusedThread.value.historyGeneration
@@ -280,7 +296,7 @@ class SqlOrchestrationRepositoryTest {
             EnvironmentId,
             "thread",
             ThreadId,
-            1,
+            2,
             1,
             T3Json.encodeToString(oversizedThreadSnapshot()),
             1,
@@ -367,6 +383,10 @@ class SqlOrchestrationRepositoryTest {
         checkpoints: List<JsonElement> = emptyList(),
     ) = OrchestrationThreadDetailSnapshot(
         snapshotSequence = 1,
+        projection = de.chennemann.agentic.t3.contract.V2Projection(
+            T3Json.parseToJsonElement("""{"id":"$id","projectId":"$ProjectId","title":"Thread","createdAt":"$Timestamp","updatedAt":"$Timestamp"}""").jsonObject,
+            updatedAt = Timestamp,
+        ),
         thread = OrchestrationThreadDetail(
             id = id,
             projectId = ProjectId,

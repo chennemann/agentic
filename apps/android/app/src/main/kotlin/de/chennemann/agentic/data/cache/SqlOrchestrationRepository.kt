@@ -146,7 +146,7 @@ class SqlOrchestrationRepository(
             val reduction = ShellProjectionReducer.reduce(mutableShell.value, item)
             if (reduction is Reduction.Applied) {
                 mutableShell.value = reduction.state
-                reconcileFocusedThread(environmentId)
+                if (mutableShell.value.sequence != null) reconcileFocusedThread(environmentId)
                 reduction.state.value?.let {
                     scheduleCache(
                         environmentId,
@@ -420,6 +420,8 @@ class SqlOrchestrationRepository(
         kind: String,
         key: String,
     ): CachedProjection? {
+        val version = database.agenticT3Queries.selectProjectionSchemaVersion(environmentId, kind, key).executeAsOneOrNull()
+        if (version != CacheSchemaVersion) return null
         val payloadByteCount = database.agenticT3Queries.selectProjectionPayloadByteCount(
             environmentId,
             kind,
@@ -521,7 +523,7 @@ class SqlOrchestrationRepository(
     )
 
     private companion object {
-        const val CacheSchemaVersion = 1L
+        const val CacheSchemaVersion = 2L
         const val CacheWriteDebounceMillis = 500L
         // Leave headroom below Android's commonly 2 MiB CursorWindow limit.
         const val MaxCachedProjectionPayloadBytes = 1_500_000

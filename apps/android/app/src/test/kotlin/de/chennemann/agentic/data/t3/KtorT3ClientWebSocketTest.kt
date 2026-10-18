@@ -135,7 +135,7 @@ class KtorT3ClientWebSocketTest {
                 bearerToken = "access-token",
                 afterSequence = 7,
                 requestCompletionMarker = true,
-            ).first()
+            ).first { it is OrchestrationShellStreamItem.Synchronized }
         }
 
         assertEquals("environment-1", config.environment.environmentId)
@@ -146,8 +146,13 @@ class KtorT3ClientWebSocketTest {
         val webSocketRequest = server.takeRequest(1, TimeUnit.SECONDS)
         assertEquals("/api/auth/websocket-ticket", ticketRequest?.path)
         assertEquals("Bearer access-token", ticketRequest?.getHeader("authorization"))
-        assertEquals("/ws?wsTicket=ticket-value", webSocketRequest?.path)
-        val rpcRequests = List(7) { requests.poll(1, TimeUnit.SECONDS) }
+        assertEquals("/ws?wsTicket=ticket-value&orchestrationProtocol=2", webSocketRequest?.path)
+        val rpcRequests = buildList {
+            while (size < 7) {
+                val request = requireNotNull(requests.poll(1, TimeUnit.SECONDS))
+                if (request["tag"]?.jsonPrimitive?.content != "orchestration.subscribeArchivedShell") add(request)
+            }
+        }
         assertEquals(
             listOf(
                 "server.getConfig",

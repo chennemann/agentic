@@ -12,8 +12,12 @@ import de.chennemann.agentic.t3.contract.ServerConfigStreamEvent
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import de.chennemann.agentic.t3.contract.ProjectCreateNewResult
 import de.chennemann.agentic.t3.contract.ProjectEnsureScratchResult
-import de.chennemann.agentic.t3.contract.T3CommandJson
 import de.chennemann.agentic.t3.contract.T3Json
+import de.chennemann.agentic.t3.contract.V2Orchestration
+import de.chennemann.agentic.t3.contract.V2Commands
+import de.chennemann.agentic.t3.contract.V2Projection
+import de.chennemann.agentic.t3.contract.V2VisibleItem
+import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailPage
 import de.chennemann.agentic.t3.contract.TokenExchangeResponse
 import de.chennemann.agentic.t3.contract.VcsListRefsResult
 import io.ktor.client.HttpClient
@@ -24,6 +28,7 @@ import io.ktor.client.request.accept
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.forms.submitForm
 import io.ktor.client.request.get
+import io.ktor.client.request.header
 import io.ktor.client.request.setBody
 import io.ktor.client.request.post
 import io.ktor.client.statement.HttpResponse
@@ -54,6 +59,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -149,33 +156,74 @@ class KtorT3Client(
         bearerToken: String,
         threadId: String,
         beforeCursor: String?,
-        turnLimit: Int,
-        reasoningMessages: Boolean,
+        projection: V2Projection?,
     ): OrchestrationThreadDetailSnapshot = transport {
         val encodedId = URLEncoder.encode(threadId, StandardCharsets.UTF_8).replace("+", "%20")
-        val response = httpClients.client(baseUrl).get(url(baseUrl, "/api/orchestration/threads/$encodedId")) {
+        val endpoint = if (beforeCursor == null) "bounded" else "history"
+        val response = httpClients.client(baseUrl).get(url(baseUrl, "/api/orchestration/threads/$encodedId/$endpoint")) {
             bearerAuth(bearerToken)
             accept(ContentType.Application.Json)
+            header("x-t3-orchestration-protocol", "2")
             url {
-                beforeCursor?.let { parameters.append("beforeCursor", it) }
-                parameters.append("turnLimit", turnLimit.toString())
-                if (reasoningMessages) parameters.append("reasoningMessages", "true")
+                beforeCursor?.let { parameters.append("cursor", it) }
             }
         }
         response.checked()
-        response.body()
+        val value = T3Json.parseToJsonElement(response.bodyAsText()).jsonObject
+        if (beforeCursor == null) V2Orchestration.snapshot(value) else {
+            val loaded = requireNotNull(projection) { "Load the conversation before requesting older history." }
+            val rows = T3Json.decodeFromJsonElement<List<V2VisibleItem>>(value.getValue("items"))
+            val merged = loaded.copy(visibleTurnItems = (rows + loaded.visibleTurnItems).distinctBy { it.item["id"] })
+            val sequence = value.getValue("snapshotSequence").jsonPrimitive.content.toLong()
+            OrchestrationThreadDetailSnapshot(sequence, merged.detail(),
+                OrchestrationThreadDetailPage(value["nextCursor"]?.jsonPrimitive?.contentOrNull,
+                    value.getValue("hasMoreHistory").jsonPrimitive.content.toBoolean(), sequence), merged)
+        }
     }
 
     override suspend fun dispatch(
         baseUrl: String,
         bearerToken: String,
         command: ClientOrchestrationCommand,
-    ): DispatchResult = rpcCall(
-        baseUrl = baseUrl,
-        bearerToken = bearerToken,
-        tag = "orchestration.dispatchCommand",
-        payload = T3CommandJson.encodeToJsonElement(ClientOrchestrationCommand.serializer(), command),
-    )
+    ): DispatchResult {
+        if (command is ClientOrchestrationCommand.StopSession) {
+            val projection: V2Projection = rpcCall(baseUrl, bearerToken, "orchestration.getThreadProjection",
+                buildJsonObject { put("threadId", command.threadId) })
+            var result = DispatchResult(0)
+            for (session in projection.providerSessions.filter { it["status"]?.jsonPrimitive?.content in setOf("starting", "ready", "running", "waiting") }) {
+                result = rpcCall(baseUrl, bearerToken, "orchestration.dispatchCommand", buildJsonObject {
+                    put("type", "provider-session.detach")
+                    put("commandId", "${command.commandId}:${session.getValue("id").jsonPrimitive.content}")
+                    put("threadId", command.threadId)
+                    put("providerSessionId", session.getValue("id"))
+                })
+            }
+            return result
+        }
+        val message = if (command is ClientOrchestrationCommand.StartTurn) {
+            val ids = mutableMapOf<String, String>()
+            val attachments = command.message.attachments.map { attachment ->
+                val id = if (attachment.dataUrl.isNotEmpty()) {
+                    val bytes = java.util.Base64.getDecoder().decode(attachment.dataUrl.substringAfter(","))
+                    uploadFileAttachment(baseUrl, bearerToken, attachment.name, attachment.mimeType, bytes.size.toLong(),
+                        ByteArrayContent(bytes, ContentType.parse(attachment.mimeType)), attachment.type)
+                } else requireNotNull(attachment.id)
+                attachment.id?.let { ids[it] = id }
+                buildJsonObject {
+                    put("type", attachment.type); put("id", id); put("name", attachment.name)
+                    put("mimeType", attachment.mimeType); put("sizeBytes", attachment.sizeBytes)
+                    attachment.source?.let { put("source", it) }
+                }
+            }
+            V2Commands.message(command, JsonArray(attachments), ids)
+        } else null
+        var result = DispatchResult(0)
+        for (request in V2Commands.requests(command, message)) {
+            val response: JsonElement = rpcCall(baseUrl, bearerToken, request.method, request.payload)
+            if (request.method == "orchestration.dispatchCommand") result = T3Json.decodeFromJsonElement(response)
+        }
+        return result
+    }
 
     override suspend fun reportClientActivity(
         baseUrl: String,
@@ -316,13 +364,14 @@ class KtorT3Client(
         mimeType: String,
         sizeBytes: Long,
         body: OutgoingContent,
+        type: String = "file",
     ): String {
         val upload: de.chennemann.agentic.t3.contract.AttachmentUploadUrl = rpcCall(
             baseUrl,
             token,
             "attachments.createUploadUrl",
             buildJsonObject {
-                put("type", "file")
+                put("type", type)
                 put("name", name)
                 put("mimeType", mimeType)
                 put("sizeBytes", sizeBytes)
@@ -488,13 +537,16 @@ class KtorT3Client(
         bearerToken: String,
         afterSequence: Long?,
         requestCompletionMarker: Boolean,
-    ): Flow<OrchestrationShellStreamItem> = rpcStream(
+    ): Flow<OrchestrationShellStreamItem> = merge(rpcStream<JsonElement>(
         baseUrl = baseUrl,
         bearerToken = bearerToken,
         tag = "orchestration.subscribeShell",
         payload = subscriptionPayload(afterSequence, requestCompletionMarker),
         supportedKinds = ShellStreamKinds,
-    )
+    ).map(V2Orchestration::shellItem), rpcStream<JsonElement>(
+        baseUrl, bearerToken, "orchestration.subscribeArchivedShell", buildJsonObject {},
+        supportedKinds = setOf("snapshot", "thread.updated", "thread.removed"),
+    ).map(V2Orchestration::archiveItem))
 
     override fun threadStream(
         baseUrl: String,
@@ -502,19 +554,16 @@ class KtorT3Client(
         threadId: String,
         afterSequence: Long?,
         requestCompletionMarker: Boolean,
-        turnLimit: Int?,
-        reasoningMessages: Boolean,
-    ): Flow<OrchestrationThreadStreamItem> = rpcStream(
+    ): Flow<OrchestrationThreadStreamItem> = rpcStream<JsonElement>(
         baseUrl = baseUrl,
         bearerToken = bearerToken,
         tag = "orchestration.subscribeThread",
         payload = buildJsonObject {
             subscriptionPayload(afterSequence, requestCompletionMarker, threadId).forEach { (key, value) -> put(key, value) }
-            turnLimit?.let { put("turnLimit", it) }
-            if (reasoningMessages) put("reasoningMessages", true)
+            put("acceptBoundedSnapshot", true)
         },
         supportedKinds = ThreadStreamKinds,
-    )
+    ).map(V2Orchestration::threadItem)
 
     private suspend inline fun <reified T> rpcCall(
         baseUrl: String,
@@ -612,7 +661,7 @@ class KtorT3Client(
         }
         val path = source.rawPath.orEmpty().trimEnd('/') + "/ws"
         val encodedTicket = URLEncoder.encode(ticket, StandardCharsets.UTF_8).replace("+", "%20")
-        return "$scheme://${source.rawAuthority}$path?wsTicket=$encodedTicket"
+        return "$scheme://${source.rawAuthority}$path?wsTicket=$encodedTicket&orchestrationProtocol=2"
     }
 
     private suspend fun HttpResponse.checked() {
@@ -659,10 +708,12 @@ class KtorT3Client(
     private companion object {
         val ShellStreamKinds = setOf(
             "snapshot",
-            "project-upserted",
-            "project-removed",
-            "thread-upserted",
-            "thread-removed",
+            "project.updated",
+            "project.removed",
+            "thread.updated",
+            "thread.removed",
+            "todo-upserted",
+            "todo-removed",
             "synchronized",
         )
         val ThreadStreamKinds = setOf("snapshot", "event", "synchronized")

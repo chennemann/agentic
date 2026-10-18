@@ -9,6 +9,15 @@ import org.junit.jupiter.api.Test
 
 class UpstreamRpcContractTest {
     @Test
+    fun `v2 shell snapshot does not require the removed updatedAt field`() {
+        val item = T3Json.decodeFromString<OrchestrationShellStreamItem>(
+            """{"kind":"snapshot","snapshot":{"schemaVersion":2,"snapshotSequence":42,"projects":[],"threads":[],"archivedThreads":[]}}"""
+        ) as OrchestrationShellStreamItem.Snapshot
+
+        assertEquals(42, item.snapshot.snapshotSequence)
+    }
+
+    @Test
     fun `project scripts decode as executable provider-neutral metadata`() {
         val project = T3Json.decodeFromString<OrchestrationProject>(
             """{"id":"project-1","title":"Agentic","workspaceRoot":"/workspace","defaultModelSelection":null,"createdAt":"now","updatedAt":"now","scripts":[{"id":"dev","name":"Dev","command":"pnpm dev","icon":"debug","runOnWorktreeCreate":false,"futureHint":"ignored"}]}"""

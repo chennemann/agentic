@@ -1,24 +1,15 @@
 package de.chennemann.agentic.domain.orchestration
 
-import de.chennemann.agentic.t3.contract.ModelSelection
-import de.chennemann.agentic.t3.contract.LatestTurn
-import de.chennemann.agentic.t3.contract.OrchestrationActivity
-import de.chennemann.agentic.t3.contract.OrchestrationMessage
 import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
-import de.chennemann.agentic.t3.contract.OrchestrationThreadDetail
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.T3Json
-import de.chennemann.agentic.t3.contract.ProposedPlan
-import de.chennemann.agentic.t3.contract.ThreadSession
 import de.chennemann.agentic.t3.contract.ServerConfigStreamEvent
 import de.chennemann.agentic.t3.contract.ProviderInstance
 import de.chennemann.agentic.t3.contract.ServerSettings
-import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
-import kotlinx.serialization.json.jsonPrimitive
 
 object ClientConfigReducer {
     fun applyEvent(
@@ -75,8 +66,32 @@ object ShellProjectionReducer {
         current: ProjectionState<OrchestrationShellSnapshot>,
         item: OrchestrationShellStreamItem,
     ): Reduction<ProjectionState<OrchestrationShellSnapshot>> {
+        if (item is OrchestrationShellStreamItem.ArchiveSnapshot || item is OrchestrationShellStreamItem.ArchiveChange) {
+            val value = current.value ?: OrchestrationShellSnapshot(emptyList(), emptyList(), 0)
+            val sequence = item.sequence()
+            if (item is OrchestrationShellStreamItem.ArchiveChange && sequence <= (value.archivedSequence ?: -1)) {
+                return Reduction.Ignored(current)
+            }
+            val threads = when (item) {
+                is OrchestrationShellStreamItem.ArchiveSnapshot ->
+                    item.threads + value.threads.filter { it.archivedAt == null && it.id !in item.threads.map { thread -> thread.id } }
+                is OrchestrationShellStreamItem.ArchiveChange -> {
+                    val retained = value.threads.filterNot { it.id == item.threadId && it.archivedAt != null }
+                    val thread = item.thread
+                    if (thread == null) retained else retained.filterNot { it.id == item.threadId } + thread
+                }
+            }
+            return Reduction.Applied(current.copy(value = value.copy(threads = threads, archivedSequence = sequence)))
+        }
         if (item is OrchestrationShellStreamItem.Snapshot) {
-            return Reduction.Applied(snapshot(current, item.snapshot, ProjectionSource.LIVE))
+            // Enrichment frames contain only repository identities, not a replacement shell.
+            // Agentic does not project repositoryIdentity yet; never advance the resume cursor here.
+            if (item.repositoryIdentityRefresh) return Reduction.Ignored(current)
+            val incoming = item.snapshot.copy(
+                threads = (item.snapshot.threads + current.value?.threads.orEmpty().filter { it.archivedAt != null }).distinctBy { it.id },
+                archivedSequence = current.value?.archivedSequence,
+            )
+            return Reduction.Applied(snapshot(current, incoming, ProjectionSource.LIVE))
         }
         if (item is OrchestrationShellStreamItem.Synchronized) {
             return Reduction.Applied(current.copy(synchronized = true, source = ProjectionSource.LIVE))
@@ -102,10 +117,13 @@ object ShellProjectionReducer {
             )
 
             is OrchestrationShellStreamItem.ThreadRemoved -> value.copy(
-                threads = value.threads.filterNot { it.id == item.threadId },
+                threads = value.threads.filterNot { it.id == item.threadId && it.archivedAt == null },
             )
 
             is OrchestrationShellStreamItem.Snapshot,
+            is OrchestrationShellStreamItem.Ignored,
+            is OrchestrationShellStreamItem.ArchiveSnapshot,
+            is OrchestrationShellStreamItem.ArchiveChange,
             OrchestrationShellStreamItem.Synchronized,
             -> value
         }
@@ -152,35 +170,26 @@ object ThreadProjectionReducer {
         if (item is OrchestrationThreadStreamItem.Synchronized) {
             return Reduction.Applied(current.copy(synchronized = true, source = ProjectionSource.LIVE))
         }
-        val event = (item as OrchestrationThreadStreamItem.Event).event
-        val sequence = event.sequence
-        val currentSequence = current.sequence
-            ?: return Reduction.Gap(current, expected = 0, received = sequence)
-        if (sequence <= currentSequence) return Reduction.Ignored(current)
-        val snapshot = current.value
-            ?: return Reduction.Gap(current, expected = currentSequence + 1, received = sequence)
-        if (event.type == "thread.reverted") {
-            // A new snapshot is authoritative after a history rewrite, including unloaded turns.
+        val event = item as OrchestrationThreadStreamItem.Event
+        val sequence = current.sequence ?: return Reduction.Gap(current, 0, event.sequence)
+        if (event.sequence <= sequence) return Reduction.Ignored(current)
+        val loaded = current.value ?: return Reduction.Gap(current, sequence + 1, event.sequence)
+        if (event.event.type == "checkpoint.rollback-requested") {
             return Reduction.Gap(
                 current.copy(historyGeneration = current.historyGeneration + 1, synchronized = false),
-                expected = currentSequence + 1,
-                received = sequence,
+                sequence + 1,
+                event.sequence,
             )
         }
-        if (event.type == "thread.deleted") {
-            return Reduction.Applied(
-                current.copy(
-                    value = null,
-                    sequence = sequence,
-                    source = ProjectionSource.LIVE,
-                ),
-            )
-        }
-        val thread = applyEvent(snapshot.thread, event.type, event.payload)
+        val updated = loaded.projection.apply(event.event)
         return Reduction.Applied(
             current.copy(
-                value = snapshot.copy(snapshotSequence = sequence, thread = thread),
-                sequence = sequence,
+                value = if (event.event.type == "thread.deleted") null else loaded.copy(
+                    snapshotSequence = event.sequence,
+                    projection = updated,
+                    thread = updated.detail(),
+                ),
+                sequence = event.sequence,
                 source = ProjectionSource.LIVE,
             ),
         )
@@ -197,117 +206,28 @@ object ThreadProjectionReducer {
         val page = incoming.page ?: return null
         if (current.historyGeneration != historyGeneration || loaded.thread.id != incoming.thread.id) return null
         if (loaded.page?.beforeCursor != beforeCursor || loaded.page?.hasMore != true) return null
-        if (incoming.snapshotSequence < sequence || (page.threadSequence ?: 0) > sequence) return null
-        val thread = loaded.thread.copy(
-            messages = (incoming.thread.messages + loaded.thread.messages).associateBy { it.id }.values.toList(),
-            activities = (incoming.thread.activities + loaded.thread.activities).associateBy { it.id }.values.toList(),
-            proposedPlans = (incoming.thread.proposedPlans + loaded.thread.proposedPlans).associateBy { it.id }.values.toList(),
-            checkpoints = (incoming.thread.checkpoints + loaded.thread.checkpoints).associateBy {
-                (it as? JsonObject)?.get("turnId") ?: it
-            }.values.toList(),
+        val liveProjection = loaded.projection
+        val incomingProjection = incoming.projection
+        val liveIds = liveProjection.visibleTurnItems.map { it.item["id"] }.toSet()
+        val merged = liveProjection.copy(
+            visibleTurnItems = (
+                incomingProjection.visibleTurnItems.filterNot { it.item["id"] in liveIds } + liveProjection.visibleTurnItems
+            ).mapIndexed { index, row -> row.copy(position = index.toLong()) },
         )
         return current.copy(
-            value = loaded.copy(thread = thread, page = page.copy(snapshotSequence = sequence)),
+            value = loaded.copy(
+                projection = merged,
+                thread = merged.detail(),
+                page = page.copy(snapshotSequence = sequence),
+            ),
         )
     }
-
-    private fun applyEvent(
-        thread: OrchestrationThreadDetail,
-        type: String,
-        payload: JsonObject,
-    ): OrchestrationThreadDetail = when (type) {
-        "thread.meta-updated" -> thread.copy(
-            title = payload.string("title") ?: thread.title,
-            modelSelection = payload.decodeOrNull<ModelSelection>("modelSelection") ?: thread.modelSelection,
-            updatedAt = payload.string("updatedAt") ?: thread.updatedAt,
-        )
-
-        "thread.runtime-mode-set" -> thread.copy(
-            runtimeMode = payload.string("runtimeMode") ?: thread.runtimeMode,
-            updatedAt = payload.string("updatedAt") ?: thread.updatedAt,
-        )
-
-        "thread.interaction-mode-set" -> thread.copy(
-            interactionMode = payload.string("interactionMode") ?: thread.interactionMode,
-            updatedAt = payload.string("updatedAt") ?: thread.updatedAt,
-        )
-
-        "thread.message-sent" -> payload.decodeOrNull<MessageEventPayload>()?.let { event ->
-            val message = event.toMessage()
-            val previous = thread.messages.firstOrNull { it.id == message.id }
-            thread.copy(
-                messages = thread.messages.replaceById(previous.merge(message)) { it.id },
-                updatedAt = message.updatedAt,
-            )
-        } ?: thread
-
-        "thread.session-set" -> thread.copy(
-            session = payload.decodeOrNull<ThreadSession>("session"),
-        )
-
-        "thread.proposed-plan-upserted" -> payload.decodeOrNull<ProposedPlan>("proposedPlan")?.let { plan ->
-            thread.copy(proposedPlans = thread.proposedPlans.replaceById(plan) { it.id })
-        } ?: thread
-
-        "thread.activity-appended" -> payload.decodeOrNull<OrchestrationActivity>("activity")?.let { activity ->
-            thread.copy(activities = thread.activities.replaceById(activity) { it.id })
-        } ?: thread
-
-        "thread.turn-diff-completed" -> thread.applyTurnDiff(payload)
-
-        "thread.archived" -> thread.copy(archivedAt = payload.string("archivedAt") ?: payload.string("updatedAt"))
-        "thread.unarchived" -> thread.copy(archivedAt = null)
-        "thread.snoozed" -> thread.copy(
-            snoozedAt = payload.string("snoozedAt"),
-            snoozedUntil = payload.string("snoozedUntil"),
-            lastWakeReason = null,
-            updatedAt = payload.string("updatedAt") ?: thread.updatedAt,
-        )
-        "thread.unsnoozed" -> thread.copy(
-            snoozedAt = null,
-            snoozedUntil = null,
-            lastWakeReason = payload.string("reason"),
-            updatedAt = payload.string("updatedAt") ?: thread.updatedAt,
-        )
-        "thread.approval-response-requested" -> thread.removeRequestActivity(
-            "approval.requested",
-            payload.string("requestId"),
-        )
-
-        "thread.user-input-response-requested" -> thread.removeRequestActivity(
-            "user-input.requested",
-            payload.string("requestId"),
-        )
-
-        else -> thread
-    }
-}
-
-private fun OrchestrationThreadDetail.applyTurnDiff(payload: JsonObject): OrchestrationThreadDetail {
-    val turnId = payload.string("turnId") ?: return this
-    val completedAt = payload.string("completedAt") ?: updatedAt
-    val currentTurn = latestTurn?.takeIf { it.turnId == turnId }
-    return copy(
-        checkpoints = checkpoints
-            .filterNot { checkpoint ->
-                (checkpoint as? JsonObject)?.string("turnId") == turnId
-            } + payload,
-        latestTurn = currentTurn?.copy(
-            state = "completed",
-            assistantMessageId = payload.string("assistantMessageId") ?: currentTurn.assistantMessageId,
-            completedAt = completedAt,
-        ) ?: LatestTurn(
-            turnId = turnId,
-            state = "completed",
-            assistantMessageId = payload.string("assistantMessageId"),
-            requestedAt = completedAt,
-            completedAt = completedAt,
-        ),
-        updatedAt = completedAt,
-    )
 }
 
 private fun OrchestrationShellStreamItem.sequence(): Long = when (this) {
+    is OrchestrationShellStreamItem.ArchiveSnapshot -> sequence
+    is OrchestrationShellStreamItem.ArchiveChange -> sequence
+    is OrchestrationShellStreamItem.Ignored -> sequence
     is OrchestrationShellStreamItem.ProjectUpserted -> sequence
     is OrchestrationShellStreamItem.ProjectRemoved -> sequence
     is OrchestrationShellStreamItem.ThreadUpserted -> sequence
@@ -315,20 +235,6 @@ private fun OrchestrationShellStreamItem.sequence(): Long = when (this) {
     is OrchestrationShellStreamItem.Snapshot -> snapshot.snapshotSequence
     OrchestrationShellStreamItem.Synchronized -> error("Synchronization markers are unsequenced")
 }
-
-private fun OrchestrationThreadDetail.removeRequestActivity(
-    kind: String,
-    requestId: String?,
-): OrchestrationThreadDetail {
-    if (requestId == null) return this
-    return copy(
-        activities = activities.filterNot {
-            it.kind == kind && it.payload.string("requestId") == requestId
-        },
-    )
-}
-
-private fun JsonObject.string(key: String): String? = this[key]?.jsonPrimitive?.content
 
 private inline fun <reified T> JsonObject.decodeOrNull(key: String? = null): T? = runCatching {
     T3Json.decodeFromJsonElement<T>(if (key == null) this else getValue(key))
@@ -338,38 +244,3 @@ private fun <T> List<T>.replaceById(
     value: T,
     id: (T) -> String,
 ): List<T> = filterNot { id(it) == id(value) } + value
-
-private fun OrchestrationMessage?.merge(incoming: OrchestrationMessage): OrchestrationMessage {
-    if (this == null || (!streaming && !incoming.streaming)) return incoming
-    val mergedText = when {
-        incoming.text.startsWith(text) -> incoming.text
-        text.endsWith(incoming.text) -> text
-        else -> text + incoming.text
-    }
-    return incoming.copy(text = mergedText)
-}
-
-@Serializable
-private data class MessageEventPayload(
-    val messageId: String,
-    val turnId: String? = null,
-    val role: String,
-    val text: String,
-    val streaming: Boolean = false,
-    val createdAt: String,
-    val updatedAt: String,
-    val attachments: List<de.chennemann.agentic.t3.contract.ChatAttachment> = emptyList(),
-    val context: kotlinx.serialization.json.JsonObject? = null,
-) {
-    fun toMessage(): OrchestrationMessage = OrchestrationMessage(
-        id = messageId,
-        turnId = turnId,
-        role = role,
-        text = text,
-        streaming = streaming,
-        createdAt = createdAt,
-        updatedAt = updatedAt,
-        attachments = attachments,
-        context = context,
-    )
-}

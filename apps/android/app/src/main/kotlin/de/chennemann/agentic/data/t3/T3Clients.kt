@@ -75,8 +75,7 @@ interface T3RpcClient {
         bearerToken: String,
         threadId: String,
         beforeCursor: String?,
-        turnLimit: Int,
-        reasoningMessages: Boolean,
+        projection: de.chennemann.agentic.t3.contract.V2Projection? = null,
     ): OrchestrationThreadDetailSnapshot = error("Thread history is not supported.")
 
     suspend fun ensureScratch(baseUrl: String, bearerToken: String): ProjectEnsureScratchResult =
@@ -104,8 +103,6 @@ interface T3RpcClient {
         threadId: String,
         afterSequence: Long?,
         requestCompletionMarker: Boolean,
-        turnLimit: Int? = null,
-        reasoningMessages: Boolean = false,
     ): Flow<OrchestrationThreadStreamItem>
 }
 

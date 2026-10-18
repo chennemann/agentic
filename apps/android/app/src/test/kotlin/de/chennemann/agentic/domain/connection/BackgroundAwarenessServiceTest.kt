@@ -84,7 +84,7 @@ private class RecordingActivityRpc(private val failFirst: Boolean) : T3RpcClient
     override suspend fun serverConfig(baseUrl: String, bearerToken: String) = error("unused")
     override suspend fun dispatch(baseUrl: String, bearerToken: String, command: ClientOrchestrationCommand) = DispatchResult(0)
     override fun shellStream(baseUrl: String, bearerToken: String, afterSequence: Long?, requestCompletionMarker: Boolean): Flow<OrchestrationShellStreamItem> = error("unused")
-    override fun threadStream(baseUrl: String, bearerToken: String, threadId: String, afterSequence: Long?, requestCompletionMarker: Boolean, turnLimit: Int?, reasoningMessages: Boolean): Flow<OrchestrationThreadStreamItem> = error("unused")
+    override fun threadStream(baseUrl: String, bearerToken: String, threadId: String, afterSequence: Long?, requestCompletionMarker: Boolean): Flow<OrchestrationThreadStreamItem> = error("unused")
 }
 
 private object FixedCredentialStore : CredentialStore {

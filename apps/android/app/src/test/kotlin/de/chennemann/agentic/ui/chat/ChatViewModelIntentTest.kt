@@ -44,7 +44,6 @@ import de.chennemann.agentic.ui.chat.workflow.DefaultProjectWorkflow
 import de.chennemann.agentic.ui.chat.workflow.ProjectWorkflowIntent
 import de.chennemann.agentic.domain.orchestration.ProjectStarter
 import de.chennemann.agentic.domain.orchestration.StartedProject
-import de.chennemann.agentic.domain.orchestration.ThreadProjectionReducer
 import de.chennemann.agentic.ui.chat.workflow.DefaultSharedTextWorkflow
 import de.chennemann.agentic.ui.chat.workflow.DefaultShortcutWorkflow
 import de.chennemann.agentic.domain.voice.GroqApiKeyStore
@@ -59,7 +58,6 @@ import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
 import de.chennemann.agentic.t3.contract.LatestTurn
 import de.chennemann.agentic.t3.contract.ModelSelection
 import de.chennemann.agentic.t3.contract.OrchestrationActivity
-import de.chennemann.agentic.t3.contract.OrchestrationEvent
 import de.chennemann.agentic.t3.contract.OrchestrationMessage
 import de.chennemann.agentic.t3.contract.OrchestrationProject
 import de.chennemann.agentic.t3.contract.OrchestrationShellSnapshot
@@ -490,18 +488,29 @@ class ChatViewModelIntentTest {
     }
 
     @Test
-    fun `native request closures clear prompts even when older requests load afterward`() = runTest(dispatcher) {
+    fun `runtime request state closes prompts including items loaded later from history`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model"))
-        val current = requireNotNull(repository.focusedThread.value.value)
-        fun activity(id: String, kind: String, requestId: String, detail: String = "") = OrchestrationActivity(
-            id = id, kind = kind, tone = "info", summary = kind, createdAt = "2026-07-29T10:00:00Z",
-            payload = T3Json.parseToJsonElement("""{"requestId":"$requestId","detail":"$detail","questions":[{"id":"choice","question":"Choose an approach","options":["Keep it"]}]}""").jsonObject,
+        fun apply(type: String, payload: String) {
+            val sequence = requireNotNull(repository.focusedThread.value.sequence) + 1
+            val event = OrchestrationThreadStreamItem.Event(
+                sequence,
+                de.chennemann.agentic.t3.contract.V2EventPayload(type, T3Json.parseToJsonElement(payload).jsonObject),
+            )
+            val reduced = de.chennemann.agentic.domain.orchestration.ThreadProjectionReducer.reduce(repository.focusedThread.value, event)
+            repository.focusedThread.value = (reduced as Reduction.Applied).state
+        }
+        fun request(id: String, kind: String, status: String) = apply(
+            "runtime-request.updated",
+            """{"id":"$id","kind":"$kind","status":"$status","responseCapability":{"type":"live","providerSessionId":"session"}}""",
         )
-        val approval = activity("approval", "approval.requested", "approval-request")
-        val question = activity("question", "user-input.requested", "question-request")
-        repository.focusedThread.value = repository.focusedThread.value.copy(
-            value = current.copy(thread = current.thread.copy(messages = emptyList(), activities = listOf(approval, question))),
+        fun item(id: String, type: String, requestId: String, ordinal: Int) = apply(
+            "turn-item.updated",
+            """{"id":"$id","type":"$type","requestId":"$requestId","ordinal":$ordinal,"updatedAt":"2026-07-29T10:00:00Z","questions":[{"id":"choice","question":"Choose an approach","options":["Keep it"]}]}""",
         )
+        request("approval-request", "command", "pending")
+        request("question-request", "user_input", "pending")
+        item("approval", "approval_request", "approval-request", 0)
+        item("question", "user_input_request", "question-request", 1)
         val viewModel = ChatViewModel(
             environments = FakeViewModelEnvironmentRepository(), repository = repository,
             connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
@@ -511,31 +520,19 @@ class ChatViewModelIntentTest {
         assertEquals(2, viewModel.state.value.timeline.filterIsInstance<ChatTimelineItemUi.Activity>().count {
             it.value is ChatActivityUi.Approval || it.value is ChatActivityUi.UserInput
         })
-        fun appendNativeActivity(activity: OrchestrationActivity) {
-            val sequence = requireNotNull(repository.focusedThread.value.sequence) + 1
-            val event = OrchestrationEvent(
-                type = "thread.activity-appended", sequence = sequence, aggregateId = current.thread.id,
-                aggregateKind = "thread", eventId = "event-$sequence", commandId = "command-$sequence",
-                correlationId = "correlation", occurredAt = activity.createdAt,
-                payload = JsonObject(mapOf("activity" to T3Json.encodeToJsonElement(activity))),
-            )
-            val reduced = ThreadProjectionReducer.reduce(repository.focusedThread.value, OrchestrationThreadStreamItem.Event(event))
-            repository.focusedThread.value = (reduced as Reduction.Applied).state
-        }
-        appendNativeActivity(activity("approved", "approval.resolved", "approval-request"))
-        appendNativeActivity(activity("answered", "user-input.resolved", "question-request"))
-        // A page or reordered delivery can introduce an old request after its terminal activity.
-        appendNativeActivity(approval.copy(id = "older-approval"))
-        appendNativeActivity(question.copy(id = "older-question"))
+        request("approval-request", "command", "resolved")
+        request("question-request", "user_input", "resolved")
+        item("older-approval", "approval_request", "approval-request", 2)
+        item("older-question", "user_input_request", "question-request", 3)
         advanceUntilIdle()
         assertFalse(viewModel.state.value.timeline.filterIsInstance<ChatTimelineItemUi.Activity>().any {
             it.value is ChatActivityUi.Approval || it.value is ChatActivityUi.UserInput
         })
-        appendNativeActivity(activity("new-request", "approval.requested", "retry-request"))
-        appendNativeActivity(activity("temporary-failure", "provider.approval.respond.failed", "retry-request", "Network interrupted"))
+        request("new-request", "command", "pending")
+        item("new-approval", "approval_request", "new-request", 4)
         advanceUntilIdle()
         assertTrue(viewModel.state.value.timeline.filterIsInstance<ChatTimelineItemUi.Activity>().any { it.value is ChatActivityUi.Approval })
-        appendNativeActivity(activity("stale-failure", "provider.approval.respond.failed", "retry-request", "Unknown pending approval request"))
+        request("new-request", "command", "expired")
         advanceUntilIdle()
         assertFalse(viewModel.state.value.timeline.filterIsInstance<ChatTimelineItemUi.Activity>().any { it.value is ChatActivityUi.Approval })
     }
@@ -3443,6 +3440,10 @@ private fun submissionRepository(selection: ModelSelection) = FakeOrchestrationR
     focusedThread.value = ProjectionState(
         value = OrchestrationThreadDetailSnapshot(
             snapshotSequence = 7,
+            projection = de.chennemann.agentic.t3.contract.V2Projection(
+                T3Json.parseToJsonElement("""{"id":"thread-1","projectId":"project-1","title":"Thread One","createdAt":"2026-07-29T10:00:00Z","updatedAt":"2026-07-29T10:01:00Z"}""").jsonObject,
+                updatedAt = "2026-07-29T10:01:00Z",
+            ),
             thread = OrchestrationThreadDetail(
                 id = "thread-1",
                 projectId = "project-1",

@@ -157,7 +157,7 @@ private class RecoveringClient : T3RpcClient {
         bearerToken: String,
         threadId: String,
         afterSequence: Long?,
-        requestCompletionMarker: Boolean, turnLimit: Int?, reasoningMessages: Boolean
+        requestCompletionMarker: Boolean
     ): Flow<OrchestrationThreadStreamItem> = emptyFlow()
 }
 

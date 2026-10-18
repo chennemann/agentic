@@ -228,19 +228,11 @@ class ChatViewModel(
             }
         }
         viewModelScope.launch {
-            val handledFailures = mutableSetOf<String>()
             repository.focusedThread.collect { state ->
                 val activities = state.value?.thread?.activities.orEmpty()
-                val failures = activities.filter {
-                    it.kind in setOf("provider.approval.respond.failed", "provider.user-input.respond.failed") && handledFailures.add(it.id)
-                }
                 val closed = activities.closedRequestIds("approval") + activities.closedRequestIds("user-input")
-                val retryable = failures.mapNotNull { it.payload.string("requestId") }.toSet()
-                if ((closed + retryable).any { it in local.value.inFlightRequests }) {
-                    update { copy(
-                        inFlightRequests = inFlightRequests - closed - retryable,
-                        commandError = failures.lastOrNull()?.let { it.payload.string("detail") ?: it.summary } ?: commandError,
-                    ) }
+                if (closed.any { it in local.value.inFlightRequests }) {
+                    update { copy(inFlightRequests = inFlightRequests - closed) }
                 }
             }
         }
@@ -2898,35 +2890,11 @@ private fun JsonObject.changedFiles(): List<String> {
     return files.toList()
 }
 
-// Native detail streams publish request closures as activities. Request IDs are unique, so a
-// terminal activity also closes a request loaded later from history, regardless of event order.
+// V2 runtime request state is normalized to resolved activities by the projection adapter.
 private fun List<OrchestrationActivity>.closedRequestIds(kind: String): Set<String> = asSequence()
-    .filter { activity ->
-        activity.kind == "$kind.resolved" || activity.kind == "$kind.dismissed" ||
-            activity.kind == "$kind.answer-submitted" || (
-            activity.kind == "provider.$kind.respond.failed" &&
-                StaleRequestFailureFragments[activity.kind].orEmpty().any { fragment ->
-                    activity.payload.string("detail")?.contains(fragment, ignoreCase = true) == true
-                }
-            )
-    }
+    .filter { it.kind == "$kind.resolved" }
     .mapNotNull { it.payload.string("requestId") }
     .toSet()
-
-private val StaleRequestFailureFragments = mapOf(
-    "provider.approval.respond.failed" to listOf(
-        "stale pending approval request",
-        "unknown pending approval request",
-        "unknown pending permission request",
-        "unknown pending codex approval request",
-    ),
-    "provider.user-input.respond.failed" to listOf(
-        "stale pending user-input request",
-        "unknown pending user-input request",
-        "unknown pending user input request",
-        "unknown pending codex user input request",
-    ),
-)
 
 private val activityOrder = compareBy<OrchestrationActivity>(
     { it.sequence ?: Long.MAX_VALUE },

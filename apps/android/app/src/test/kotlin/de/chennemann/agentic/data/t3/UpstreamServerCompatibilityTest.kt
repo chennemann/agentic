@@ -50,7 +50,7 @@ class UpstreamServerCompatibilityTest {
                 assertTrue(client.session(baseUrl, token).authenticated)
                 val config = client.serverConfig(baseUrl, token)
                 assertEquals(descriptor.environmentId, config.environment.environmentId)
-                assertTrue(config.threadSnapshotPagination)
+                assertEquals(2, config.environment.orchestrationProtocolVersion)
                 assertTrue(config.newProjectsRoot != null)
                 println("Stock upstream pairing and configuration passed")
                 val streamed = client.configStream(baseUrl, token).first { it.type == "snapshot" }
@@ -89,12 +89,12 @@ class UpstreamServerCompatibilityTest {
                         branch = null, worktreePath = null, createdAt = Instant.now().toString(),
                     ),
                 )
-                val initial = (client.threadStream(baseUrl, token, threadId, null, true, 20, true).first {
+                val initial = (client.threadStream(baseUrl, token, threadId, null, true).first {
                     it is OrchestrationThreadStreamItem.Snapshot
                 } as OrchestrationThreadStreamItem.Snapshot).snapshot
                 assertEquals(threadId, initial.thread.id)
                 assertFalse(requireNotNull(initial.page).hasMore)
-                val history = client.threadHistory(baseUrl, token, threadId, null, 20, true)
+                val history = client.threadHistory(baseUrl, token, threadId, null)
                 assertEquals(threadId, history.thread.id)
                 assertFalse(requireNotNull(history.page).hasMore)
                 println("Stock upstream thread subscription and windowed HTTP history passed")
@@ -110,7 +110,7 @@ class UpstreamServerCompatibilityTest {
                 }
                 assertTrue(replay is OrchestrationShellStreamItem.ThreadUpserted)
                 assertEquals(OrchestrationThreadStreamItem.Synchronized,
-                    client.threadStream(baseUrl, token, threadId, initial.snapshotSequence, true, 20, true).first {
+                    client.threadStream(baseUrl, token, threadId, initial.snapshotSequence, true).first {
                         it is OrchestrationThreadStreamItem.Synchronized
                     })
                 println("Stock upstream shell and thread replay passed")

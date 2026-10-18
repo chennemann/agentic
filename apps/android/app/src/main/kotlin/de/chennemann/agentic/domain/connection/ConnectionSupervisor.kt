@@ -11,7 +11,6 @@ import de.chennemann.agentic.domain.orchestration.PendingCommandReplayer
 import de.chennemann.agentic.domain.orchestration.ProjectionSource
 import de.chennemann.agentic.domain.orchestration.Reduction
 import de.chennemann.agentic.domain.orchestration.ClientConfigReducer
-import de.chennemann.agentic.domain.orchestration.ThreadHistoryService
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import kotlinx.coroutines.CancellationException
@@ -270,8 +269,6 @@ class ConnectionSupervisor(
                     threadId,
                     sequence,
                     requestCompletionMarker = config?.threadResumeCompletionMarker == true,
-                    turnLimit = ThreadHistoryService.PageTurnLimit.takeIf { config?.threadSnapshotPagination == true },
-                    reasoningMessages = config?.reasoningMessages == true,
                 ).collect { item ->
                     when (val reduction = orchestration.applyThreadItem(environment.id, threadId, item)) {
                         is Reduction.Gap -> gap = true

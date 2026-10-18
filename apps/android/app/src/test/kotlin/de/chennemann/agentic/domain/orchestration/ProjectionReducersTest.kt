@@ -1,7 +1,6 @@
 package de.chennemann.agentic.domain.orchestration
 
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
-import de.chennemann.agentic.t3.contract.OrchestrationEvent
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.T3Json
 import kotlinx.serialization.builtins.ListSerializer
@@ -18,32 +17,72 @@ import org.junit.jupiter.api.Test
 
 class ProjectionReducersTest {
     @Test
-    fun `older pages preserve live messages and sequence while advancing the cursor`() {
-        val original = (threadItems().first() as OrchestrationThreadStreamItem.Snapshot).snapshot
-        val liveMessage = de.chennemann.agentic.t3.contract.OrchestrationMessage(
-            "live", "turn-live", "assistant", "new live text", true, "now", "now",
+    fun `archived subscription has an independent cursor and survives active snapshots and removals`() {
+        val archived = de.chennemann.agentic.t3.contract.V2Orchestration.archiveItem(
+            T3Json.parseToJsonElement("""{"kind":"snapshot","snapshot":{"schemaVersion":2,"snapshotSequence":100,"projects":[],"threads":[{"id":"thread","projectId":"project","title":"Archived","createdAt":"now","updatedAt":"now","archivedAt":"now"}]}}"""),
         )
-        val olderMessage = liveMessage.copy(id = "older", text = "old text", streaming = false)
-        val page = de.chennemann.agentic.t3.contract.OrchestrationThreadDetailPage("cursor-1", true, 10, 10)
-        val current = ThreadProjectionReducer.snapshot(
-            ProjectionState(), original.copy(snapshotSequence = 10, thread = original.thread.copy(messages = listOf(liveMessage)), page = page),
-            ProjectionSource.LIVE,
+        val early = (ShellProjectionReducer.reduce(ProjectionState(), archived) as Reduction.Applied).state
+        assertEquals(null, early.sequence)
+        val active = (shellItems().first() as OrchestrationShellStreamItem.Snapshot)
+        val loaded = (ShellProjectionReducer.reduce(early, active) as Reduction.Applied).state
+        assertEquals(active.snapshot.snapshotSequence, loaded.sequence)
+        assertEquals(100, loaded.value!!.archivedSequence)
+        assertTrue(loaded.value!!.threads.any { it.id == "thread" && it.archivedAt != null })
+        val removed = (ShellProjectionReducer.reduce(loaded,
+            OrchestrationShellStreamItem.ThreadRemoved(active.snapshot.snapshotSequence + 1, "thread")) as Reduction.Applied).state
+        assertTrue(removed.value!!.threads.any { it.id == "thread" })
+        val unarchivedThread = removed.value!!.threads.single { it.id == "thread" }.copy(archivedAt = null)
+        val unarchived = (ShellProjectionReducer.reduce(removed,
+            OrchestrationShellStreamItem.ThreadUpserted(active.snapshot.snapshotSequence + 2, unarchivedThread)) as Reduction.Applied).state
+        val archiveRemoval = OrchestrationShellStreamItem.ArchiveChange(101, "thread")
+        val final = (ShellProjectionReducer.reduce(unarchived, archiveRemoval) as Reduction.Applied).state
+        assertEquals(unarchived.sequence, final.sequence)
+        assertEquals(null, final.value!!.threads.single { it.id == "thread" }.archivedAt)
+        assertInstanceOf(Reduction.Ignored::class.java, ShellProjectionReducer.reduce(final, archiveRemoval))
+    }
+
+    @Test
+    fun `v2 history retains streamed text and stays present after the next event`() {
+        val metadata = """{"id":"thread","projectId":"project","title":"Title","createdAt":"now","updatedAt":"now"}"""
+        fun row(id: String, text: String, position: Long) = de.chennemann.agentic.t3.contract.V2VisibleItem(
+            position, "local", "thread", id, T3Json.parseToJsonElement(
+                """{"id":"$id","messageId":"$id","type":"assistant_message","text":"$text","ordinal":$position,"updatedAt":"now"}""",
+            ).jsonObject,
         )
-        val incoming = original.copy(
-            snapshotSequence = 20,
-            thread = original.thread.copy(messages = listOf(olderMessage, liveMessage.copy(text = "stale"))),
-            page = page.copy(beforeCursor = "cursor-2", snapshotSequence = 20),
+        val live = de.chennemann.agentic.t3.contract.V2Projection(
+            T3Json.parseToJsonElement(metadata).jsonObject, updatedAt = "now", visibleTurnItems = listOf(row("new", "streamed", 2)),
         )
-        val merged = requireNotNull(ThreadProjectionReducer.mergeHistory(current, incoming, "cursor-1", current.historyGeneration))
-        assertEquals(listOf("older", "live"), merged.value?.thread?.messages?.map { it.id })
-        assertEquals("new live text", merged.value?.thread?.messages?.last()?.text)
-        assertEquals(10, merged.sequence)
-        assertEquals(10, merged.value?.snapshotSequence)
-        assertEquals("cursor-2", merged.value?.page?.beforeCursor)
+        val snapshot = de.chennemann.agentic.t3.contract.OrchestrationThreadDetailSnapshot(
+            10, live.detail(), de.chennemann.agentic.t3.contract.OrchestrationThreadDetailPage("cursor", true, 10), live,
+        )
+        val current = ThreadProjectionReducer.snapshot(ProjectionState(), snapshot, ProjectionSource.LIVE)
+        val old = live.copy(visibleTurnItems = listOf(row("old", "older", 0), row("new", "stale", 1)))
+        val incoming = snapshot.copy(snapshotSequence = 9, projection = old, thread = old.detail(), page = snapshot.page!!.copy(beforeCursor = null, hasMore = false))
         assertEquals(null, ThreadProjectionReducer.mergeHistory(current, incoming, "wrong-cursor", current.historyGeneration))
-        assertEquals(null, ThreadProjectionReducer.mergeHistory(current, incoming, "cursor-1", current.historyGeneration - 1))
-        assertEquals(null, ThreadProjectionReducer.mergeHistory(current, incoming.copy(snapshotSequence = 9), "cursor-1", current.historyGeneration))
-        assertEquals(null, ThreadProjectionReducer.mergeHistory(current, incoming.copy(page = page.copy(threadSequence = 11)), "cursor-1", current.historyGeneration))
+        assertEquals(null, ThreadProjectionReducer.mergeHistory(current, incoming, "cursor", current.historyGeneration - 1))
+        val merged = requireNotNull(ThreadProjectionReducer.mergeHistory(current, incoming, "cursor", current.historyGeneration))
+        assertEquals(listOf("older", "streamed"), merged.value!!.thread.messages.map { it.text })
+        val event = OrchestrationThreadStreamItem.Event(11, de.chennemann.agentic.t3.contract.V2EventPayload(
+            "turn-item.updated", row("new", "streamed completion", 2).item,
+        ))
+        val updated = (ThreadProjectionReducer.reduce(merged, event) as Reduction.Applied).state
+        assertEquals(listOf("older", "streamed completion"), updated.value!!.thread.messages.map { it.text })
+        assertEquals(11, updated.sequence)
+        assertInstanceOf(Reduction.Ignored::class.java, ThreadProjectionReducer.reduce(updated, event))
+        val unknown = OrchestrationThreadStreamItem.Event(12, de.chennemann.agentic.t3.contract.V2EventPayload("future.updated"))
+        assertEquals(12, (ThreadProjectionReducer.reduce(updated, unknown) as Reduction.Applied).state.sequence)
+    }
+
+    @Test
+    fun `repository enrichment cannot erase threads or advance the shell cursor`() {
+        val snapshot = (shellItems().first() as OrchestrationShellStreamItem.Snapshot).snapshot
+        val current = ShellProjectionReducer.snapshot(ProjectionState(), snapshot, ProjectionSource.LIVE)
+        val enrichment = de.chennemann.agentic.t3.contract.V2Orchestration.shellItem(
+            T3Json.parseToJsonElement("""{"kind":"snapshot","snapshot":{"schemaVersion":2,"snapshotSequence":999,"projects":[],"threads":[],"archivedThreads":[]},"resolvedRepositoryIdentityRoots":["/repo"]}"""),
+        )
+        val reduced = ShellProjectionReducer.reduce(current, enrichment)
+        assertInstanceOf(Reduction.Ignored::class.java, reduced)
+        assertSame(current, (reduced as Reduction.Ignored).state)
     }
 
     @Test
@@ -51,8 +90,8 @@ class ProjectionReducersTest {
         val snapshot = (threadItems().first() as OrchestrationThreadStreamItem.Snapshot).snapshot
         val current = ThreadProjectionReducer.snapshot(ProjectionState(), snapshot, ProjectionSource.LIVE)
         val event = threadItems().filterIsInstance<OrchestrationThreadStreamItem.Event>().first().event
-            .copy(type = "thread.reverted", sequence = snapshot.snapshotSequence + 1)
-        val result = ThreadProjectionReducer.reduce(current, OrchestrationThreadStreamItem.Event(event)) as Reduction.Gap
+            .copy(type = "checkpoint.rollback-requested")
+        val result = ThreadProjectionReducer.reduce(current, OrchestrationThreadStreamItem.Event(snapshot.snapshotSequence + 1, event)) as Reduction.Gap
         assertEquals(current.historyGeneration + 1, result.state.historyGeneration)
         assertEquals(false, result.state.synchronized)
     }
@@ -118,7 +157,7 @@ class ProjectionReducersTest {
             items[0],
         ) as Reduction.Applied
         val event = items.filterIsInstance<OrchestrationThreadStreamItem.Event>().first()
-        val sparse = event.copy(event = event.event.copy(sequence = 1_000))
+        val sparse = event.copy(sequence = 1_000)
 
         val result = ThreadProjectionReducer.reduce(snapshot.state, sparse)
 
@@ -127,17 +166,17 @@ class ProjectionReducersTest {
     }
 
     @Test
-    fun `thread reducer accumulates streaming message fragments`() {
+    fun `thread reducer replaces cumulative streamed text without duplicating fragments`() {
         val items = threadItems()
         val snapshot = ThreadProjectionReducer.reduce(
             ProjectionState(),
             items[0],
         ) as Reduction.Applied
         val event = items.filterIsInstance<OrchestrationThreadStreamItem.Event>().first {
-            it.event.type == "thread.message-sent"
+            it.event.type == "turn-item.updated"
         }
-        val fragment = event.withMessageText(" streamed", sequence = 44)
-        val terminalFragment = event.withMessageText(" together", sequence = 45, streaming = false)
+        val fragment = event.withMessageText("Generating streamed", sequence = 44)
+        val terminalFragment = event.withMessageText("Generating streamed together", sequence = 45, streaming = false)
         val accumulated = event.withMessageText(
             "Generating streamed together!",
             sequence = 46,
@@ -174,46 +213,13 @@ class ProjectionReducersTest {
             ProjectionState(),
             threadItems().first(),
         ) as Reduction.Applied
-        val payload = T3Json.parseToJsonElement(
-            """
-            {
-              "threadId": "thread-golden",
-              "turnId": "turn-golden",
-              "checkpointTurnCount": 1,
-              "checkpointRef": "checkpoint-1",
-              "status": "ready",
-              "files": [
-                {
-                  "path": "app/src/main/App.kt",
-                  "kind": "modified",
-                  "additions": 8,
-                  "deletions": 2
-                }
-              ],
-              "assistantMessageId": "message-assistant",
-              "completedAt": "2026-01-01T00:00:02.000Z"
-            }
-            """.trimIndent(),
-        ).jsonObject
-        val event = OrchestrationThreadStreamItem.Event(
-            OrchestrationEvent(
-                aggregateId = "thread-golden",
-                aggregateKind = "thread",
-                eventId = "event-diff",
-                commandId = "command-diff",
-                correlationId = "command-diff",
-                sequence = 41,
-                type = "thread.turn-diff-completed",
-                payload = payload,
-                occurredAt = "2026-01-01T00:00:02.000Z",
-            ),
-        )
-
+        val event = threadItems().filterIsInstance<OrchestrationThreadStreamItem.Event>().first {
+            it.event.type == "checkpoint.captured"
+        }
         val result = ThreadProjectionReducer.reduce(snapshot.state, event) as Reduction.Applied
         val checkpoint = result.state.value?.thread?.checkpoints?.single()?.jsonObject
 
         assertEquals("turn-golden", result.state.value?.thread?.latestTurn?.turnId)
-        assertEquals("completed", result.state.value?.thread?.latestTurn?.state)
         assertEquals("turn-golden", checkpoint?.get("turnId")?.jsonPrimitive?.content)
         assertEquals(
             "app/src/main/App.kt",
@@ -255,7 +261,7 @@ class ProjectionReducersTest {
             }
         }
 
-        assertEquals(56, state.sequence)
+        assertEquals(45, state.sequence)
         assertTrue(state.synchronized)
         assertTrue(state.value?.thread?.activities.orEmpty().any { it.kind == "future.additive-activity" })
         assertEquals("Renamed golden thread", state.value?.thread?.title)
@@ -266,10 +272,10 @@ class ProjectionReducersTest {
         fixture("shell-stream-items.json"),
     )
 
-    private fun threadItems(): List<OrchestrationThreadStreamItem> = T3Json.decodeFromString(
-        ListSerializer(OrchestrationThreadStreamItem.serializer()),
-        fixture("thread-stream-items.json"),
-    )
+    private fun threadItems(): List<OrchestrationThreadStreamItem> =
+        T3Json.parseToJsonElement(fixture("thread-stream-items.json")).jsonArray.map {
+            de.chennemann.agentic.t3.contract.V2Orchestration.threadItem(it)
+        }
 
     private fun fixture(name: String): String = checkNotNull(
         javaClass.getResource("/t3-rpc/$name"),
@@ -281,8 +287,8 @@ private fun OrchestrationThreadStreamItem.Event.withMessageText(
     sequence: Long,
     streaming: Boolean = true,
 ): OrchestrationThreadStreamItem.Event = copy(
+    sequence = sequence,
     event = event.copy(
-        sequence = sequence,
         payload = JsonObject(
             event.payload + mapOf(
                 "text" to JsonPrimitive(text),
