@@ -115,11 +115,11 @@ class OrchestrationV2Test {
         assertFalse(request.payload.containsKey("message"))
         assertEquals("auto", request.payload.getValue("deliveryIntent").jsonPrimitive.content)
         val response = V2Commands.requests(
-            ClientOrchestrationCommand.RespondToApproval("command", "thread-1", "request-1", "accept", "now")
+            ClientOrchestrationCommand.RespondToApproval("command", "thread-1", "request-1", "accept")
         ).single()
         assertEquals("runtime-request.respond", response.payload.getValue("type").jsonPrimitive.content)
         val stop = V2Commands.requests(
-            ClientOrchestrationCommand.InterruptTurn("command", "thread-1", "run-1", "now")
+            ClientOrchestrationCommand.InterruptTurn("command", "thread-1", "run-1")
         ).single()
         assertEquals("run.interrupt", stop.payload.getValue("type").jsonPrimitive.content)
         assertEquals("run-1", stop.payload.getValue("runId").jsonPrimitive.content)
@@ -129,15 +129,8 @@ class OrchestrationV2Test {
     fun `new threads launch with workspace preparation and uploaded attachment references`() {
         val start = start().copy(
             bootstrap = StartTurnBootstrap(
-                NewThreadBootstrap(
-                    "project-1",
-                    "Title",
-                    ModelSelection("custom-provider", "custom-model"),
-                    "default",
-                    "full-access",
-                    createdAt = "now"
-                ),
-                PrepareWorktreeBootstrap("/repo", "main", startFromOrigin = true)
+                NewThreadBootstrap("project-1", "Title"),
+                PrepareWorktreeBootstrap("main", startFromOrigin = true)
             )
         )
         val request = V2Commands.requests(start, V2Commands.message(start, JsonArray(emptyList()), emptyMap())).single()
@@ -162,8 +155,8 @@ class OrchestrationV2Test {
         TurnMessageInput("message-1", text = "Hello"),
         ModelSelection("custom-provider", "custom-model"),
         interactionMode = "default",
-        runtimeMode = "full-access",
-        createdAt = "now"
+        runtimeMode = "full-access"
+
     )
 
     private fun projection() =

@@ -13,13 +13,9 @@ data class V2RpcRequest(val method: String, val payload: JsonObject)
 object V2Commands {
     fun requests(command: ClientOrchestrationCommand, message: JsonObject? = null): List<V2RpcRequest> {
         val encoded = T3CommandJson.encodeToJsonElement(ClientOrchestrationCommand.serializer(), command).jsonObject
-        val payload = encoded.filterKeys { it != "createdAt" }.toMutableMap()
+        val payload = encoded.toMutableMap()
         var method = "orchestration.dispatchCommand"
         when (command) {
-            is ClientOrchestrationCommand.CreateThread -> {
-                payload["createdBy"] = JsonPrimitive("user")
-                payload["creationSource"] = JsonPrimitive("mobile")
-            }
             is ClientOrchestrationCommand.CreateProject, is ClientOrchestrationCommand.DeleteProject ->
                 method =
                     "projects.mutate"
@@ -29,7 +25,6 @@ object V2Commands {
             }
             is ClientOrchestrationCommand.UpdateThreadMetadata -> {
                 payload["type"] = JsonPrimitive("thread.metadata.update")
-                payload.remove("modelSelection")
             }
             is ClientOrchestrationCommand.InterruptTurn -> {
                 payload["type"] = JsonPrimitive("run.interrupt")
@@ -63,7 +58,6 @@ object V2Commands {
                                             bootstrap.prepareWorktree != null -> {
                                                 put("type", "worktree")
                                                 put("baseRef", bootstrap.prepareWorktree.baseBranch)
-                                                bootstrap.prepareWorktree.branch?.let { put("branch", it) }
                                                 bootstrap.prepareWorktree.startFromOrigin?.let {
                                                     put("startFromOrigin", it)
                                                 }
@@ -110,7 +104,6 @@ object V2Commands {
                         put("threadId", command.threadId)
                         prepared.forEach { (key, value) -> put(key, value) }
                         put("modelSelection", encoded.getValue("modelSelection"))
-                        command.titleSeed?.let { put("titleSeed", it) }
                         command.sourceProposedPlan?.let {
                             put("sourcePlanRef", T3Json.encodeToJsonElement(SourceProposedPlan.serializer(), it))
                         }
@@ -119,9 +112,6 @@ object V2Commands {
                     }
                 )
             }
-            is ClientOrchestrationCommand.StopSession -> error(
-                "Session detachment requires the current provider session."
-            )
             else -> Unit
         }
         return listOf(V2RpcRequest(method, JsonObject(payload)))

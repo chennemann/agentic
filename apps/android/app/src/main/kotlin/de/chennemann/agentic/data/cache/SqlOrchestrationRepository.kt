@@ -117,26 +117,6 @@ class SqlOrchestrationRepository(
         }
     }
 
-    override suspend fun setShellSnapshot(
-        environmentId: String,
-        snapshot: OrchestrationShellSnapshot,
-        source: ProjectionSource,
-    ) = withContext(dispatcher) {
-        lock.withLock {
-            if (environmentId != currentEnvironmentId) return@withLock
-            mutableShell.value = ShellProjectionReducer.snapshot(mutableShell.value, snapshot, source)
-            if (source == ProjectionSource.LIVE) reconcileFocusedThread(environmentId)
-            cancelScheduledCache(environmentId, ShellKind, GlobalCacheKey)
-            cache(
-                environmentId,
-                ShellKind,
-                GlobalCacheKey,
-                snapshot.snapshotSequence,
-                T3Json.encodeToString(snapshot),
-            )
-        }
-    }
-
     override suspend fun applyShellItem(
         environmentId: String,
         item: OrchestrationShellStreamItem,
@@ -211,36 +191,6 @@ class SqlOrchestrationRepository(
                     projectId,
                 )
             }
-        }
-    }
-
-    override suspend fun setThreadSnapshot(
-        environmentId: String,
-        snapshot: OrchestrationThreadDetailSnapshot,
-        source: ProjectionSource,
-    ) = withContext(dispatcher) {
-        lock.withLock {
-            if (
-                environmentId != currentEnvironmentId
-            ) {
-                return@withLock
-            }
-            val threadId = snapshot.thread.id
-            val state = withShellMetadata(ThreadProjectionReducer.snapshot(
-                threadProjections[threadId] ?: ProjectionState(),
-                snapshot,
-                source,
-            ))
-            threadProjections[threadId] = state
-            if (threadId == mutableFocusedThreadId.value) mutableFocusedThread.value = state
-            cancelScheduledCache(environmentId, ThreadKind, snapshot.thread.id)
-            cache(
-                environmentId,
-                ThreadKind,
-                snapshot.thread.id,
-                state.sequence,
-                T3Json.encodeToString(requireNotNull(state.value)),
-            )
         }
     }
 

@@ -33,7 +33,6 @@ data class ChatUiState(
     val canUseScratchProject: Boolean = false,
     val projectRename: ProjectRenameUi? = null,
     val projectRemoval: ProjectRemovalUi? = null,
-    val sessionTermination: SessionTerminationUi = SessionTerminationUi(),
     val threadSnooze: ThreadSnoozeUi = ThreadSnoozeUi(),
     val threadDeletion: ThreadDeletionUi? = null,
     val sharedTextImport: SharedTextImportUi? = null,
@@ -163,13 +162,6 @@ data class ProjectRemovalUi(
     val projectId: String,
     val title: String,
     val removing: Boolean = false,
-    val errorMessage: String? = null,
-)
-
-data class SessionTerminationUi(
-    val canTerminate: Boolean = false,
-    val terminating: Boolean = false,
-    val terminal: Boolean = false,
     val errorMessage: String? = null,
 )
 
@@ -618,8 +610,6 @@ sealed interface ChatUiEvent {
         val value: String,
     ) : ChatUiEvent
 
-    data object DraftDiscardRequested : ChatUiEvent
-
     data class ProposedPlanContinueRequested(val planId: String) : ChatUiEvent
 
     data object MessageSubmitted : ChatUiEvent
@@ -664,8 +654,6 @@ sealed interface ChatUiEvent {
 
     data object TurnInterruptRequested : ChatUiEvent
 
-    data object SessionTerminationRequested : ChatUiEvent
-
     data class ProviderModelSelected(
         val id: String,
     ) : ChatUiEvent
@@ -696,10 +684,6 @@ sealed interface ChatUiEvent {
 
     data class ThreadWorkspaceSelected(val id: String) : ChatUiEvent
 
-    data class SlashCommandSelected(
-        val name: String,
-    ) : ChatUiEvent
-
     data class PickerRequested(
         val picker: ChatPickerUi,
     ) : ChatUiEvent
@@ -717,10 +701,6 @@ sealed interface ChatUiEvent {
     data object EnvironmentRemovalDismissed : ChatUiEvent
 
     data object EnvironmentRemovalConfirmed : ChatUiEvent
-
-    data class ProjectSelected(
-        val projectId: String,
-    ) : ChatUiEvent
 
     data object ProjectCreationRequested : ChatUiEvent
 
@@ -774,10 +754,6 @@ sealed interface ChatUiEvent {
     ) : ChatUiEvent
 
     data class ThreadUnsettleRequested(
-        val threadId: String,
-    ) : ChatUiEvent
-
-    data class PickerThreadUnarchiveRequested(
         val threadId: String,
     ) : ChatUiEvent
 

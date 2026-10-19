@@ -47,38 +47,6 @@ class SqlCommandOutboxTest {
     }
 
     @Test
-    fun `ordered command group is fully durable before its first send`() = runTest {
-        val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
-        AgenticDb.Schema.create(driver)
-        val database = AgenticDb(driver)
-        val io = StandardTestDispatcher(testScheduler)
-        val environment = savedEnvironment()
-        val outbox = SqlCommandOutbox(database, io)
-        val dispatcher = DurableCommandDispatcher(
-            environments = OutboxEnvironmentRepository(environment),
-            credentials = OutboxCredentialStore,
-            client = RecoveringClient(),
-            outbox = outbox,
-        )
-        val commands = listOf(
-            ClientOrchestrationCommand.ArchiveThread("first", "thread"),
-            ClientOrchestrationCommand.UnarchiveThread("second", "thread"),
-        )
-
-        try {
-            dispatcher.dispatchInOrder(commands)
-            error("Expected dispatch failure")
-        } catch (_: IllegalStateException) {
-            // Both commands were persisted before the first network attempt.
-        }
-
-        val queued = outbox.commands(environment.id)
-        assertEquals(listOf("first", "second"), queued.map { it.command.commandId })
-        assertEquals(listOf(OutboxCommandStatus.FAILED, OutboxCommandStatus.PENDING), queued.map { it.status })
-        driver.close()
-    }
-
-    @Test
     fun `failed command survives recreation and replay keeps its command id`() = runTest {
         val driver = JdbcSqliteDriver(JdbcSqliteDriver.IN_MEMORY)
         AgenticDb.Schema.create(driver)
@@ -97,7 +65,6 @@ class SqlCommandOutboxTest {
             commandId = "stable-command-id",
             threadId = "thread",
             runtimeMode = "provider-defined-mode",
-            createdAt = "2026-08-06T00:00:00Z",
         )
 
         val failure = try {

@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Assertions.assertTrue
 import org.junit.jupiter.api.Assumptions.assumeTrue
 import org.junit.jupiter.api.Test
 
-/** Opt-in test against a disposable stock server, with credentials supplied through a local file. */
+/** Opt-in test against a disposable stock server with an enabled model and credentials in a local file. */
 class UpstreamServerCompatibilityTest {
     @Test
     fun `native Android client pairs and operates against stock upstream`() = runBlocking {
@@ -51,6 +51,10 @@ class UpstreamServerCompatibilityTest {
                 val config = client.serverConfig(baseUrl, token)
                 assertEquals(descriptor.environmentId, config.environment.environmentId)
                 assertEquals(2, config.environment.orchestrationProtocolVersion)
+                val provider = config.providers.firstOrNull { it.enabled && it.installed && it.models.isNotEmpty() }
+                assumeTrue(provider != null, "No enabled provider model configured on the disposable server")
+                val selectedProvider = requireNotNull(provider)
+                val model = selectedProvider.models.firstOrNull { it.isDefault } ?: selectedProvider.models.first()
                 assertTrue(config.newProjectsRoot != null)
                 println("Stock upstream pairing and configuration passed")
                 val streamed = client.configStream(baseUrl, token).first { it.type == "snapshot" }
@@ -81,12 +85,16 @@ class UpstreamServerCompatibilityTest {
                 val threadId = UUID.randomUUID().toString()
                 client.dispatch(
                     baseUrl, token,
-                    ClientOrchestrationCommand.CreateThread(
+                    ClientOrchestrationCommand.StartTurn(
                         commandId = UUID.randomUUID().toString(), threadId = threadId,
-                        projectId = created.projectId, title = "Compatibility check",
-                        modelSelection = ModelSelection("compatibility-test", "test-model"),
+                        message = de.chennemann.agentic.t3.contract.TurnMessageInput(UUID.randomUUID().toString(), text = "Reply with exactly OK. Do not use tools or change files."),
+                        modelSelection = ModelSelection(selectedProvider.instanceId, model.slug),
                         runtimeMode = "approval-required", interactionMode = "default",
-                        branch = null, worktreePath = null, createdAt = Instant.now().toString(),
+                        bootstrap = de.chennemann.agentic.t3.contract.StartTurnBootstrap(
+                            de.chennemann.agentic.t3.contract.NewThreadBootstrap(
+                                projectId = created.projectId, title = "Compatibility check",
+                            ),
+                        ),
                     ),
                 )
                 val initial = (client.threadStream(baseUrl, token, threadId, null, true).first {
@@ -102,7 +110,6 @@ class UpstreamServerCompatibilityTest {
                     baseUrl, token,
                     ClientOrchestrationCommand.UpdateThreadMetadata(
                         commandId = UUID.randomUUID().toString(), threadId = threadId, title = "Renamed check",
-                        modelSelection = ModelSelection("compatibility-test", "test-model"),
                     ),
                 )
                 val replay = client.shellStream(baseUrl, token, shell.snapshotSequence, true).first {

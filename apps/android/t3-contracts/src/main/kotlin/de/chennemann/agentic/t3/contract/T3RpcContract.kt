@@ -561,8 +561,6 @@ data class AssetCreateUrlResult(val relativeUrl: String, val expiresAt: Long)
 @Serializable
 data class TurnMessageInput(
     val messageId: String,
-    @EncodeDefault
-    val role: String = "user",
     val text: String,
     @EncodeDefault
     val attachments: List<UploadChatAttachment> = emptyList(),
@@ -574,29 +572,19 @@ data class TurnMessageInput(
 data class NewThreadBootstrap(
     val projectId: String,
     val title: String,
-    val modelSelection: ModelSelection,
-    val interactionMode: String,
-    val runtimeMode: String,
     @EncodeDefault
     val branch: String? = null,
     @EncodeDefault
-    val worktreePath: String? = null,
-    val createdAt: String
+    val worktreePath: String? = null
 )
 
 @Serializable
-data class PrepareWorktreeBootstrap(
-    val projectCwd: String,
-    val baseBranch: String,
-    val branch: String? = null,
-    val startFromOrigin: Boolean? = null
-)
+data class PrepareWorktreeBootstrap(val baseBranch: String, val startFromOrigin: Boolean? = null)
 
 @Serializable
 data class StartTurnBootstrap(
     val createThread: NewThreadBootstrap,
-    val prepareWorktree: PrepareWorktreeBootstrap? = null,
-    val runSetupScript: Boolean? = null
+    val prepareWorktree: PrepareWorktreeBootstrap? = null
 )
 
 @Serializable
@@ -616,8 +604,7 @@ sealed interface ClientOrchestrationCommand {
         val title: String,
         val workspaceRoot: String,
         @EncodeDefault
-        val defaultModelSelection: ModelSelection? = null,
-        val createdAt: String
+        val defaultModelSelection: ModelSelection? = null
     ) : ClientOrchestrationCommand
 
     @Serializable
@@ -637,59 +624,27 @@ sealed interface ClientOrchestrationCommand {
         ClientOrchestrationCommand
 
     @Serializable
-    @SerialName("thread.create")
-    data class CreateThread(
-        override val commandId: String,
-        val threadId: String,
-        val projectId: String,
-        val title: String,
-        val modelSelection: ModelSelection,
-        val interactionMode: String,
-        val runtimeMode: String,
-        @EncodeDefault
-        val branch: String? = null,
-        @EncodeDefault
-        val worktreePath: String? = null,
-        val createdAt: String
-    ) : ClientOrchestrationCommand
-
-    @Serializable
     @SerialName("thread.turn.start")
     data class StartTurn(
         override val commandId: String,
         val threadId: String,
         val message: TurnMessageInput,
         val modelSelection: ModelSelection,
-        val titleSeed: String? = null,
         val interactionMode: String,
         val runtimeMode: String,
-        val createdAt: String,
         val bootstrap: StartTurnBootstrap? = null,
         val sourceProposedPlan: SourceProposedPlan? = null
     ) : ClientOrchestrationCommand
 
     @Serializable
     @SerialName("thread.turn.interrupt")
-    data class InterruptTurn(
-        override val commandId: String,
-        val threadId: String,
-        val turnId: String? = null,
-        val createdAt: String
-    ) : ClientOrchestrationCommand
-
-    @Serializable
-    @SerialName("thread.session.stop")
-    data class StopSession(override val commandId: String, val threadId: String, val createdAt: String) :
+    data class InterruptTurn(override val commandId: String, val threadId: String, val turnId: String? = null) :
         ClientOrchestrationCommand
 
     @Serializable
     @SerialName("thread.meta.update")
-    data class UpdateThreadMetadata(
-        override val commandId: String,
-        val threadId: String,
-        val title: String,
-        val modelSelection: ModelSelection
-    ) : ClientOrchestrationCommand
+    data class UpdateThreadMetadata(override val commandId: String, val threadId: String, val title: String) :
+        ClientOrchestrationCommand
 
     @Serializable
     @SerialName("thread.archive")
@@ -732,21 +687,8 @@ sealed interface ClientOrchestrationCommand {
 
     @Serializable
     @SerialName("thread.runtime-mode.set")
-    data class SetRuntimeMode(
-        override val commandId: String,
-        val threadId: String,
-        val runtimeMode: String,
-        val createdAt: String
-    ) : ClientOrchestrationCommand
-
-    @Serializable
-    @SerialName("thread.interaction-mode.set")
-    data class SetInteractionMode(
-        override val commandId: String,
-        val threadId: String,
-        val interactionMode: String,
-        val createdAt: String
-    ) : ClientOrchestrationCommand
+    data class SetRuntimeMode(override val commandId: String, val threadId: String, val runtimeMode: String) :
+        ClientOrchestrationCommand
 
     @Serializable
     @SerialName("thread.approval.respond")
@@ -754,8 +696,7 @@ sealed interface ClientOrchestrationCommand {
         override val commandId: String,
         val threadId: String,
         val requestId: String,
-        val decision: String,
-        val createdAt: String
+        val decision: String
     ) : ClientOrchestrationCommand
 
     @Serializable
@@ -764,16 +705,11 @@ sealed interface ClientOrchestrationCommand {
         override val commandId: String,
         val threadId: String,
         val requestId: String,
-        val answers: JsonObject,
-        val createdAt: String
+        val answers: JsonObject
     ) : ClientOrchestrationCommand
 
     @Serializable
     @SerialName("thread.user-input.dismiss")
-    data class DismissUserInput(
-        override val commandId: String,
-        val threadId: String,
-        val requestId: String,
-        val createdAt: String
-    ) : ClientOrchestrationCommand
+    data class DismissUserInput(override val commandId: String, val threadId: String, val requestId: String) :
+        ClientOrchestrationCommand
 }

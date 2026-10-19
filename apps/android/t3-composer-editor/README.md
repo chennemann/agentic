@@ -10,6 +10,8 @@ selection, placeholder measurement, and input flags. `T3ContextChip.kt` is copie
 unchanged. The Expo container and event dispatchers are replaced with a
 `FrameLayout` and Kotlin callbacks. The clipboard helper is extracted from the
 upstream Expo module. Original package names and source layout are retained.
+Unused Expo property setters are omitted; the Compose adapter owns focus, typography,
+selection and layout through the methods it uses.
 
 `upstream.json` records every original source hash. `upstream.patch` records all
 changes to vendored sources, including the clipboard extraction. Gradle verifies

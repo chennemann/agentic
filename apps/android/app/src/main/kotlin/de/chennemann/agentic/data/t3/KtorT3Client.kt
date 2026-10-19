@@ -186,20 +186,6 @@ class KtorT3Client(
         bearerToken: String,
         command: ClientOrchestrationCommand,
     ): DispatchResult {
-        if (command is ClientOrchestrationCommand.StopSession) {
-            val projection: V2Projection = rpcCall(baseUrl, bearerToken, "orchestration.getThreadProjection",
-                buildJsonObject { put("threadId", command.threadId) })
-            var result = DispatchResult(0)
-            for (session in projection.providerSessions.filter { it["status"]?.jsonPrimitive?.content in setOf("starting", "ready", "running", "waiting") }) {
-                result = rpcCall(baseUrl, bearerToken, "orchestration.dispatchCommand", buildJsonObject {
-                    put("type", "provider-session.detach")
-                    put("commandId", "${command.commandId}:${session.getValue("id").jsonPrimitive.content}")
-                    put("threadId", command.threadId)
-                    put("providerSessionId", session.getValue("id"))
-                })
-            }
-            return result
-        }
         val message = if (command is ClientOrchestrationCommand.StartTurn) {
             val ids = mutableMapOf<String, String>()
             val attachments = command.message.attachments.map { attachment ->

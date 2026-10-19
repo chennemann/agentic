@@ -131,7 +131,6 @@ class ReviewDiffScreenTest {
             view.cleanup()
             view.setRowsJson("[]")
             view.setTokensJson("{}")
-            view.setTokensPatchJson("{}")
             assertTrue(find(compose.activity.window.decorView) == null)
         }
     }

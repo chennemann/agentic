@@ -49,12 +49,6 @@ interface OrchestrationRepository {
         source: ProjectionSource,
     )
 
-    suspend fun setShellSnapshot(
-        environmentId: String,
-        snapshot: OrchestrationShellSnapshot,
-        source: ProjectionSource,
-    )
-
     suspend fun applyShellItem(
         environmentId: String,
         item: de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem,
@@ -68,12 +62,6 @@ interface OrchestrationRepository {
     suspend fun selectProject(
         environmentId: String,
         projectId: String?,
-    )
-
-    suspend fun setThreadSnapshot(
-        environmentId: String,
-        snapshot: OrchestrationThreadDetailSnapshot,
-        source: ProjectionSource,
     )
 
     suspend fun applyThreadItem(

@@ -4,8 +4,7 @@ Pinned from T3 Code revision `3e6b45028ceec5820dacb37dc3852470ebdc9411`, directo
 `apps/mobile/modules/t3-review-diff/android`. Original filenames, package names,
 and formatting are retained; text line endings use LF.
 
-`ReviewDiffCanvasDrawing.kt` is unchanged. The Canvas
-view retains upstream row rendering, sticky file headers, touch hit testing,
+The Canvas view retains upstream row rendering, sticky file headers, touch hit testing,
 vertical/horizontal scrolling and flings, line wrapping, viewed-file checkboxes,
 line numbers, syntax token rendering, and Unicode text layout.
 
@@ -19,6 +18,9 @@ The complete local delta is in `upstream.patch`:
   Posted worker results cannot restore a disposed view's content.
 - Code layout uses the equivalent `LineBreaker.BREAK_STRATEGY_SIMPLE` constant
   to satisfy the SDK 37 lint annotations on `StaticLayout.Builder`.
+- Unused Expo setters, line-selection callbacks, review-comment rows and word-diff
+  drawing are omitted. Agentic supplies file, hunk, notice and line rows, with full
+  syntax-token snapshots and file-level collapse/viewed state.
 
 The application owns navigation, RPC loading, unified-patch parsing and the JSON
 row/token adapter. Original TypeScript row/model contracts are retained under

@@ -18,18 +18,14 @@ import java.util.Locale
 internal data class TerminalAppearance(
     val background: String,
     val foreground: String,
-    val mutedForeground: String,
-    val scheme: String,
     val config: String,
     val fontSize: Float
 ) {
     fun applyTo(view: T3TerminalView) {
         if (view.backgroundColorHex != background) view.backgroundColorHex = background
         if (view.foregroundColorHex != foreground) view.foregroundColorHex = foreground
-        if (view.mutedForegroundColorHex != mutedForeground) view.mutedForegroundColorHex = mutedForeground
         if (view.themeConfig != config) view.themeConfig = config
         if (view.fontSize != fontSize) view.fontSize = fontSize
-        view.appearanceScheme = scheme
     }
 }
 
@@ -66,8 +62,6 @@ internal fun rememberTerminalAppearance(): TerminalAppearance {
         TerminalAppearance(
             background = colors.surface.hex(),
             foreground = colors.onSurface.hex(),
-            mutedForeground = colors.onSurfaceVariant.hex(),
-            scheme = if (dark) "dark" else "light",
             config = buildString {
                 appendLine("cursor-color = ${colors.primary.hex()}")
                 palette.forEachIndexed { index, color -> appendLine("palette = $index=${color.hex()}") }

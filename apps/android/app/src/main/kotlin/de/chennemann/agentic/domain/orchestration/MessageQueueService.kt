@@ -8,7 +8,6 @@ import de.chennemann.agentic.t3.contract.ModelSelection
 import de.chennemann.agentic.t3.contract.TurnMessageInput
 import de.chennemann.agentic.t3.contract.UploadChatAttachment
 import kotlinx.serialization.json.JsonObject
-import java.time.Instant
 import java.util.UUID
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -72,7 +71,6 @@ class MessageQueueService(
             modelSelection = model,
             runtimeMode = runtimeMode,
             interactionMode = "default",
-            createdAt = Instant.now().toString(),
         )
         val queued = QueuedMessage(environmentId, command, repository.shell.value.sequence ?: -1)
         mutableMessages.update { it + queued }

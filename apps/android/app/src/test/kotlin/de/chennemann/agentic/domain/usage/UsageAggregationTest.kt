@@ -93,9 +93,9 @@ class UsageAggregationTest {
 
     @Test fun `incompatible contracts and wrong date windows never enter totals`() {
         val wrong = environment("wrong").let { it.copy(summary = it.summary!!.copy(sinceDay = "2020-01-01")) }
-        val merged = mergeUsage(listOf(environment("future", version = 7), wrong), input)
+        val merged = mergeUsage(listOf(environment("v4", version = 4), environment("v5", version = 5), environment("future", version = 7), wrong), input)
         assertTrue(merged.buckets.isEmpty())
-        assertEquals(1, merged.mismatches.size)
+        assertEquals(3, merged.mismatches.size)
     }
 
     @Test fun `rolling day is 24 real hours across daylight savings`() {

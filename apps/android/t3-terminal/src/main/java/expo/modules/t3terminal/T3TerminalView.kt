@@ -19,7 +19,6 @@ class T3TerminalView(context: Context, private val session: GhosttySession) : Fr
   private val inputView = TerminalInputView(context) { emitInput(it) }
   var onInput: (String) -> Unit = {}
   var onResize: (Int, Int) -> Unit = { _, _ -> }
-  var onCapture: (String) -> Unit = {}
   var onResponse: (ByteArray) -> Unit = {}
   var onPaste: () -> Unit = {}
   private var renderedRevision = -1L
@@ -34,29 +33,6 @@ class T3TerminalView(context: Context, private val session: GhosttySession) : Fr
   private fun emitInput(data: String) {
     if (inputEnabled && !isCleanedUp) onInput(data)
   }
-  var captureRequest: Double = 0.0
-    set(value) {
-      if (field == value || value <= 0) return
-      field = value
-      val frame = if (terminalHandle !=
-        0L
-      ) {
-        TerminalFrame.decode(session.withHandle { handle -> GhosttyBridge.nativeSnapshot(handle) })
-      } else {
-        null
-      }
-      val text = frame?.let { snapshot ->
-        (0 until snapshot.rows).joinToString("\n") { row ->
-          (0 until snapshot.cols).joinToString("") { col ->
-            snapshot.cellText[
-              row * snapshot.cols +
-                col
-            ]
-          }.trimEnd()
-        }
-      } ?: ""
-      onCapture(text)
-    }
   private val terminalHandle: Long get() = session.handle
   private var cols = 0
   private var rows = 0
@@ -64,7 +40,6 @@ class T3TerminalView(context: Context, private val session: GhosttySession) : Fr
   private var isCleanedUp = false
   private var backgroundColorValue = Color.parseColor("#24292E")
   private var foregroundColorValue = Color.parseColor("#D1D5DA")
-  private var mutedForegroundColorValue = Color.parseColor("#959DA5")
   private var cursorColorValue = Color.parseColor("#009FFF")
   private var paletteColors = IntArray(0)
 
@@ -76,33 +51,11 @@ class T3TerminalView(context: Context, private val session: GhosttySession) : Fr
       emitResize()
     }
 
-  var appearanceScheme: String = "dark"
-
   var themeConfig: String = ""
     set(value) {
       field = value
       parseThemeConfig(value)
       applyTheme()
-    }
-
-  var focusRequest: Double = 0.0
-    set(value) {
-      val previous = field
-      field = value
-      if (value != previous && value > 0) {
-        requestKeyboardFocus()
-      }
-    }
-
-  var autoFocus: Boolean = true
-    set(value) {
-      field = value
-      if (value) {
-        requestKeyboardFocus()
-      } else {
-        inputView.clearFocus()
-        hideKeyboard()
-      }
     }
 
   var backgroundColorHex: String = "#24292E"
@@ -117,12 +70,6 @@ class T3TerminalView(context: Context, private val session: GhosttySession) : Fr
       field = value
       foregroundColorValue = parseColor(value, foregroundColorValue)
       applyTheme()
-    }
-
-  var mutedForegroundColorHex: String = "#959DA5"
-    set(value) {
-      field = value
-      mutedForegroundColorValue = parseColor(value, mutedForegroundColorValue)
     }
 
   init {
@@ -215,7 +162,6 @@ class T3TerminalView(context: Context, private val session: GhosttySession) : Fr
     terminalCanvas.resetSelectionState()
     onInput = {}
     onResize = { _, _ -> }
-    onCapture = {}
     onResponse = {}
     onPaste = {}
     inputView.onPaste = {}

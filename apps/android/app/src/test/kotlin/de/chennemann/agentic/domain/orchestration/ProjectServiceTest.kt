@@ -222,15 +222,9 @@ private class ProjectRepository(projects: List<OrchestrationProject> = emptyList
 
     override suspend fun loadCached(environmentId: String) = Unit
     override suspend fun setClientConfig(environmentId: String, config: ServerConfig, source: ProjectionSource) = Unit
-    override suspend fun setShellSnapshot(environmentId: String, snapshot: OrchestrationShellSnapshot, source: ProjectionSource) = Unit
     override suspend fun applyShellItem(environmentId: String, item: OrchestrationShellStreamItem) = Reduction.Ignored(shell.value)
     override suspend fun focusThread(environmentId: String, threadId: String?) = Unit
     override suspend fun selectProject(environmentId: String, projectId: String?) = Unit
-    override suspend fun setThreadSnapshot(
-        environmentId: String,
-        snapshot: OrchestrationThreadDetailSnapshot,
-        source: ProjectionSource,
-    ) = Unit
     override suspend fun applyThreadItem(environmentId: String, threadId: String, item: OrchestrationThreadStreamItem) =
         Reduction.Ignored(focusedThread.value)
     override suspend fun clearEnvironment(environmentId: String) = Unit

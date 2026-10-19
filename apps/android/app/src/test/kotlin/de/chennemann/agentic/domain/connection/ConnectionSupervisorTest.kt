@@ -104,7 +104,7 @@ class ConnectionSupervisorTest {
         repository.setClientConfig(environment.id, transport.serverConfig(environment.baseUrl, "token"), ProjectionSource.LIVE)
         repository.focusThread(environment.id, "thread-one")
         val initial = threadSnapshot("thread-one").copy(snapshotSequence = 10, page = OrchestrationThreadDetailPage("cursor", true, 10))
-        repository.setThreadSnapshot(environment.id, initial, ProjectionSource.LIVE)
+        repository.applyThreadItem(environment.id, initial.thread.id, OrchestrationThreadStreamItem.Snapshot(initial))
         val rpc = object : T3RpcClient by transport {
             override suspend fun threadHistory(baseUrl: String, bearerToken: String, threadId: String, beforeCursor: String?, projection: de.chennemann.agentic.t3.contract.V2Projection?) =
                 initial.copy(snapshotSequence = 12, page = OrchestrationThreadDetailPage("older-cursor", true, 12))
@@ -859,7 +859,7 @@ private class SupervisorOrchestrationRepository : OrchestrationRepository {
         clientConfig.value = ProjectionState(config, source = source)
     }
 
-    override suspend fun setShellSnapshot(
+    suspend fun setShellSnapshot(
         environmentId: String,
         snapshot: OrchestrationShellSnapshot,
         source: ProjectionSource,
@@ -898,7 +898,7 @@ private class SupervisorOrchestrationRepository : OrchestrationRepository {
         selectedProjectId.value = projectId
     }
 
-    override suspend fun setThreadSnapshot(
+    suspend fun setThreadSnapshot(
         environmentId: String,
         snapshot: OrchestrationThreadDetailSnapshot,
         source: ProjectionSource,

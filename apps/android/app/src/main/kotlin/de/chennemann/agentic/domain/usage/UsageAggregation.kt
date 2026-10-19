@@ -53,11 +53,11 @@ data class MergedUsage(
 /** Physical sources are counted once, with complete scans ahead of newer partial scans. */
 fun mergeUsage(environments: List<EnvironmentUsage>, input: UsageSummaryInput): MergedUsage {
     val mismatches = environments.filter {
-        it.summary != null && it.summary.contractVersion !in 4..6
+        it.summary != null && it.summary.contractVersion != 6
     }.map { "${it.environment.label}: usage contract ${it.summary?.contractVersion} is incompatible (supported: 4–6)." }
     val valid = environments.filter {
         it.summary?.let { s ->
-            s.contractVersion in 4..6 &&
+            s.contractVersion == 6 &&
                 s.sinceDay == input.sinceDay &&
                 s.untilDay == input.untilDay &&
                 s.timeZone == input.timeZone

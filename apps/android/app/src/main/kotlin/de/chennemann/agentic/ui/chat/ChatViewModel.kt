@@ -312,21 +312,6 @@ class ChatViewModel(
         }
         viewModelScope.launch {
             repository.focusedThread.collect { state ->
-                val terminatingThreadId = local.value.sessionTerminatingThreadId ?: return@collect
-                val detail = state.value?.thread
-                if (detail?.id == terminatingThreadId && detail.session?.status !in ActiveSessionStatuses) {
-                    update {
-                        copy(
-                            sessionTerminatingThreadId = null,
-                            sessionTerminalThreadId = terminatingThreadId,
-                            sessionTerminationError = null,
-                        )
-                    }
-                }
-            }
-        }
-        viewModelScope.launch {
-            repository.focusedThread.collect { state ->
                 val pendingThreadId = local.value.snoozeActionThreadId ?: return@collect
                 val detail = state.value?.thread ?: return@collect
                 if (detail.id != pendingThreadId) return@collect
@@ -502,11 +487,6 @@ class ChatViewModel(
             is ChatUiEvent.ComposerContextRequested -> inspectComposerContext(event.source)
             ChatUiEvent.ComposerContextDismissed -> update { copy(composerPreview = null) }
             is ChatUiEvent.DraftChanged -> setDraft(event.value)
-            ChatUiEvent.DraftDiscardRequested -> setDraft(
-                displayedDraftKey,
-                "",
-                persistImmediately = true,
-            ).also { update { copy(draftImages = emptyList()) } }
             is ChatUiEvent.ProposedPlanContinueRequested -> continueProposedPlan(event.planId)
             ChatUiEvent.MessageSubmitted -> submitMessage()
             ChatUiEvent.AlternateMessageSubmitted -> submitMessage(alternate = true)
@@ -560,7 +540,6 @@ class ChatViewModel(
                 environments.activeEnvironment.value?.id?.let { messageQueue?.pause(it, detail.id) }
                 chat.interrupt(detail.id, detail.session?.activeTurnId)
             }
-            ChatUiEvent.SessionTerminationRequested -> terminateSession()
 
             is ChatUiEvent.ProviderModelSelected -> {
                 val key = currentModelOverrideKey() ?: return
@@ -614,11 +593,6 @@ class ChatViewModel(
 
             is ChatUiEvent.ThreadWorkspaceSelected -> update {
                 copy(selectedWorkspaceId = event.id, activePicker = null)
-            }
-
-            is ChatUiEvent.SlashCommandSelected -> {
-                setDraft("/${event.name} ")
-                update { copy(activePicker = null) }
             }
 
             is ChatUiEvent.PickerRequested -> {
@@ -706,16 +680,6 @@ class ChatViewModel(
             is ChatUiEvent.ProjectRemovalRequested -> acceptProject(ProjectWorkflowIntent.RequestRemoval(event.projectId))
             ChatUiEvent.ProjectRemovalDismissed -> acceptProject(ProjectWorkflowIntent.DismissRemoval)
             ChatUiEvent.ProjectRemovalConfirmed -> acceptProject(ProjectWorkflowIntent.ConfirmRemoval)
-            is ChatUiEvent.ProjectSelected -> launchCommand {
-                threads.selectProject(event.projectId)
-                update {
-                    copy(
-                        activePicker = ChatPickerUi.PROJECT_THREAD,
-                        pickerProjectId = event.projectId,
-                    )
-                }
-            }
-
             is ChatUiEvent.ProjectQuickSwitchRequested -> quickSwitchProject(event.projectId)
             is ChatUiEvent.ProjectThreadsRequested -> update {
                 copy(
@@ -732,10 +696,6 @@ class ChatViewModel(
             is ChatUiEvent.ThreadUnsettleRequested -> launchCommand {
                 threads.unsettle(event.threadId)
             }
-            is ChatUiEvent.PickerThreadUnarchiveRequested -> launchCommand {
-                threads.unarchive(event.threadId)
-            }
-
             is ChatUiEvent.ArchivedThreadsVisibilityChanged -> update {
                 copy(showArchived = event.visible)
             }
@@ -1241,35 +1201,6 @@ class ChatViewModel(
         }
     }
 
-    private fun terminateSession() {
-        if (local.value.sessionTerminatingThreadId != null) return
-        val detail = repository.focusedThread.value.value?.thread ?: return
-        val session = detail.session ?: return
-        if (session.threadId != detail.id || session.status !in ActiveSessionStatuses) return
-        update {
-            copy(
-                sessionTerminatingThreadId = detail.id,
-                sessionTerminalThreadId = null,
-                sessionTerminationError = null,
-            )
-        }
-        viewModelScope.launch {
-            try {
-                chat.terminateSession(detail.id)
-            } catch (cause: CancellationException) {
-                throw cause
-            } catch (cause: Exception) {
-                update {
-                    copy(
-                        sessionTerminatingThreadId = null,
-                        sessionTerminationErrorThreadId = detail.id,
-                        sessionTerminationError = cause.message ?: "Session termination failed.",
-                    )
-                }
-            }
-        }
-    }
-
     private fun changeSnooze(action: SnoozeAction, snoozedUntil: String? = null) {
         if (local.value.snoozeActionThreadId != null) return
         val activeEnvironment = environments.activeEnvironment.value ?: return
@@ -1484,11 +1415,10 @@ class ChatViewModel(
     private fun renameThread() {
         val threadId = repository.focusedThreadId.value ?: return
         val title = local.value.renameDraft.trim()
-        val selection = selectedModel() ?: return
         if (title.isEmpty()) return
         launchCommand {
             update { copy(renameSaving = true) }
-            threads.rename(threadId, title, selection)
+            threads.rename(threadId, title)
             update { copy(renameSaving = false, renameVisible = false) }
         }
     }
@@ -2279,17 +2209,6 @@ class ChatViewModel(
             projectCreation = null,
             projectRename = null,
             projectRemoval = null,
-            sessionTermination = SessionTerminationUi(
-                canTerminate = detail?.session?.status in ActiveSessionStatuses &&
-                    detail?.session?.threadId == detail?.id &&
-                    local.sessionTerminatingThreadId == null,
-                terminating = local.sessionTerminatingThreadId == detail?.id,
-                terminal = local.sessionTerminalThreadId == detail?.id &&
-                    detail?.session?.status !in ActiveSessionStatuses,
-                errorMessage = local.sessionTerminationError.takeIf {
-                    local.sessionTerminationErrorThreadId == detail?.id
-                },
-            ),
             threadSnooze = ThreadSnoozeUi(
                 supported = orchestration.config.value?.environment?.capabilities?.threadSnooze == true &&
                     orchestration.config.value.environment.environmentId == environment.active?.id,
@@ -2704,10 +2623,6 @@ class ChatViewModel(
         val planContinuationId: String? = null,
         val planContinuationErrorId: String? = null,
         val planContinuationError: String? = null,
-        val sessionTerminatingThreadId: String? = null,
-        val sessionTerminalThreadId: String? = null,
-        val sessionTerminationErrorThreadId: String? = null,
-        val sessionTerminationError: String? = null,
         val snoozeActionThreadId: String? = null,
         val snoozeAction: SnoozeAction? = null,
         val snoozeTargetUntil: String? = null,

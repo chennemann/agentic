@@ -27,7 +27,8 @@ artifacts before building. Builds use only files in this module, with NDK
   JavaScript `initialBuffer`. A conflated revision flow refreshes the Canvas without
   conflating parser input. Historical replies are discarded before live input begins.
 - Kotlin callbacks expose selection, keyboard, resize replies, paste requests, and input
-  availability. `TerminalInputView` handles IME backspace after the local editor clears,
+  availability. Unused capture/focus-request properties and inert appearance fields are
+  omitted. `TerminalInputView` handles IME backspace after the local editor clears,
   and routes native paste through the same confirmation as the Compose toolbar.
 - CMake's header search path points at this module's vendored headers.
 

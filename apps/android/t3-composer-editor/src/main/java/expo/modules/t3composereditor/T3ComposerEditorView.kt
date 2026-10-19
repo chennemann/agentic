@@ -6,8 +6,6 @@ import android.content.Context
 import android.graphics.Color
 import android.graphics.Canvas
 import android.graphics.Paint
-import android.graphics.Typeface
-import android.os.Build
 import android.text.Editable
 import android.text.InputType
 import android.text.InputFilter
@@ -50,12 +48,9 @@ class T3ComposerEditorView(context: Context) : FrameLayout(context) {
   private var applyingNativeValue = false
   private var desiredLineHeightPx = 0
   private var lastContentHeight = 0
-  private var contentInsetVertical = 0
   private var tokensJson = "[]"
   private var tokens: List<ComposerToken> = emptyList()
   private var chipTheme = ComposerChipTheme.default()
-  private var autoCorrect = true
-  private var spellCheck = true
   private var nativeEventCount = 0
 
   init {
@@ -257,15 +252,6 @@ class T3ComposerEditorView(context: Context) : FrameLayout(context) {
     editor.clipboardFragment = fragment
   }
 
-  fun setFontFamily(fontFamily: String) {
-    editor.typeface = if (fontFamily.contains("Mono", ignoreCase = true)) {
-      Typeface.MONOSPACE
-    } else {
-      Typeface.DEFAULT
-    }
-    editor.applyPlaceholder()
-  }
-
   fun setFontSize(fontSize: Float) {
     editor.textSize = fontSize
     applyLineHeight()
@@ -278,21 +264,6 @@ class T3ComposerEditorView(context: Context) : FrameLayout(context) {
     applyLineHeight()
   }
 
-  fun setSingleLineCentered(centered: Boolean) {
-    editor.gravity = if (centered) {
-      Gravity.CENTER_VERTICAL or Gravity.START
-    } else {
-      Gravity.TOP or Gravity.START
-    }
-  }
-
-  fun setContentInsetVertical(contentInsetVertical: Int) {
-    this.contentInsetVertical =
-      max(0, (contentInsetVertical * resources.displayMetrics.density).toInt())
-    editor.setPadding(0, this.contentInsetVertical, 0, this.contentInsetVertical)
-    emitContentSizeIfNeeded()
-  }
-
   fun setEditable(editable: Boolean) {
     editor.isEnabled = editable
     editor.isFocusable = editable
@@ -303,26 +274,6 @@ class T3ComposerEditorView(context: Context) : FrameLayout(context) {
   fun setReadOnly(readOnly: Boolean) {
     editor.readOnly = readOnly
     editor.isCursorVisible = editor.isEnabled && !readOnly
-  }
-
-  fun setScrollEnabled(scrollEnabled: Boolean) {
-    editor.isVerticalScrollBarEnabled = scrollEnabled
-  }
-
-  fun setAutoFocus(autoFocus: Boolean) {
-    if (autoFocus) {
-      post { focusEditor() }
-    }
-  }
-
-  fun setAutoCorrect(autoCorrect: Boolean) {
-    this.autoCorrect = autoCorrect
-    updateInputFlags()
-  }
-
-  fun setSpellCheck(spellCheck: Boolean) {
-    this.spellCheck = spellCheck
-    updateInputFlags()
   }
 
   fun setTextPasteThresholdBytes(threshold: Int) {
@@ -345,10 +296,6 @@ class T3ComposerEditorView(context: Context) : FrameLayout(context) {
     imm?.hideSoftInputFromWindow(editor.windowToken, 0)
   }
 
-  fun setSelection(start: Int, end: Int) {
-    applySelection(start, end)
-  }
-
   private fun applySelection(start: Int, end: Int) {
     val textLength = editor.text?.length ?: 0
     val safeStart = start.coerceIn(0, textLength)
@@ -359,19 +306,6 @@ class T3ComposerEditorView(context: Context) : FrameLayout(context) {
     editor.setSelection(safeStart, safeEnd)
   }
 
-  private fun updateInputFlags() {
-    var flags =
-      InputType.TYPE_CLASS_TEXT or
-        InputType.TYPE_TEXT_FLAG_MULTI_LINE or
-        InputType.TYPE_TEXT_FLAG_CAP_SENTENCES
-    flags = if (autoCorrect && spellCheck) {
-      flags or InputType.TYPE_TEXT_FLAG_AUTO_CORRECT
-    } else {
-      flags or InputType.TYPE_TEXT_FLAG_NO_SUGGESTIONS
-    }
-    editor.inputType = flags
-  }
-
   private fun applyLineHeight() {
     if (desiredLineHeightPx <= 0) return
     val fontHeight = editor.paint.fontMetricsInt.descent - editor.paint.fontMetricsInt.ascent
@@ -380,7 +314,6 @@ class T3ComposerEditorView(context: Context) : FrameLayout(context) {
 
   private fun applySelectionTheme(color: Int) {
     editor.highlightColor = color.withAlpha(0x52)
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
 
     editor.textCursorDrawable = editor.textCursorDrawable?.mutate()?.apply { setTint(color) }
     editor.textSelectHandle?.mutate()?.setTint(color)
@@ -417,8 +350,7 @@ class T3ComposerEditorView(context: Context) : FrameLayout(context) {
   }
 
   private fun emitContentSizeIfNeeded() {
-    val height = editor.layout?.height ?: editor.measuredHeight
-    val contentHeight = height + contentInsetVertical * 2
+    val contentHeight = editor.layout?.height ?: editor.measuredHeight
     if (contentHeight == lastContentHeight) return
     lastContentHeight = contentHeight
     onComposerContentSizeChange(

@@ -11,7 +11,7 @@
  target_link_options(
 --- a/src/main/java/expo/modules/t3terminal/T3TerminalView.kt
 +++ b/src/main/java/expo/modules/t3terminal/T3TerminalView.kt
-@@ -10,20 +10,30 @@
+@@ -10,69 +10,38 @@
  import android.view.ViewGroup
  import android.view.inputmethod.EditorInfo
  import android.view.inputmethod.InputMethodManager
@@ -30,10 +30,34 @@
 -  private val onInput by EventDispatcher()
 -  private val onResize by EventDispatcher()
 -  private val onCapture by EventDispatcher()
+-  var captureRequest: Double = 0.0
+-    set(value) {
+-      if (field == value || value <= 0) return
+-      field = value
+-      val frame = if (terminalHandle !=
+-        0L
+-      ) {
+-        TerminalFrame.decode(GhosttyBridge.nativeSnapshot(terminalHandle))
+-      } else {
+-        null
+-      }
+-      val text = frame?.let { snapshot ->
+-        (0 until snapshot.rows).joinToString("\n") { row ->
+-          (0 until snapshot.cols).joinToString("") { col ->
+-            snapshot.cellText[
+-              row * snapshot.cols +
+-                col
+-            ]
+-          }.trimEnd()
+-        }
+-      } ?: ""
+-      onCapture(mapOf("text" to text))
+-    }
+-  private var terminalHandle = 0L
+-  private var fedBuffer = ""
 +  private val inputView = TerminalInputView(context) { emitInput(it) }
 +  var onInput: (String) -> Unit = {}
 +  var onResize: (Int, Int) -> Unit = { _, _ -> }
-+  var onCapture: (String) -> Unit = {}
 +  var onResponse: (ByteArray) -> Unit = {}
 +  var onPaste: () -> Unit = {}
 +  private var renderedRevision = -1L
@@ -48,36 +72,17 @@
 +  private fun emitInput(data: String) {
 +    if (inputEnabled && !isCleanedUp) onInput(data)
 +  }
-   var captureRequest: Double = 0.0
-     set(value) {
-       if (field == value || value <= 0) return
-@@ -31,7 +41,7 @@
-       val frame = if (terminalHandle !=
-         0L
-       ) {
--        TerminalFrame.decode(GhosttyBridge.nativeSnapshot(terminalHandle))
-+        TerminalFrame.decode(session.withHandle { handle -> GhosttyBridge.nativeSnapshot(handle) })
-       } else {
-         null
-       }
-@@ -45,10 +55,9 @@
-           }.trimEnd()
-         }
-       } ?: ""
--      onCapture(mapOf("text" to text))
--    }
--  private var terminalHandle = 0L
--  private var fedBuffer = ""
-+      onCapture(text)
-+    }
 +  private val terminalHandle: Long get() = session.handle
    private var cols = 0
    private var rows = 0
    private var clearingInput = false
-@@ -59,21 +68,6 @@
+   private var isCleanedUp = false
+   private var backgroundColorValue = Color.parseColor("#24292E")
+   private var foregroundColorValue = Color.parseColor("#D1D5DA")
+-  private var mutedForegroundColorValue = Color.parseColor("#959DA5")
    private var cursorColorValue = Color.parseColor("#009FFF")
    private var paletteColors = IntArray(0)
- 
+-
 -  var terminalKey: String = ""
 -    set(value) {
 -      if (field == value) return
@@ -92,11 +97,59 @@
 -      field = value
 -      feedPendingBuffer()
 -    }
--
+ 
    var fontSize: Float = 10f
      set(value) {
+@@ -82,8 +51,6 @@
+       emitResize()
+     }
+ 
+-  var appearanceScheme: String = "dark"
+-
+   var themeConfig: String = ""
+     set(value) {
        field = value
-@@ -136,7 +130,7 @@
+@@ -91,26 +58,6 @@
+       applyTheme()
+     }
+ 
+-  var focusRequest: Double = 0.0
+-    set(value) {
+-      val previous = field
+-      field = value
+-      if (value != previous && value > 0) {
+-        requestKeyboardFocus()
+-      }
+-    }
+-
+-  var autoFocus: Boolean = true
+-    set(value) {
+-      field = value
+-      if (value) {
+-        requestKeyboardFocus()
+-      } else {
+-        inputView.clearFocus()
+-        hideKeyboard()
+-      }
+-    }
+-
+   var backgroundColorHex: String = "#24292E"
+     set(value) {
+       field = value
+@@ -123,12 +70,6 @@
+       field = value
+       foregroundColorValue = parseColor(value, foregroundColorValue)
+       applyTheme()
+-    }
+-
+-  var mutedForegroundColorHex: String = "#959DA5"
+-    set(value) {
+-      field = value
+-      mutedForegroundColorValue = parseColor(value, mutedForegroundColorValue)
+     }
+ 
+   init {
+@@ -136,7 +77,7 @@
      terminalCanvas.onRequestKeyboard = { requestKeyboardFocus() }
      terminalCanvas.onScrollRows = { delta ->
        if (terminalHandle != 0L) {
@@ -105,7 +158,7 @@
          renderSnapshot()
        }
      }
-@@ -144,27 +138,27 @@
+@@ -144,27 +85,27 @@
      terminalCanvas.selectionDelegate = object : TerminalSelectionDelegate {
        override fun selectWordAt(col: Int, row: Int): Boolean {
          if (terminalHandle == 0L) return false
@@ -137,7 +190,7 @@
          renderSnapshot()
        }
  
-@@ -172,10 +166,11 @@
+@@ -172,10 +113,11 @@
          if (terminalHandle == 0L) {
            null
          } else {
@@ -153,7 +206,7 @@
      configureInputView()
      container.addView(
        terminalCanvas,
-@@ -217,7 +212,14 @@
+@@ -217,7 +159,13 @@
      terminalCanvas.onRequestKeyboard = null
      terminalCanvas.onCellMetricsChanged = null
      terminalCanvas.selectionDelegate = null
@@ -161,7 +214,6 @@
 +    terminalCanvas.resetSelectionState()
 +    onInput = {}
 +    onResize = { _, _ -> }
-+    onCapture = {}
 +    onResponse = {}
 +    onPaste = {}
 +    inputView.onPaste = {}
@@ -169,7 +221,7 @@
    }
  
    private fun configureInputView() {
-@@ -245,7 +247,7 @@
+@@ -245,7 +193,7 @@
        val isEnter = isImeSend || isHardwareEnter
        if (isEnter) {
          // Enter must send CR: raw-mode TUIs treat LF as Ctrl+J (insert newline).
@@ -178,7 +230,7 @@
          true
        } else {
          false
-@@ -255,14 +257,12 @@
+@@ -255,14 +203,12 @@
        if (event.action != KeyEvent.ACTION_DOWN) return@setOnKeyListener false
        when {
          keyCode == KeyEvent.KEYCODE_DEL -> {
@@ -195,7 +247,7 @@
            true
          }
          else -> false
-@@ -278,7 +278,7 @@
+@@ -278,7 +224,7 @@
            if (start >= end) return
            val insertedText = s.subSequence(start, end).toString()
            if (insertedText.isNotEmpty()) {
@@ -204,7 +256,7 @@
            }
          }
  
-@@ -312,90 +312,55 @@
+@@ -312,90 +258,55 @@
      if (nextCols == cols && nextRows == rows && terminalHandle != 0L) return
      cols = nextCols
      rows = nextRows
@@ -239,11 +291,12 @@
 -      backgroundColorValue,
 -      cursorColorValue,
 -      paletteColors,
-     )
+-    )
 -    fedBuffer = ""
 -  }
 -
 -  private fun recreateTerminal() {
++    )
 +    )
 +    onResize(cols, rows)
 +    renderSnapshot()
@@ -322,7 +375,7 @@
      inputView.requestFocus()
      val inputMethodManager = context.getSystemService(
        Context.INPUT_METHOD_SERVICE
-@@ -415,13 +380,13 @@
+@@ -415,13 +326,13 @@
      container.setBackgroundColor(backgroundColorValue)
      terminalCanvas.setBackgroundColor(backgroundColorValue)
      if (terminalHandle != 0L) {

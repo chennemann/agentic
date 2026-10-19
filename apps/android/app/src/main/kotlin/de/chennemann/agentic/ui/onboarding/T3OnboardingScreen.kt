@@ -401,8 +401,6 @@ private fun OnboardingErrorCard(
 
 private fun errorTitle(error: OnboardingErrorUi): String = when (error) {
     is OnboardingErrorUi.InvalidPairing -> "Invalid pairing link"
-    is OnboardingErrorUi.ExpiredPairing -> "Pairing link expired"
-    is OnboardingErrorUi.UnsupportedServer -> "Server not supported"
     is OnboardingErrorUi.PublicCleartextRejected -> "Secure connection required"
     is OnboardingErrorUi.ConnectionFailed -> "Could not connect"
 }

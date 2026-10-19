@@ -55,7 +55,6 @@ class ThreadWorkspaceService(
                     label = "New worktree from ${ref.name}",
                     description = "Create an isolated checkout for this thread",
                     workspace = NewThreadWorkspace.CreateWorktree(
-                        projectCwd = project.workspaceRoot,
                         baseBranch = ref.name,
                         startFromOrigin = refs.hasPrimaryRemote && !ref.isRemote,
                     ),

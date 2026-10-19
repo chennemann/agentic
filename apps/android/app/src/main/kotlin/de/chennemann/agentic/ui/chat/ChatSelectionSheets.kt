@@ -337,63 +337,6 @@ private fun PickerSheet(
 }
 
 @Composable
-private fun ThreadPickerRow(
-    thread: ThreadPickerItemUi,
-    selected: Boolean,
-    onClick: () -> Unit,
-    onLifecycleClick: () -> Unit,
-    settled: Boolean = false,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(vertical = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = thread.title,
-                color = if (selected) {
-                    MaterialTheme.colorScheme.primary
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-            thread.supportingText?.let {
-                Text(
-                    text = it,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-        IconButton(onClick = onLifecycleClick) {
-            Icon(
-                imageVector = when {
-                    thread.archived -> Icons.ArchiveRestore
-                    settled -> Icons.Undo
-                    else -> Icons.Check
-                },
-                contentDescription = when {
-                    thread.archived -> "Unarchive ${thread.title}"
-                    settled -> "Un-settle ${thread.title}"
-                    else -> "Settle ${thread.title}"
-                },
-            )
-        }
-    }
-}
-
-@Composable
 private fun PickerRow(
     label: String,
     supportingText: String?,

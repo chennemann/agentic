@@ -104,7 +104,6 @@ class CommandServicesTest {
         assertNull(encoded["titleSeed"])
         assertTrue("bootstrap" in encoded)
         assertEquals("project", firstCreate.projectId)
-        assertEquals("default", firstCreate.interactionMode)
         assertEquals("default", firstStart.interactionMode)
         assertNull(firstCreate.branch)
         assertNull(firstCreate.worktreePath)
@@ -121,7 +120,6 @@ class CommandServicesTest {
             modelSelection = ModelSelection("instance", "model"),
             runtimeMode = "full-access",
             workspace = NewThreadWorkspace.CreateWorktree(
-                projectCwd = "/workspace/project",
                 baseBranch = "main",
                 startFromOrigin = true,
             ),
@@ -131,7 +129,6 @@ class CommandServicesTest {
         val bootstrap = requireNotNull(start.bootstrap)
         assertEquals("main", bootstrap.createThread.branch)
         assertNull(bootstrap.createThread.worktreePath)
-        assertEquals("/workspace/project", bootstrap.prepareWorktree?.projectCwd)
         assertEquals("main", bootstrap.prepareWorktree?.baseBranch)
         assertEquals(true, bootstrap.prepareWorktree?.startFromOrigin)
     }
@@ -188,16 +185,12 @@ class CommandServicesTest {
     }
 
     @Test
-    fun `session stop and turn interrupt remain distinct RPC commands`() = runTest {
+    fun `turn interrupt targets the active run`() = runTest {
         service.interrupt("thread-1", "turn-1")
-        service.terminateSession("thread-1")
 
         val interrupt = commands.recorded[0] as ClientOrchestrationCommand.InterruptTurn
-        val terminate = commands.recorded[1] as ClientOrchestrationCommand.StopSession
         assertEquals("thread-1", interrupt.threadId)
         assertEquals("turn-1", interrupt.turnId)
-        assertEquals("thread-1", terminate.threadId)
-        assertNotEquals(interrupt.commandId, terminate.commandId)
     }
 
     @Test
@@ -267,15 +260,9 @@ private class EmptyOrchestrationRepository : OrchestrationRepository {
     override val selectedProjectId = MutableStateFlow<String?>(null)
     override suspend fun loadCached(environmentId: String) = Unit
     override suspend fun setClientConfig(environmentId: String, config: ServerConfig, source: ProjectionSource) = Unit
-    override suspend fun setShellSnapshot(environmentId: String, snapshot: OrchestrationShellSnapshot, source: ProjectionSource) = Unit
     override suspend fun applyShellItem(environmentId: String, item: OrchestrationShellStreamItem) = Reduction.Ignored(shell.value)
     override suspend fun focusThread(environmentId: String, threadId: String?) = Unit
     override suspend fun selectProject(environmentId: String, projectId: String?) = Unit
-    override suspend fun setThreadSnapshot(
-        environmentId: String,
-        snapshot: OrchestrationThreadDetailSnapshot,
-        source: ProjectionSource,
-    ) = Unit
     override suspend fun applyThreadItem(environmentId: String, threadId: String, item: OrchestrationThreadStreamItem) =
         Reduction.Ignored(focusedThread.value)
     override suspend fun clearEnvironment(environmentId: String) = Unit

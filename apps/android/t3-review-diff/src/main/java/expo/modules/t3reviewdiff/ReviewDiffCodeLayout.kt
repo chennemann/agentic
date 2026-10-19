@@ -1,6 +1,5 @@
 package expo.modules.t3reviewdiff
 
-import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
 import android.graphics.text.LineBreaker
@@ -9,14 +8,13 @@ import android.text.SpannableString
 import android.text.Spanned
 import android.text.StaticLayout
 import android.text.TextPaint
-import android.text.style.BackgroundColorSpan
 import android.text.style.ForegroundColorSpan
 import android.text.style.StyleSpan
 import android.text.style.UnderlineSpan
 import kotlin.math.ceil
 import kotlin.math.max
 
-/** Text layout is independent of comment heights and vertical row offsets. */
+/** Text layout is independent of vertical row offsets. */
 internal class CodeLines(
   val starts: IntArray,
   val height: Int,
@@ -116,7 +114,7 @@ internal class CodeLayoutCache {
       val entry = if (cached?.row == row && cached.tokens == rowTokens) {
         cached
       } else {
-        val text = styledCode(row, rowTokens, theme)
+        val text = styledCode(row, rowTokens)
         Entry(row, rowTokens, createCodeLines(text, TextPaint(paint), width))
       }
       next[row.id] = entry
@@ -126,8 +124,8 @@ internal class CodeLayoutCache {
     return CodeWrapLayout(true, layouts)
   }
 
-  private fun styledCode(row: DiffRow, tokens: List<DiffToken>?, theme: DiffTheme): CharSequence {
-    // The ASCII path uses the existing token drawing and rounded highlight rectangles.
+  private fun styledCode(row: DiffRow, tokens: List<DiffToken>?): CharSequence {
+    // The ASCII path uses the existing token drawing.
     if (row.content.all { it in ' '..'~' }) return row.content
     val text = SpannableString(row.content)
     var offset = 0
@@ -151,19 +149,6 @@ internal class CodeLayoutCache {
         }
       }
       offset = end
-    }
-    if (row.change == "add" || row.change == "delete") {
-      val bar = if (row.change == "add") theme.addBar else theme.deleteBar
-      val color = Color.argb(71, Color.red(bar), Color.green(bar), Color.blue(bar))
-      for (range in row.wordDiffRanges) {
-        val start = range.start.coerceIn(0, text.length)
-        val end = range.end.coerceIn(start, text.length)
-        if (end >
-          start
-        ) {
-          text.setSpan(BackgroundColorSpan(color), start, end, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        }
-      }
     }
     return text
   }

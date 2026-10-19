@@ -53,7 +53,7 @@ class SqlOrchestrationRepositoryTest {
         repository.focusThread(EnvironmentId, ThreadId)
         val page = de.chennemann.agentic.t3.contract.OrchestrationThreadDetailPage("cursor", true, 10)
         val initial = threadSnapshot().copy(snapshotSequence = 10, page = page)
-        repository.setThreadSnapshot(EnvironmentId, initial, ProjectionSource.LIVE)
+        repository.seedThread(EnvironmentId, initial, ProjectionSource.LIVE)
         val generation = repository.focusedThread.value.historyGeneration
         val older = initial.copy(page = page.copy(beforeCursor = "older-cursor"))
         assertEquals(false, repository.mergeThreadHistory("other-environment", older, "cursor", generation))
@@ -61,7 +61,7 @@ class SqlOrchestrationRepositoryTest {
         val restarted = SqlOrchestrationRepository(database, StandardTestDispatcher(testScheduler), backgroundScope)
         restarted.loadCached(EnvironmentId)
         assertEquals("older-cursor", restarted.focusedThread.value.value?.page?.beforeCursor)
-        repository.setThreadSnapshot(EnvironmentId, initial, ProjectionSource.LIVE)
+        repository.seedThread(EnvironmentId, initial, ProjectionSource.LIVE)
         assertEquals(false, repository.mergeThreadHistory(EnvironmentId, older, "cursor", generation))
         repository.focusThread(EnvironmentId, "different-thread")
         assertEquals(false, repository.mergeThreadHistory(EnvironmentId, older, "cursor", generation))
@@ -75,11 +75,11 @@ class SqlOrchestrationRepositoryTest {
         val database = AgenticDb(driver)
         val repository = SqlOrchestrationRepository(database, StandardTestDispatcher(testScheduler), backgroundScope)
         repository.loadCached(EnvironmentId)
-        repository.setShellSnapshot(EnvironmentId, shellSnapshot(threads = listOf(threadShell())), ProjectionSource.LIVE)
+        repository.seedShell(EnvironmentId, shellSnapshot(threads = listOf(threadShell())), ProjectionSource.LIVE)
         repository.focusThread(EnvironmentId, ThreadId)
         val message = de.chennemann.agentic.t3.contract.OrchestrationMessage("live", "turn", "assistant", "streaming", true, Timestamp, Timestamp)
         val initial = threadSnapshot().let { it.copy(thread = it.thread.copy(messages = listOf(message))) }
-        repository.setThreadSnapshot(EnvironmentId, initial, ProjectionSource.LIVE)
+        repository.seedThread(EnvironmentId, initial, ProjectionSource.LIVE)
         repository.applyShellItem(EnvironmentId, OrchestrationShellStreamItem.ThreadUpserted(2, threadShell().copy(title = "New title")))
         assertEquals("New title", repository.focusedThread.value.value?.thread?.title)
         assertEquals(listOf(message), repository.focusedThread.value.value?.thread?.messages)
@@ -95,14 +95,14 @@ class SqlOrchestrationRepositoryTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val repository = SqlOrchestrationRepository(database, dispatcher, backgroundScope)
         repository.loadCached(EnvironmentId)
-        repository.setShellSnapshot(EnvironmentId, shellSnapshot(threads = listOf(threadShell())), ProjectionSource.LIVE)
+        repository.seedShell(EnvironmentId, shellSnapshot(threads = listOf(threadShell())), ProjectionSource.LIVE)
         repository.focusThread(EnvironmentId, ThreadId)
         val initial = threadSnapshot().let { it.copy(thread = it.thread.copy(title = "Newer detail")) }
-        repository.setThreadSnapshot(EnvironmentId, initial, ProjectionSource.LIVE)
+        repository.seedThread(EnvironmentId, initial, ProjectionSource.LIVE)
         assertEquals("Newer detail", repository.focusedThread.value.value?.thread?.title)
 
         repository.applyShellItem(EnvironmentId, OrchestrationShellStreamItem.ThreadUpserted(2, threadShell().copy(title = "Latest shell")))
-        repository.setThreadSnapshot(EnvironmentId, initial, ProjectionSource.LIVE)
+        repository.seedThread(EnvironmentId, initial, ProjectionSource.LIVE)
         val restarted = SqlOrchestrationRepository(database, dispatcher, backgroundScope)
         restarted.loadCached(EnvironmentId)
         assertEquals("Latest shell", restarted.focusedThread.value.value?.thread?.title)
@@ -121,9 +121,9 @@ class SqlOrchestrationRepositoryTest {
         )
         repository.loadCached(EnvironmentId)
         repository.focusThread(EnvironmentId, "thread-one")
-        repository.setThreadSnapshot(EnvironmentId, threadSnapshot("thread-one"), ProjectionSource.LIVE)
+        repository.seedThread(EnvironmentId, threadSnapshot("thread-one"), ProjectionSource.LIVE)
         repository.focusThread(EnvironmentId, "thread-two")
-        repository.setThreadSnapshot(EnvironmentId, threadSnapshot("thread-two"), ProjectionSource.LIVE)
+        repository.seedThread(EnvironmentId, threadSnapshot("thread-two"), ProjectionSource.LIVE)
         repository.focusThread(EnvironmentId, "thread-one")
         val observedThreadIds = mutableListOf<String?>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
@@ -147,7 +147,7 @@ class SqlOrchestrationRepositoryTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val repository = SqlOrchestrationRepository(database, dispatcher, backgroundScope)
         repository.loadCached(EnvironmentId)
-        repository.setShellSnapshot(
+        repository.seedShell(
             environmentId = EnvironmentId,
             snapshot = shellSnapshot(
                 projects = listOf(project("Project")),
@@ -156,7 +156,7 @@ class SqlOrchestrationRepositoryTest {
             source = ProjectionSource.LIVE,
         )
         repository.focusThread(EnvironmentId, ThreadId)
-        repository.setThreadSnapshot(EnvironmentId, threadSnapshot(), ProjectionSource.LIVE)
+        repository.seedThread(EnvironmentId, threadSnapshot(), ProjectionSource.LIVE)
         val observedThreadIds = mutableListOf<String?>()
         backgroundScope.launch(UnconfinedTestDispatcher(testScheduler)) {
             repository.focusedThreadId.collect(observedThreadIds::add)
@@ -180,7 +180,7 @@ class SqlOrchestrationRepositoryTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val repository = SqlOrchestrationRepository(database, dispatcher, backgroundScope)
         repository.loadCached(EnvironmentId)
-        repository.setShellSnapshot(
+        repository.seedShell(
             environmentId = EnvironmentId,
             snapshot = shellSnapshot(
                 projects = listOf(project("Project")),
@@ -189,7 +189,7 @@ class SqlOrchestrationRepositoryTest {
             source = ProjectionSource.LIVE,
         )
         repository.focusThread(EnvironmentId, ThreadId)
-        repository.setThreadSnapshot(
+        repository.seedThread(
             environmentId = EnvironmentId,
             snapshot = threadSnapshot(),
             source = ProjectionSource.LIVE,
@@ -212,7 +212,7 @@ class SqlOrchestrationRepositoryTest {
         val dispatcher = StandardTestDispatcher(testScheduler)
         val repository = SqlOrchestrationRepository(database, dispatcher, backgroundScope)
         repository.loadCached(EnvironmentId)
-        repository.setShellSnapshot(
+        repository.seedShell(
             environmentId = EnvironmentId,
             snapshot = shellSnapshot(
                 projects = listOf(project("Project")),
@@ -224,7 +224,7 @@ class SqlOrchestrationRepositoryTest {
 
         val restored = SqlOrchestrationRepository(database, dispatcher, backgroundScope)
         restored.loadCached(EnvironmentId)
-        restored.setShellSnapshot(
+        restored.seedShell(
             environmentId = EnvironmentId,
             snapshot = shellSnapshot(),
             source = ProjectionSource.LIVE,
@@ -248,7 +248,7 @@ class SqlOrchestrationRepositoryTest {
             scope = backgroundScope,
         )
         repository.loadCached(EnvironmentId)
-        repository.setShellSnapshot(
+        repository.seedShell(
             environmentId = EnvironmentId,
             snapshot = shellSnapshot(),
             source = ProjectionSource.LIVE,
@@ -328,7 +328,7 @@ class SqlOrchestrationRepositoryTest {
         repository.loadCached(EnvironmentId)
         repository.focusThread(EnvironmentId, ThreadId)
 
-        repository.setThreadSnapshot(
+        repository.seedThread(
             environmentId = EnvironmentId,
             snapshot = oversizedThreadSnapshot(),
             source = ProjectionSource.LIVE,
@@ -408,4 +408,26 @@ class SqlOrchestrationRepositoryTest {
         const val Timestamp = "2026-01-01T00:00:00Z"
         const val OversizedPayloadCharacters = 1_600_000
     }
+}
+
+// Seed through the same subscription reducers used at runtime, then allow the cache debounce to finish.
+private suspend fun SqlOrchestrationRepository.seedShell(
+    environmentId: String,
+    snapshot: OrchestrationShellSnapshot,
+    source: ProjectionSource,
+) {
+    require(source == ProjectionSource.LIVE)
+    applyShellItem(environmentId, OrchestrationShellStreamItem.Snapshot(snapshot))
+    kotlinx.coroutines.delay(501)
+}
+
+private suspend fun SqlOrchestrationRepository.seedThread(
+    environmentId: String,
+    snapshot: OrchestrationThreadDetailSnapshot,
+    source: ProjectionSource,
+) {
+    require(source == ProjectionSource.LIVE)
+    applyThreadItem(environmentId, snapshot.thread.id,
+        de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem.Snapshot(snapshot))
+    kotlinx.coroutines.delay(501)
 }

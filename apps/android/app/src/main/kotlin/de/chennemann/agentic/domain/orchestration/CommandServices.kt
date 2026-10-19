@@ -10,7 +10,6 @@ import de.chennemann.agentic.t3.contract.StartTurnBootstrap
 import de.chennemann.agentic.t3.contract.TurnMessageInput
 import de.chennemann.agentic.t3.contract.UploadChatAttachment
 import de.chennemann.agentic.t3.contract.SourceProposedPlan
-import java.time.Instant
 import java.util.UUID
 import kotlinx.serialization.json.JsonObject
 import kotlinx.coroutines.flow.first
@@ -24,7 +23,6 @@ interface ThreadActions {
     suspend fun rename(
         threadId: String,
         title: String,
-        modelSelection: ModelSelection,
     ): DispatchResult
 
     suspend fun archive(threadId: String): DispatchResult
@@ -61,13 +59,11 @@ class ThreadService(
     override suspend fun rename(
         threadId: String,
         title: String,
-        modelSelection: ModelSelection,
     ): DispatchResult = dispatch(
         ClientOrchestrationCommand.UpdateThreadMetadata(
             commandId = uuid(),
             threadId = threadId,
             title = title.trim(),
-            modelSelection = modelSelection,
         ),
     )
 
@@ -147,8 +143,6 @@ interface ChatActions {
         modelSelection: ModelSelection,
         runtimeMode: String,
     ): DispatchResult = error("Plan continuation is not supported.")
-
-    suspend fun terminateSession(threadId: String): DispatchResult = error("Session termination is not supported.")
 }
 
 interface ProjectActions {
@@ -172,7 +166,6 @@ class ProjectService(
                 projectId = projectId,
                 title = projectTitle(normalized),
                 workspaceRoot = normalized,
-                createdAt = Instant.now().toString(),
             ),
         )
         withTimeout(ProjectConfirmationTimeoutMillis) {
@@ -232,24 +225,18 @@ class ChatService(
         attachments: List<UploadChatAttachment>,
         context: JsonObject?,
     ): StartTurnResult {
-        val now = Instant.now().toString()
         val targetThreadId = threadId ?: uuid()
         val titleSeed = deriveThreadTitle(prompt)
         val bootstrap = if (threadId == null) {
             StartTurnBootstrap(
                 createThread = NewThreadBootstrap(
-                projectId = projectId,
-                title = titleSeed,
-                modelSelection = modelSelection,
-                interactionMode = "default",
-                runtimeMode = runtimeMode,
+                    projectId = projectId,
+                    title = titleSeed,
                     branch = workspace.branch,
                     worktreePath = workspace.worktreePath,
-                createdAt = now,
                 ),
                 prepareWorktree = (workspace as? NewThreadWorkspace.CreateWorktree)?.let {
                     PrepareWorktreeBootstrap(
-                        projectCwd = it.projectCwd,
                         baseBranch = it.baseBranch,
                         startFromOrigin = it.startFromOrigin,
                     )
@@ -270,7 +257,6 @@ class ChatService(
             modelSelection = modelSelection,
             interactionMode = "default",
             runtimeMode = runtimeMode,
-            createdAt = now,
             bootstrap = bootstrap,
         )
         val result = commands.dispatch(start)
@@ -285,7 +271,6 @@ class ChatService(
             commandId = uuid(),
             threadId = threadId,
             turnId = turnId,
-            createdAt = Instant.now().toString(),
         ),
     )
 
@@ -299,7 +284,6 @@ class ChatService(
             threadId = threadId,
             requestId = requestId,
             decision = decision,
-            createdAt = Instant.now().toString(),
         ),
     )
 
@@ -313,13 +297,12 @@ class ChatService(
             threadId = threadId,
             requestId = requestId,
             answers = answers,
-            createdAt = Instant.now().toString(),
         ),
     )
 
     override suspend fun dismissUserInput(threadId: String, requestId: String): DispatchResult = dispatch(
         ClientOrchestrationCommand.DismissUserInput(
-            commandId = uuid(), threadId = threadId, requestId = requestId, createdAt = Instant.now().toString(),
+            commandId = uuid(), threadId = threadId, requestId = requestId,
         ),
     )
 
@@ -331,7 +314,6 @@ class ChatService(
             commandId = uuid(),
             threadId = threadId,
             runtimeMode = runtimeMode,
-            createdAt = Instant.now().toString(),
         ),
     )
 
@@ -351,16 +333,7 @@ class ChatService(
             modelSelection = modelSelection,
             interactionMode = "default",
             runtimeMode = runtimeMode,
-            createdAt = Instant.now().toString(),
             sourceProposedPlan = SourceProposedPlan(threadId, planId),
-        ),
-    )
-
-    override suspend fun terminateSession(threadId: String): DispatchResult = dispatch(
-        ClientOrchestrationCommand.StopSession(
-            commandId = uuid(),
-            threadId = threadId,
-            createdAt = Instant.now().toString(),
         ),
     )
 
@@ -383,7 +356,6 @@ sealed interface NewThreadWorkspace {
     ) : NewThreadWorkspace
 
     data class CreateWorktree(
-        val projectCwd: String,
         val baseBranch: String,
         val startFromOrigin: Boolean,
     ) : NewThreadWorkspace {

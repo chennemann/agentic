@@ -52,14 +52,6 @@ sealed interface OnboardingErrorUi {
         override val message: String,
     ) : OnboardingErrorUi
 
-    data class ExpiredPairing(
-        override val message: String,
-    ) : OnboardingErrorUi
-
-    data class UnsupportedServer(
-        override val message: String,
-    ) : OnboardingErrorUi
-
     data class PublicCleartextRejected(
         override val message: String,
     ) : OnboardingErrorUi

@@ -49,9 +49,6 @@ CREATE TABLE shared_text_import (
 selectAllEnvironments:
 SELECT * FROM environment_entity ORDER BY label COLLATE NOCASE, environment_id;
 
-selectActiveEnvironment:
-SELECT * FROM environment_entity WHERE active = 1 LIMIT 1;
-
 upsertEnvironment:
 INSERT OR REPLACE INTO environment_entity(
     environment_id,

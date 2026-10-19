@@ -232,43 +232,6 @@ internal class ReviewDiffCanvasDrawing(context: Context) {
     }
   }
 
-  /** Highlights word diffs; [top]..[bottom] is the row's first visual line. */
-  @Suppress("LongParameterList")
-  fun drawWordDiffRanges(
-    canvas: Canvas,
-    row: DiffRow,
-    codeX: Float,
-    top: Int,
-    bottom: Int,
-    lines: CodeLines
-  ) {
-    if (lines.nativeLayout != null) return
-    if (row.wordDiffRanges.isEmpty() || (row.change != "add" && row.change != "delete")) return
-    val color = if (row.change == "add") theme.addBar else theme.deleteBar
-    backgroundPaint.color = withAlpha(color, 71)
-    val characterWidth = textPaint.measureText("M")
-    val fontHeight = textPaint.fontMetrics.run { descent - ascent }
-    val highlightHeight = max(4f * density, min(bottom - top - 4f * density, fontHeight))
-    val highlightTop = (top + bottom - highlightHeight) / 2f
-    row.wordDiffRanges.forEach { range ->
-      // A wrapped row splits the highlight at each visual line boundary.
-      lines.starts.forEachIndexed { line, lineStart ->
-        val start = max(range.start, lineStart)
-        val end = min(range.end, lines.end(line, Int.MAX_VALUE))
-        if (end <= start) return@forEachIndexed
-        val left = codeX + (start - lineStart) * characterWidth
-        val right = max(left + 2f * density, left + (end - start) * characterWidth)
-        val lineTop = highlightTop + line * lines.height
-        canvas.drawRoundRect(
-          RectF(left, lineTop, right, lineTop + highlightHeight),
-          3f * density,
-          3f * density,
-          backgroundPaint,
-        )
-      }
-    }
-  }
-
   /** Draws a code row's text, or its syntax [tokens] when present, one visual line per start. */
   @Suppress("LongParameterList")
   fun drawCode(

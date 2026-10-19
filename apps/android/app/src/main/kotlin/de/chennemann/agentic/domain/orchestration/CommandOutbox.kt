@@ -66,10 +66,8 @@ private fun OutboxCommand.toStatus() = DurableWorkStatus(
 )
 
 private fun ClientOrchestrationCommand.threadTarget(): String? = when (this) {
-    is ClientOrchestrationCommand.CreateThread -> threadId
     is ClientOrchestrationCommand.StartTurn -> threadId
     is ClientOrchestrationCommand.InterruptTurn -> threadId
-    is ClientOrchestrationCommand.StopSession -> threadId
     is ClientOrchestrationCommand.UpdateThreadMetadata -> threadId
     is ClientOrchestrationCommand.ArchiveThread -> threadId
     is ClientOrchestrationCommand.DeleteThread -> threadId
@@ -79,7 +77,6 @@ private fun ClientOrchestrationCommand.threadTarget(): String? = when (this) {
     is ClientOrchestrationCommand.SnoozeThread -> threadId
     is ClientOrchestrationCommand.UnsnoozeThread -> threadId
     is ClientOrchestrationCommand.SetRuntimeMode -> threadId
-    is ClientOrchestrationCommand.SetInteractionMode -> threadId
     is ClientOrchestrationCommand.RespondToApproval -> threadId
     is ClientOrchestrationCommand.RespondToUserInput -> threadId
     is ClientOrchestrationCommand.DismissUserInput -> threadId
@@ -91,9 +88,7 @@ private fun ClientOrchestrationCommand.threadTarget(): String? = when (this) {
 
 private fun ClientOrchestrationCommand.safeLabel(): String = when (this) {
     is ClientOrchestrationCommand.StartTurn -> "Send message"
-    is ClientOrchestrationCommand.CreateThread -> "Create thread"
     is ClientOrchestrationCommand.DeleteThread -> "Delete thread"
-    is ClientOrchestrationCommand.StopSession -> "Stop session"
     is ClientOrchestrationCommand.InterruptTurn -> "Stop turn"
     is ClientOrchestrationCommand.CreateProject -> "Create project"
     is ClientOrchestrationCommand.UpdateProjectMetadata -> "Update project"
@@ -103,9 +98,6 @@ private fun ClientOrchestrationCommand.safeLabel(): String = when (this) {
 
 interface CommandDispatcher {
     suspend fun dispatch(command: ClientOrchestrationCommand): DispatchResult
-
-    suspend fun dispatchInOrder(commands: List<ClientOrchestrationCommand>): List<DispatchResult> =
-        commands.map { dispatch(it) }
 }
 
 fun interface PendingCommandReplayer {
@@ -119,15 +111,9 @@ class DurableCommandDispatcher(
     private val outbox: CommandOutbox,
 ) : CommandDispatcher, PendingCommandReplayer {
     override suspend fun dispatch(command: ClientOrchestrationCommand): DispatchResult {
-        return dispatchInOrder(listOf(command)).single()
-    }
-
-    override suspend fun dispatchInOrder(
-        commands: List<ClientOrchestrationCommand>,
-    ): List<DispatchResult> {
         val environment = requireNotNull(environments.activeEnvironment.value)
-        commands.forEach { outbox.enqueue(environment.id, it) }
-        return commands.map { send(environment, it) }
+        outbox.enqueue(environment.id, command)
+        return send(environment, command)
     }
 
     override suspend fun replay(environment: SavedEnvironment) {

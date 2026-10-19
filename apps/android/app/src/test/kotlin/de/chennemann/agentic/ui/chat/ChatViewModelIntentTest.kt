@@ -1202,91 +1202,6 @@ class ChatViewModelIntentTest {
     }
 
     @Test
-    fun `session termination fails retryably then waits for projection independently of turn stop`() = runTest(dispatcher) {
-        val repository = submissionRepository(ModelSelection("provider", "model"))
-        val detail = requireNotNull(repository.focusedThread.value.value).thread
-        repository.focusedThread.value = repository.focusedThread.value.copy(
-            value = repository.focusedThread.value.value?.copy(
-                thread = detail.copy(
-                    latestTurn = LatestTurn(
-                        turnId = "turn-1",
-                        state = "running",
-                        requestedAt = "2026-08-06T09:59:00Z",
-                        startedAt = "2026-08-06T10:00:00Z",
-                        completedAt = null,
-                    ),
-                    session = ThreadSession(
-                        threadId = "thread-1",
-                        status = "running",
-                        activeTurnId = "turn-1",
-                        updatedAt = "2026-08-06T10:00:00Z",
-                    ),
-                ),
-            ),
-        )
-        val chat = NoOpChatActions(terminateSessionFailure = IllegalStateException("Stop rejected"))
-        val viewModel = ChatViewModel(
-            environments = FakeViewModelEnvironmentRepository(),
-            repository = repository,
-            connection = FakeConnectionController(),
-            environmentService = EnvironmentSelector {},
-            threads = RecordingThreadActions(repository),
-            chat = chat,
-            mappingDispatcher = dispatcher,
-        )
-        advanceUntilIdle()
-
-        assertTrue(viewModel.state.value.isTurnRunning)
-        assertEquals(
-            ChatTurnTimingUi(
-                startedAt = "2026-08-06T10:00:00Z",
-                running = true,
-            ),
-            viewModel.state.value.latestTurnTiming,
-        )
-        assertTrue(viewModel.state.value.sessionTermination.canTerminate)
-        viewModel.onEvent(ChatUiEvent.SessionTerminationRequested)
-        viewModel.onEvent(ChatUiEvent.SessionTerminationRequested)
-        advanceUntilIdle()
-
-        assertEquals(listOf("thread-1"), chat.terminatedSessions)
-        assertEquals("Stop rejected", viewModel.state.value.sessionTermination.errorMessage)
-        assertTrue(viewModel.state.value.sessionTermination.canTerminate)
-
-        chat.terminateSessionFailure = null
-        viewModel.onEvent(ChatUiEvent.SessionTerminationRequested)
-        viewModel.onEvent(ChatUiEvent.SessionTerminationRequested)
-        viewModel.onEvent(ChatUiEvent.TurnInterruptRequested)
-        advanceUntilIdle()
-
-        assertEquals(listOf("thread-1", "thread-1"), chat.terminatedSessions)
-        assertEquals(listOf("thread-1" to "turn-1"), chat.interruptedTurns)
-        assertTrue(viewModel.state.value.sessionTermination.terminating)
-        assertEquals(false, viewModel.state.value.sessionTermination.terminal)
-
-        val running = requireNotNull(repository.focusedThread.value.value).thread
-        repository.focusedThread.value = repository.focusedThread.value.copy(
-            value = repository.focusedThread.value.value?.copy(
-                thread = running.copy(
-                    session = running.session?.copy(
-                        status = "stopped",
-                        activeTurnId = null,
-                        updatedAt = "2026-08-06T10:01:00Z",
-                    ),
-                ),
-            ),
-        )
-        advanceUntilIdle()
-
-        assertEquals(false, viewModel.state.value.sessionTermination.terminating)
-        assertTrue(viewModel.state.value.sessionTermination.terminal)
-        assertEquals(false, viewModel.state.value.isTurnRunning)
-        viewModel.onEvent(ChatUiEvent.SessionTerminationRequested)
-        advanceUntilIdle()
-        assertEquals(2, chat.terminatedSessions.size)
-    }
-
-    @Test
     fun `completed turn timing does not remain running when the session is idle`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model"))
         val current = requireNotNull(repository.focusedThread.value.value)
@@ -1457,7 +1372,8 @@ class ChatViewModelIntentTest {
         )
 
         viewModel.onEvent(ChatUiEvent.DraftChanged("hello"))
-        viewModel.onEvent(ChatUiEvent.ProjectSelected("project-2"))
+        viewModel.onEvent(ChatUiEvent.ProjectThreadsRequested("project-2"))
+        viewModel.onEvent(ChatUiEvent.NewThreadRequested)
         viewModel.onEvent(ChatUiEvent.ConnectionRetryRequested)
         advanceUntilIdle()
 
@@ -1605,7 +1521,7 @@ class ChatViewModelIntentTest {
         assertEquals(listOf("thread-1"), threadActions.settledThreads)
         assertEquals(listOf("thread-settled"), threadActions.unsettledThreads)
 
-        viewModel.onEvent(ChatUiEvent.ProjectSelected("project-2"))
+        viewModel.onEvent(ChatUiEvent.ProjectThreadsRequested("project-2"))
         advanceUntilIdle()
 
         assertEquals(ChatPickerUi.PROJECT_THREAD, viewModel.state.value.activePicker)
@@ -1624,7 +1540,7 @@ class ChatViewModelIntentTest {
         viewModel.onEvent(ChatUiEvent.ProjectQuickSwitchRequested("project-1"))
         advanceUntilIdle()
 
-        assertEquals(listOf("project-2"), threadActions.selectedProjects)
+        assertEquals(emptyList<String>(), threadActions.selectedProjects)
         assertEquals(listOf("thread-2", "thread-1"), threadActions.selectedThreads)
         assertEquals("project-1", viewModel.state.value.threadPicker.selectedProjectId)
         assertEquals("thread-1", viewModel.state.value.threadId)
@@ -2688,11 +2604,14 @@ class ChatViewModelIntentTest {
             advanceUntilIdle()
             assertEquals("provider-neutral new project draft", viewModel.draft.value)
 
-            viewModel.onEvent(ChatUiEvent.ProjectSelected("project-2"))
+            viewModel.onEvent(ChatUiEvent.ProjectThreadsRequested("project-2"))
+
+            viewModel.onEvent(ChatUiEvent.NewThreadRequested)
             advanceUntilIdle()
             assertEquals("", viewModel.draft.value)
             viewModel.onEvent(ChatUiEvent.DraftChanged("second project draft"))
-            viewModel.onEvent(ChatUiEvent.ProjectSelected("project-1"))
+            viewModel.onEvent(ChatUiEvent.ProjectThreadsRequested("project-1"))
+            viewModel.onEvent(ChatUiEvent.NewThreadRequested)
             advanceUntilIdle()
             assertEquals("provider-neutral new project draft", viewModel.draft.value)
 
@@ -2718,7 +2637,7 @@ class ChatViewModelIntentTest {
         }
 
     @Test
-    fun `explicit discard clears only the current conversation draft`() = runTest(dispatcher) {
+    fun `clearing the composer clears only the current conversation draft`() = runTest(dispatcher) {
         val drafts = FakeComposerDraftRepository()
         val repository = submissionRepository(ModelSelection("provider", "model"))
         val viewModel = ChatViewModel(
@@ -2733,7 +2652,7 @@ class ChatViewModelIntentTest {
         )
         advanceUntilIdle()
         viewModel.onEvent(ChatUiEvent.DraftChanged("discard me"))
-        viewModel.onEvent(ChatUiEvent.DraftDiscardRequested)
+        viewModel.onEvent(ChatUiEvent.DraftChanged(""))
         advanceUntilIdle()
 
         assertEquals("", viewModel.draft.value)
@@ -3041,7 +2960,6 @@ private class RecordingThreadActions(
     override suspend fun rename(
         threadId: String,
         title: String,
-        modelSelection: ModelSelection,
     ) = DispatchResult(1)
 
     override suspend fun archive(threadId: String) = DispatchResult(1)
@@ -3101,12 +3019,10 @@ private class ReactiveCommandOutbox(vararg initial: OutboxCommand) : CommandOutb
 private class NoOpChatActions(
     private val startTurnFailure: Throwable? = null,
     var continuePlanFailure: Throwable? = null,
-    var terminateSessionFailure: Throwable? = null,
 ) : ChatActions {
     val startTurnCalls = mutableListOf<StartTurnCall>()
     val planContinuations = mutableListOf<Pair<String, String>>()
     val interruptedTurns = mutableListOf<Pair<String, String?>>()
-    val terminatedSessions = mutableListOf<String>()
     var userInputFailure: Throwable? = null
     val userInputResponses = mutableListOf<JsonObject>()
 
@@ -3138,12 +3054,6 @@ private class NoOpChatActions(
         turnId: String?,
     ): DispatchResult {
         interruptedTurns += threadId to turnId
-        return DispatchResult(1)
-    }
-
-    override suspend fun terminateSession(threadId: String): DispatchResult {
-        terminatedSessions += threadId
-        terminateSessionFailure?.let { throw it }
         return DispatchResult(1)
     }
 
@@ -3235,12 +3145,6 @@ private class FakeOrchestrationRepository : OrchestrationRepository {
         source: ProjectionSource,
     ) = Unit
 
-    override suspend fun setShellSnapshot(
-        environmentId: String,
-        snapshot: OrchestrationShellSnapshot,
-        source: ProjectionSource,
-    ) = Unit
-
     override suspend fun applyShellItem(
         environmentId: String,
         item: OrchestrationShellStreamItem,
@@ -3259,12 +3163,6 @@ private class FakeOrchestrationRepository : OrchestrationRepository {
     ) {
         selectedProjectId.value = projectId
     }
-
-    override suspend fun setThreadSnapshot(
-        environmentId: String,
-        snapshot: OrchestrationThreadDetailSnapshot,
-        source: ProjectionSource,
-    ) = Unit
 
     override suspend fun applyThreadItem(
         environmentId: String,
