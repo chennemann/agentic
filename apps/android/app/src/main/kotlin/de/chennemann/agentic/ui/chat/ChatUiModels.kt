@@ -435,8 +435,8 @@ data class ComposerUiState(
     val draft: String = "",
     val selectedProviderModelId: String? = null,
     val providerModels: List<ProviderModelOptionUi> = emptyList(),
-    /** Set once a thread has started: the provider whose models [providerModels] is limited to. */
-    val modelLockLabel: String? = null,
+    /** Destination provider for the next send when it differs from the thread selection. */
+    val providerHandoffLabel: String? = null,
     val providerOptions: List<ProviderOptionUi> = emptyList(),
     val selectedRuntimeModeId: String? = null,
     val runtimeModes: List<RuntimeModeOptionUi> = emptyList(),

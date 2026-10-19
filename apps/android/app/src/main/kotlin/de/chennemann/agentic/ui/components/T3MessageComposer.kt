@@ -13,7 +13,6 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.unit.Dp
-import de.chennemann.agentic.icons.Lock
 import de.chennemann.agentic.icons.Star
 import de.chennemann.agentic.icons.StarOutline
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -397,7 +396,7 @@ fun T3MessageComposer(
                 ModelPanel(
                     models = state.providerModels,
                     selectedId = state.selectedProviderModelId,
-                    lockLabel = state.modelLockLabel,
+                    handoffLabel = state.providerHandoffLabel,
                     onEvent = onEvent,
                 )
             }
@@ -776,7 +775,7 @@ private fun ModelMark(model: ProviderModelOptionUi?, size: Dp = 16.dp) {
 private fun ModelPanel(
     models: List<ProviderModelOptionUi>,
     selectedId: String?,
-    lockLabel: String?,
+    handoffLabel: String?,
     onEvent: (ChatUiEvent) -> Unit,
 ) {
     val favorites = models.filter(ProviderModelOptionUi::favorite).sortedBy { it.favoriteOrder }
@@ -788,16 +787,15 @@ private fun ModelPanel(
             .testTag(ComposerModelPanelTestTag),
         contentPadding = PaddingValues(vertical = 4.dp),
     ) {
-        lockLabel?.let { provider ->
-            item(key = "lock") {
+        handoffLabel?.let { provider ->
+            item(key = "handoff") {
                 Row(
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
-                    Icon(Icons.Lock, contentDescription = null, modifier = Modifier.size(12.dp), tint = ComposerMuted)
                     Text(
-                        text = "This thread stays on $provider",
+                        text = "Context will be handed off to $provider on send",
                         style = MaterialTheme.typography.labelSmall,
                         color = ComposerMuted,
                     )

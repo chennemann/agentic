@@ -1810,7 +1810,7 @@ class ChatViewModelIntentTest {
     }
 
     @Test
-    fun `started threads switch models within their provider and keep the choice to themselves`() = runTest(dispatcher) {
+    fun `started threads hand off across providers and keep the choice to themselves`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model")).apply {
             val config = requireNotNull(clientConfig.value.value)
             val provider = config.providers.single()
@@ -1843,9 +1843,9 @@ class ChatViewModelIntentTest {
         )
         advanceUntilIdle()
 
-        assertEquals(listOf("provider/model", "provider/model-2"), viewModel.state.value.composer.providerModels.map { it.id })
-        assertEquals(listOf("codex", "codex"), viewModel.state.value.composer.providerModels.map { it.providerDriver })
-        assertEquals("Provider", viewModel.state.value.composer.modelLockLabel)
+        assertEquals(listOf("provider/model", "provider/model-2", "other/opus"), viewModel.state.value.composer.providerModels.map { it.id })
+        assertEquals(listOf("codex", "codex", "claudeAgent"), viewModel.state.value.composer.providerModels.map { it.providerDriver })
+        assertNull(viewModel.state.value.composer.providerHandoffLabel)
 
         viewModel.onEvent(ChatUiEvent.ProviderModelSelected("provider/model-2"))
         viewModel.onEvent(ChatUiEvent.ProviderModelSelected("other/opus"))
@@ -1853,13 +1853,14 @@ class ChatViewModelIntentTest {
         viewModel.onEvent(ChatUiEvent.MessageSubmitted)
         advanceUntilIdle()
 
-        assertEquals("provider/model-2", viewModel.state.value.composer.selectedProviderModelId)
-        assertEquals(ModelSelection("provider", "model-2"), chat.startTurnCalls.single().modelSelection.copy(options = null))
+        assertEquals("other/opus", viewModel.state.value.composer.selectedProviderModelId)
+        assertEquals("Other", viewModel.state.value.composer.providerHandoffLabel)
+        assertEquals(ModelSelection("other", "opus"), chat.startTurnCalls.single().modelSelection.copy(options = null))
 
         viewModel.onEvent(ChatUiEvent.ThreadSelected("thread-2"))
         advanceUntilIdle()
 
-        assertNull(viewModel.state.value.composer.modelLockLabel)
+        assertNull(viewModel.state.value.composer.providerHandoffLabel)
         assertEquals(3, viewModel.state.value.composer.providerModels.size)
         assertEquals("provider/model", viewModel.state.value.composer.selectedProviderModelId)
     }

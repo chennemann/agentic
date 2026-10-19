@@ -48,7 +48,6 @@ import de.chennemann.agentic.domain.orchestration.ProjectionState
 import de.chennemann.agentic.domain.orchestration.ThreadService
 import de.chennemann.agentic.domain.orchestration.ThreadActions
 import de.chennemann.agentic.domain.orchestration.ThreadHistory
-import de.chennemann.agentic.domain.orchestration.ThreadModelLock
 import de.chennemann.agentic.domain.orchestration.NewThreadWorkspace
 import de.chennemann.agentic.domain.orchestration.ThreadWorkspaceBrowser
 import de.chennemann.agentic.domain.orchestration.ThreadWorkspaceChoice
@@ -2051,7 +2050,7 @@ class ChatViewModel(
                 contextPreview = local.composerPreview,
                 selectedProviderModelId = selectedModelId,
                 providerModels = modelOptions,
-                modelLockLabel = modelChoice.lock?.providerLabel,
+                providerHandoffLabel = modelChoice.handoffLabel,
                 providerOptions = providerOptions,
                 selectedRuntimeModeId = runtime,
                 runtimeModes = RuntimeModes,
@@ -2893,7 +2892,7 @@ private fun de.chennemann.agentic.t3.contract.OrchestrationMessage.unreferencedF
 private data class ModelChoice(
     val options: List<ProviderModelOptionUi>,
     val selectedId: String?,
-    val lock: ThreadModelLock?,
+    val handoffLabel: String?,
 )
 
 private fun modelOverrideKey(
@@ -2920,37 +2919,30 @@ private fun resolveModelChoice(
     favorites: List<FavoriteModelId> = emptyList(),
 ): ModelChoice {
     val threadSelection = detail?.modelSelection ?: thread?.modelSelection
-    val lock = ThreadModelLock.of(
-        providers = config?.providers.orEmpty(),
-        modelSelection = threadSelection,
-        session = detail?.session ?: thread?.session,
-        started = thread?.latestTurn != null ||
-            thread?.latestUserMessageAt != null ||
-            thread?.session != null ||
-            detail?.latestTurn != null ||
-            detail?.session != null ||
-            detail?.messages?.isNotEmpty() == true,
-    )
-    val options = modelOptions(config, favorites, lock)
+    val options = modelOptions(config, favorites)
     val offered = options.mapTo(mutableSetOf(), ProviderModelOptionUi::id)
     val selectedId = listOfNotNull(
         override,
         threadSelection?.optionId(),
         project?.defaultModelSelection?.optionId(),
     ).firstOrNull { it in offered } ?: options.firstOrNull()?.id
-    return ModelChoice(options, selectedId, lock)
+    val currentInstanceId = threadSelection?.instanceId
+    val selected = options.firstOrNull { it.id == selectedId }
+    val handoffLabel = selected?.providerLabel?.takeIf {
+        currentInstanceId != null && selected.providerInstanceId != currentInstanceId
+    }
+    return ModelChoice(options, selectedId, handoffLabel)
 }
 
 private fun modelOptions(
     config: ServerConfig?,
     favorites: List<FavoriteModelId>,
-    lock: ThreadModelLock?,
 ): List<ProviderModelOptionUi> = config
     ?.providers
     .orEmpty()
     .filter { it.enabled && it.installed }
     .flatMap { provider ->
-        provider.models.filter { lock?.allows(provider, it.slug) != false }.map { model ->
+        provider.models.map { model ->
             ProviderModelOptionUi(
                 id = optionId(provider.instanceId, model.slug),
                 providerInstanceId = provider.instanceId,
