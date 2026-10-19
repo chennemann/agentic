@@ -64,8 +64,12 @@ data class AuthSession(
     val auth: ServerAuthDescriptor,
     val sessionMethod: String? = null,
     val scopes: List<String> = emptyList(),
-    val expiresAt: String? = null
-)
+    val expiresAt: String? = null,
+    val permissions: List<String>? = null
+) {
+    /** An explicitly empty permissions list grants nothing; scopes is the optional-field default. */
+    fun grants(permission: String): Boolean = authenticated && permission in (permissions ?: scopes)
+}
 
 @Serializable
 data class TokenExchangeResponse(

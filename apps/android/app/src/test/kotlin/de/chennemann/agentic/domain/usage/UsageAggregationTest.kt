@@ -171,7 +171,7 @@ class UsageAggregationTest {
                 )
             )
         val account = collectLimitAccounts(
-            listOf(environment("a").copy(config = config, connected = true, canOperate = true))
+            listOf(environment("a").copy(config = config, connected = true, canManageProviders = true))
         ).single()
         assertEquals(60.0, account.limits.windows.single().usedPercent)
         assertEquals(2, account.limits.resetCredits?.availableCount)

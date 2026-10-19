@@ -156,7 +156,7 @@ fun collectLimitAccounts(environments: List<EnvironmentUsage>): List<LimitAccoun
                         environment.environment.id,
                         instanceId = provider.instanceId
                     ),
-                    environment.canOperate
+                    environment.canManageProviders
                 )
         }
         for (source in config.usageLimitSources) {
@@ -180,7 +180,7 @@ fun collectLimitAccounts(environments: List<EnvironmentUsage>): List<LimitAccoun
                                 creditId = it
                             )
                         },
-                        environment.canOperate
+                        environment.canManageProviders
                     )
             }
         }

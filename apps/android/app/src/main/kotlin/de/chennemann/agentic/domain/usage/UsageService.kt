@@ -36,7 +36,8 @@ data class EnvironmentUsage(
     val summary: UsageSummary? = null,
     val config: ServerConfig? = null,
     val settings: ServerSettings? = null,
-    val canOperate: Boolean = false,
+    val canWriteSettings: Boolean = false,
+    val canManageProviders: Boolean = false,
     val connected: Boolean = false,
     val error: String? = null
 )
@@ -93,8 +94,8 @@ class UsageService(
                                 val session = auth.session(environment.baseUrl, token)
                                 repository.update(environment) {
                                     it.copy(
-                                        canOperate =
-                                        session.authenticated && "orchestration:operate" in session.scopes
+                                        canWriteSettings = session.grants("settings:write"),
+                                        canManageProviders = session.grants("providers:manage")
                                     )
                                 }
                                 rpc.usageConfigStream(environment.baseUrl, token).collect { event ->
@@ -199,7 +200,7 @@ class UsageService(
                 val environment = environment(id)
                 val current = repository.state.value[id]
                 check(
-                    current?.canOperate == true &&
+                    current?.canWriteSettings == true &&
                         current.connected &&
                         current.config?.environment?.capabilities?.usagePriceOverrides == true
                 ) {
@@ -243,7 +244,7 @@ class UsageService(
 
     suspend fun enableKeychain(id: String) {
         val environment = environment(id)
-        check(repository.state.value[id]?.canOperate == true)
+        check(repository.state.value[id]?.canWriteSettings == true)
         rpcCall(
             environment,
             "server.updateSettings",

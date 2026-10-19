@@ -661,6 +661,13 @@ class KtorT3Client(
                 throw T3TransportException.ClientCertificate(required = false)
             }
         }
+        if (status.value == 403) {
+            val error = runCatching { T3Json.parseToJsonElement(bodyAsText()).jsonObject }.getOrNull()
+            if (error?.get("code")?.jsonPrimitive?.contentOrNull == "insufficient_scope") {
+                val permission = (error["requiredPermission"] ?: error["requiredScope"])?.jsonPrimitive?.contentOrNull
+                if (permission != null) throw T3TransportException.Authorization(permission)
+            }
+        }
         if (status.value == 401 || status.value == 403) {
             throw T3TransportException.Authentication(status.value)
         }
@@ -895,7 +902,7 @@ internal fun decodeRpcFailure(cause: JsonArray?): T3TransportException {
         ?.get("error")
         ?.jsonObject
     if (error?.get("_tag")?.jsonPrimitive?.contentOrNull == "EnvironmentAuthorizationError") {
-        val requiredScope = error["requiredScope"]?.jsonPrimitive?.contentOrNull
+        val requiredScope = (error["requiredPermission"] ?: error["requiredScope"])?.jsonPrimitive?.contentOrNull
             ?: return T3TransportException.Rpc("T3 authorization failed.")
         return T3TransportException.Authorization(requiredScope)
     }

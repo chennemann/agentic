@@ -324,10 +324,10 @@ class UsageViewModel(
                 selected.ids == null || env.environment.id in selected.ids,
                 env.error ?: if (env.connected) "Connected" else "Connecting",
                 env.connected &&
-                    env.canOperate &&
+                    env.canWriteSettings &&
                     env.config?.environment?.capabilities?.usagePriceOverrides == true,
                 prices,
-                env.canOperate &&
+                env.canWriteSettings &&
                     env.summary?.sources?.any { it.action == "enableCursorKeychain" } == true
             )
         }

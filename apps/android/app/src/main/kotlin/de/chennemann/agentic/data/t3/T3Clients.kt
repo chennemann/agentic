@@ -21,7 +21,10 @@ import de.chennemann.agentic.t3.contract.WorkspaceEntriesResult
 import de.chennemann.agentic.t3.contract.WorkspaceFileResult
 import kotlinx.coroutines.flow.Flow
 
-const val REQUIRED_T3_SCOPES = "orchestration:read orchestration:operate terminal:operate"
+// Conversation commands, terminal observation/control, workspace files/media, usage, and usage settings.
+const val REQUIRED_T3_SCOPES =
+    "orchestration:read orchestration:operate terminal:read terminal:operate " +
+        "filesystem:read diagnostics:read settings:write providers:manage"
 
 data class AndroidClientMetadata(
     val label: String,
@@ -171,7 +174,7 @@ sealed class T3TransportException(
         if (requiredScope == "terminal:operate") {
             "Terminal access requires pairing this environment again."
         } else {
-            "T3 authorization is missing the required scope: $requiredScope."
+            "T3 authorization is missing the required permission: $requiredScope. Create a new pairing link with this permission and pair this environment again."
         },
     )
 

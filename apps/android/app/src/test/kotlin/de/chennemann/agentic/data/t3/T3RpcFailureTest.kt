@@ -35,6 +35,15 @@ class T3RpcFailureTest {
     }
 
     @Test
+    fun `granular permission takes precedence over legacy scope`() {
+        val cause = Json.parseToJsonElement(
+            """[{"_tag":"Fail","error":{"_tag":"EnvironmentAuthorizationError","requiredScope":"orchestration:read","requiredPermission":"filesystem:read"}}]"""
+        ).jsonArray
+        val failure = assertInstanceOf(T3TransportException.Authorization::class.java, decodeRpcFailure(cause))
+        assertEquals("filesystem:read", failure.requiredScope)
+    }
+
+    @Test
     fun `safe rpc failure preserves its opaque trace id`() {
         val cause = Json.parseToJsonElement(
             """

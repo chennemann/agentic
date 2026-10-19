@@ -20,6 +20,10 @@ sealed class PairingException(
 
     class MissingCredential : PairingException("The pairing link is missing its token.")
 
+    class MissingPermission(permission: String) : PairingException(
+        "The pairing token does not grant $permission. Create a new pairing link with this permission and pair again."
+    )
+
     class PublicCleartext : PairingException("Public T3 environments require HTTPS.")
 
     class EnvironmentMismatch : PairingException("The pairing link belongs to a different environment.")

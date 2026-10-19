@@ -60,12 +60,13 @@ class EnvironmentService(
             clientMetadata,
         )
         val exchangedScopes = exchanged.scope.split(' ').filter(String::isNotBlank).toSet()
-        if (!exchangedScopes.containsAll(REQUIRED_T3_SCOPES.split(' '))) {
-            throw PairingException.Invalid()
+        REQUIRED_T3_SCOPES.split(' ').firstOrNull { it !in exchangedScopes }?.let {
+            throw PairingException.MissingPermission(it)
         }
         val session = authClient.session(preview.target.baseUrl, exchanged.accessToken)
-        if (!session.authenticated || !session.scopes.toSet().containsAll(REQUIRED_T3_SCOPES.split(' '))) {
-            throw PairingException.Invalid()
+        if (!session.authenticated) throw PairingException.Invalid()
+        REQUIRED_T3_SCOPES.split(' ').firstOrNull { !session.grants(it) }?.let {
+            throw PairingException.MissingPermission(it)
         }
         val config = rpc.serverConfig(preview.target.baseUrl, exchanged.accessToken)
         if (config.environment.environmentId != preview.descriptor.environmentId) {
