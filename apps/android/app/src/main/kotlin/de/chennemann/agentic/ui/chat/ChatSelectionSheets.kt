@@ -88,6 +88,7 @@ fun ChatSelectionSheets(
     onEvent: (ChatUiEvent) -> Unit,
     onOpenUpdater: () -> Unit = {},
     onOpenUsage: () -> Unit = {},
+    onOpenPullRequests: () -> Unit = {},
 ) {
     when (state.activePicker) {
         ChatPickerUi.NAVIGATION -> {
@@ -96,6 +97,7 @@ fun ChatSelectionSheets(
                 onEvent = onEvent,
                 onOpenUpdater = onOpenUpdater,
                 onOpenUsage = onOpenUsage,
+                onOpenPullRequests = onOpenPullRequests,
                 onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
             )
         }
@@ -673,6 +675,7 @@ private fun SettingsSheet(
     onEvent: (ChatUiEvent) -> Unit,
     onOpenUpdater: () -> Unit,
     onOpenUsage: () -> Unit,
+    onOpenPullRequests: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     val environment = state.environmentPicker.environments
@@ -770,6 +773,7 @@ private fun SettingsSheet(
 
             item { SettingsSectionLabel("More") }
             item { SettingsRow("Usage", onClick = onOpenUsage) }
+            item { SettingsRow("Pull requests", onClick = onOpenPullRequests) }
             state.environmentPicker.selectedEnvironmentId?.let { id ->
                 item { SettingsRow("Storage and cache", onClick = { onEvent(ChatUiEvent.CacheInspectionRequested(id)) }) }
             }

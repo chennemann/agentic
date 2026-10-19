@@ -24,7 +24,7 @@ import kotlinx.coroutines.flow.Flow
 // Conversation commands, terminal observation/control, workspace files/media, usage, and usage settings.
 const val REQUIRED_T3_SCOPES =
     "orchestration:read orchestration:operate terminal:read terminal:operate " +
-        "filesystem:read diagnostics:read settings:write providers:manage"
+        "filesystem:read diagnostics:read settings:write providers:manage source-control:write"
 
 data class AndroidClientMetadata(
     val label: String,

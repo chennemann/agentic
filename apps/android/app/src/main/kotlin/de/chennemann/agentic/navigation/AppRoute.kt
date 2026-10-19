@@ -32,4 +32,7 @@ data class TerminalRoute(val threadId: String, val script: ProjectScript? = null
 data object UsageRoute : AppRoute
 
 @Serializable
+data object PullRequestsRoute : AppRoute
+
+@Serializable
 data class ReviewDiffRoute(val threadId: String) : AppRoute

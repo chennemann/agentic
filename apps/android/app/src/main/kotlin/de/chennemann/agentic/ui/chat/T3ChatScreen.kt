@@ -136,6 +136,7 @@ fun T3ChatScreen(
     onOpenFileLink: (threadId: String, target: FileLinkTarget) -> Unit = { _, _ -> },
     onOpenUpdater: () -> Unit = {},
     onOpenUsage: () -> Unit = {},
+    onOpenPullRequests: () -> Unit = {},
     onOpenTerminal: (String) -> Unit = {},
     onOpenChanges: (String) -> Unit = {},
     onRunProjectScript: (String, ProjectScriptUi) -> Unit = { _, _ -> },
@@ -274,6 +275,7 @@ fun T3ChatScreen(
                 onOpenChanges = onOpenChanges,
                 onRunProjectScript = onRunProjectScript,
                 onOpenUsage = onOpenUsage,
+                onOpenPullRequests = onOpenPullRequests,
             )
         },
     ) {
@@ -529,6 +531,7 @@ fun T3ChatScreen(
         onEvent = onEvent,
         onOpenUpdater = onOpenUpdater,
         onOpenUsage = onOpenUsage,
+                onOpenPullRequests = onOpenPullRequests,
     )
 
     state.renameDialog?.let { rename ->

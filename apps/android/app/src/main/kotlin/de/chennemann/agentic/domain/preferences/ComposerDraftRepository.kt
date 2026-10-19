@@ -15,3 +15,6 @@ interface ComposerDraftRepository {
 
     suspend fun setDraft(environmentId: String, threadId: String, draft: String)
 }
+
+/** Stable identity for the unsent composer belonging to a project. */
+fun projectDraftId(projectId: String): String = "new-project:$projectId"

@@ -65,6 +65,7 @@ fun ChatProjectDrawer(
     onRunProjectScript: (String, ProjectScriptUi) -> Unit,
     onOpenUsage: () -> Unit,
     onOpenChanges: (String) -> Unit = {},
+    onOpenPullRequests: () -> Unit = {},
 ) {
     ModalDrawerSheet {
         Row(
@@ -82,6 +83,9 @@ fun ChatProjectDrawer(
             }
         }
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        TextButton(onClick = { onClose(); onOpenPullRequests() }, modifier = Modifier.fillMaxWidth()) {
+            Text("Pull requests")
+        }
         Box(Modifier.weight(1f)) {
             ProjectThreadList(
                 state = state,

@@ -84,6 +84,7 @@ class KtorT3Client(
     private val scope: CoroutineScope,
 ) : EnvironmentMetadataClient,
     EnvironmentAuthClient,
+    PullRequestsRpcClient,
     T3RpcClient,
     ProjectDestinationRpcClient,
     ThreadWorkspaceRpcClient,
@@ -138,6 +139,22 @@ class KtorT3Client(
 
     override fun configStream(baseUrl: String, bearerToken: String): Flow<ServerConfigStreamEvent> =
         rpcStream(baseUrl, bearerToken, "subscribeServerConfig", buildJsonObject {})
+
+    override suspend fun pullRequestCall(baseUrl: String, token: String, method: String, input: JsonObject): JsonElement =
+        rpcCall(baseUrl, token, method, input)
+
+    override fun pullRequestRefreshes(baseUrl: String, token: String): Flow<Long> =
+        rpcStream(baseUrl, token, "pullRequests.subscribeRefreshes", buildJsonObject {})
+
+    override suspend fun pullRequestDiff(baseUrl: String, token: String, input: JsonObject): JsonElement = transport {
+        val response = httpClients.client(baseUrl).post(url(baseUrl, "/api/pull-requests/diff")) {
+            bearerAuth(token)
+            header("Content-Type", "application/json")
+            setBody(input)
+        }
+        response.checked()
+        T3Json.parseToJsonElement(response.bodyAsText())
+    }
 
     override suspend fun usageCall(baseUrl: String, bearerToken: String, method: String, input: JsonObject): JsonElement =
         rpcCall(baseUrl, bearerToken, method, input)

@@ -122,6 +122,7 @@ fun AppNavHost() {
                         onOpenFileLink = onOpenFileLink,
                         onOpenUpdater = onOpenUpdater,
                         onOpenUsage = onOpenUsage,
+                        onOpenPullRequests = { viewModel.onEvent(ChatUiEvent.PickerDismissed); stack.add(PullRequestsRoute) },
                         onOpenTerminal = onOpenTerminal,
                         onOpenChanges = { threadId -> stack.add(ReviewDiffRoute(threadId)) },
                         onRunProjectScript = onRunProjectScript,
@@ -151,6 +152,19 @@ fun AppNavHost() {
                         onClosePreview = {
                             if (linkedPath == null) viewModel.closePreview() else stack.removeLastOrNull()
                         },
+                    )
+                }
+
+                PullRequestsRoute -> NavEntry(route) {
+                    val viewModel: de.chennemann.agentic.ui.pullrequests.PullRequestsViewModel = koinViewModel()
+                    val state by viewModel.state.collectAsStateWithLifecycle()
+                    de.chennemann.agentic.ui.pullrequests.PullRequestsScreen(
+                        state, { stack.removeLastOrNull() }, viewModel::selectEnvironment, viewModel::filter,
+                        viewModel::involvement, viewModel::search, viewModel::refresh, viewModel::more,
+                        viewModel::open, viewModel::back, viewModel::changes, viewModel::comment,
+                        viewModel::review, viewModel::action, viewModel::resolve, viewModel::reply,
+                        { id -> viewModel.openThread(id) { stack.removeLastOrNull() } },
+                        { viewModel.discuss { stack.removeLastOrNull() } }
                     )
                 }
 

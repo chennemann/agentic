@@ -184,6 +184,11 @@ val appModule = module {
     }
     single<EnvironmentMetadataClient> { get<KtorT3Client>() }
     single<EnvironmentAuthClient> { get<KtorT3Client>() }
+    single<de.chennemann.agentic.data.t3.PullRequestsRpcClient> { get<KtorT3Client>() }
+    single { de.chennemann.agentic.domain.pullrequests.PullRequestsRepository(get(), get(), get(), get()) }
+    single { de.chennemann.agentic.domain.pullrequests.PullRequestsService(get()) }
+    single { de.chennemann.agentic.domain.pullrequests.PullRequestConversations(get(), get(), get()) }
+    viewModel { de.chennemann.agentic.ui.pullrequests.PullRequestsViewModel(get(), get(), get(), get()) }
     single<T3RpcClient> { get<KtorT3Client>() }
     single<TerminalRpcClient> { get<KtorT3Client>() }
     single<de.chennemann.agentic.data.t3.ReviewDiffRpcClient> { get<KtorT3Client>() }

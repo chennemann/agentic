@@ -163,7 +163,7 @@ class ChatViewModel(
         when {
             environment == null -> null
             threadId != null -> DraftKey(environment.id, threadId)
-            projectId != null -> DraftKey(environment.id, "$NewThreadDraftPrefix$projectId")
+            projectId != null -> DraftKey(environment.id, de.chennemann.agentic.domain.preferences.projectDraftId(projectId))
             else -> null
         }
     }.distinctUntilChanged()
