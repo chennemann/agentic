@@ -561,6 +561,59 @@ class ChatViewModelIntentTest {
     }
 
     @Test
+    fun `no project shortcut resolves scratch and opens a fresh draft on every use`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val threads = RecordingThreadActions(repository)
+        var requests = 0
+        val starter = object : ProjectStarter {
+            override suspend fun createNew(name: String): StartedProject = error("Unexpected project creation")
+            override suspend fun useScratch(): StartedProject {
+                requests++
+                return StartedProject("scratch")
+            }
+        }
+        val workflow = DefaultProjectWorkflow(repository, RecordingProjectActions(), threads, starter = starter)
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = threads, chat = NoOpChatActions(), mappingDispatcher = dispatcher,
+            projectWorkflow = workflow,
+        )
+        advanceUntilIdle()
+
+        repeat(2) {
+            repository.focusedThreadId.value = "existing-thread"
+            viewModel.onEvent(ChatUiEvent.ScratchProjectRequested)
+            advanceUntilIdle()
+            assertEquals("scratch", repository.selectedProjectId.value)
+            assertEquals(null, repository.focusedThreadId.value)
+            assertFalse(workflow.state.value.creationVisible)
+        }
+        assertEquals(2, requests)
+        assertEquals(listOf("scratch", "scratch"), threads.selectedProjects)
+    }
+
+    @Test
+    fun `no project shortcut failure is visible and preserves the current thread`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        repository.focusedThreadId.value = "existing-thread"
+        val threads = RecordingThreadActions(repository)
+        val starter = object : ProjectStarter {
+            override suspend fun createNew(name: String): StartedProject = error("Unexpected project creation")
+            override suspend fun useScratch(): StartedProject = error("The environment is not ready yet.")
+        }
+        val workflow = DefaultProjectWorkflow(repository, RecordingProjectActions(), threads, starter = starter)
+
+        workflow.accept(ProjectWorkflowIntent.UseScratch)
+
+        assertTrue(workflow.state.value.creationVisible)
+        assertFalse(workflow.state.value.creationSaving)
+        assertEquals("The environment is not ready yet.", workflow.state.value.creationError)
+        assertEquals("existing-thread", repository.focusedThreadId.value)
+        assertTrue(threads.selectedProjects.isEmpty())
+    }
+
+    @Test
     fun `project favorites map from persistence and picker events write them back`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model"))
         val favorites = RecordingProjectFavoriteRepository(setOf("project-1"))

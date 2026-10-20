@@ -175,7 +175,13 @@ class DefaultProjectWorkflow(
                     creationDestinations = emptyList(),
                 )
             },
-            failure = { copy(creationSaving = false, creationError = it.message ?: "Project creation failed.") },
+            failure = {
+                copy(
+                    creationVisible = true,
+                    creationSaving = false,
+                    creationError = it.message ?: "Project creation failed.",
+                )
+            },
         )
     }
 

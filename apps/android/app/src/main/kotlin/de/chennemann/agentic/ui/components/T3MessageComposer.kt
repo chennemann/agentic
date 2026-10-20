@@ -448,11 +448,18 @@ fun T3MessageComposer(
                         contentDescription = "Open project picker",
                     )
                 }
-                IconButton(
-                    onClick = { onEvent(ChatUiEvent.NewThreadRequested) },
+                Box(
+                    contentAlignment = Alignment.Center,
                     modifier = Modifier
                         .align(Alignment.TopEnd)
-                        .offset(y = (-1.5).dp),
+                        .offset(y = (-1.5).dp)
+                        .size(48.dp)
+                        .combinedClickable(
+                            role = Role.Button,
+                            onClick = { onEvent(ChatUiEvent.NewThreadRequested) },
+                            onLongClickLabel = "New thread without a project",
+                            onLongClick = { onEvent(ChatUiEvent.ScratchProjectRequested) },
+                        ),
                 ) {
                     Icon(Icons.Add, contentDescription = "New thread", tint = MaterialTheme.colorScheme.primary)
                 }

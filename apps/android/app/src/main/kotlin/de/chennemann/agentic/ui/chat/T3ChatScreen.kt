@@ -636,7 +636,7 @@ fun T3ChatScreen(
                         TextButton(
                             onClick = { onEvent(ChatUiEvent.ScratchProjectRequested) },
                             enabled = !creation.creating && !creation.browsing,
-                        ) { Text("Use Scratch") }
+                        ) { Text("No project") }
                     }
                     if (creation.browsing) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp))
