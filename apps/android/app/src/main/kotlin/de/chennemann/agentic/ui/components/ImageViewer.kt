@@ -54,6 +54,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -100,6 +101,7 @@ import de.chennemann.agentic.icons.Trash
 import de.chennemann.agentic.icons.Undo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
 import kotlin.math.hypot
 
 private val MarkColor = Color(AnnotationColor)
@@ -119,6 +121,7 @@ data class ViewerImage(
     val annotations: List<ImageAnnotation> = emptyList(),
     val readOnlyCount: Int = 0,
     val annotationHint: String? = null,
+    val loadFailed: Boolean = false,
 )
 
 /**
@@ -132,7 +135,9 @@ fun ImageViewerDialog(
     images: List<ViewerImage>,
     initialIndex: Int,
     onClose: (Map<String, List<ImageAnnotation>>) -> Unit,
+    onImageRequested: (ViewerImage) -> Unit = {},
 ) {
+    val scope = rememberCoroutineScope()
     var marksByKey by remember { mutableStateOf(images.associate { it.key to it.annotations }) }
     var undoByKey by remember { mutableStateOf(emptyMap<String, List<List<ImageAnnotation>>>()) }
     var selectedId by remember { mutableStateOf<String?>(null) }
@@ -148,6 +153,7 @@ fun ImageViewerDialog(
     LaunchedEffect(pager.currentPage) {
         selectedId = null
         zoomed = false
+        onImageRequested(current)
     }
 
     Dialog(
@@ -232,6 +238,7 @@ fun ImageViewerDialog(
                                 if (before != after) record(before)
                             },
                             onZoomedChange = { if (isCurrent) zoomed = it },
+                            onRetry = { onImageRequested(image) },
                         )
                     }
                     if (!annotating) {
@@ -253,6 +260,16 @@ fun ImageViewerDialog(
                                 Icon(Icons.Pencil, contentDescription = null, modifier = Modifier.size(16.dp))
                                 Text("Annotate", style = MaterialTheme.typography.labelLarge)
                             }
+                        }
+                    }
+                }
+                if (images.size > 1) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                        TextButton(onClick = { scope.launch { pager.scrollToPage((pager.currentPage - 1 + images.size) % images.size) } }) {
+                            Text("Previous", color = Color.White)
+                        }
+                        TextButton(onClick = { scope.launch { pager.scrollToPage((pager.currentPage + 1) % images.size) } }) {
+                            Text("Next", color = Color.White)
                         }
                     }
                 }
@@ -288,7 +305,14 @@ private fun ImagePage(
     onPreview: (List<ImageAnnotation>) -> Unit,
     onCommit: (before: List<ImageAnnotation>, after: List<ImageAnnotation>) -> Unit,
     onZoomedChange: (Boolean) -> Unit,
+    onRetry: () -> Unit,
 ) {
+    if (image.loadFailed) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            TextButton(onClick = onRetry) { Text("Retry image", color = Color.White) }
+        }
+        return
+    }
     val decoded by produceState<DecodedImage>(DecodedImage.Loading, image.dataUrl) {
         value = image.dataUrl?.let { dataUrl ->
             withContext(Dispatchers.Default) { decodeDataUrlBitmap(dataUrl, MaxPreviewDimension) }

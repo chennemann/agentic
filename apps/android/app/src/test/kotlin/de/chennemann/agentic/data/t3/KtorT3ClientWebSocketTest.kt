@@ -50,6 +50,36 @@ class KtorT3ClientWebSocketTest {
     }
 
     @Test
+    fun `HTML uses an authenticated inline asset request and a credential free download`() = runBlocking {
+        val requests = LinkedBlockingQueue<JsonObject>()
+        server.enqueue(MockResponse().setHeader("content-type", "application/json").setBody("""{"ticket":"ticket","expiresAt":"2099-01-01T00:00:00Z"}"""))
+        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            override fun onMessage(webSocket: WebSocket, text: String) {
+                val message = Json.parseToJsonElement(text).jsonObject
+                if (message["_tag"]?.jsonPrimitive?.content != "Request") return
+                requests.offer(message)
+                val id = message.getValue("id").jsonPrimitive.content
+                webSocket.send("""{"_tag":"Exit","requestId":"$id","exit":{"_tag":"Success","value":{"relativeUrl":"/api/assets/signed/page.html","expiresAt":9999999999999}}}""")
+            }
+        }))
+        server.enqueue(MockResponse().setHeader("content-type", "text/html").setBody("<p>Gallery</p>"))
+        val client = KtorT3Client(httpClient, scope)
+        assertEquals("<p>Gallery</p>", withTimeout(5_000) { client.loadHtml(server.url("/").toString(), "access-token", "page.html") })
+        val request = requireNotNull(requests.poll(1, TimeUnit.SECONDS))
+        assertEquals("assets.createUrl", request.getValue("tag").jsonPrimitive.content)
+        val resource = request.getValue("payload").jsonObject.getValue("resource").jsonObject
+        assertEquals("attachment", resource.getValue("_tag").jsonPrimitive.content)
+        assertEquals("page.html", resource.getValue("attachmentId").jsonPrimitive.content)
+        assertEquals("text/html", resource.getValue("mimeType").jsonPrimitive.content)
+        assertEquals("inline", resource.getValue("disposition").jsonPrimitive.content)
+        assertEquals("Bearer access-token", server.takeRequest(1, TimeUnit.SECONDS)?.getHeader("authorization"))
+        server.takeRequest(1, TimeUnit.SECONDS)
+        val download = server.takeRequest(1, TimeUnit.SECONDS)
+        assertEquals("/api/assets/signed/page.html", download?.path)
+        org.junit.jupiter.api.Assertions.assertNull(download?.getHeader("authorization"))
+    }
+
+    @Test
     fun `upstream RPC calls share one ticketed websocket`() = runBlocking {
         val acknowledged = CountDownLatch(1)
         val interrupted = CountDownLatch(1)

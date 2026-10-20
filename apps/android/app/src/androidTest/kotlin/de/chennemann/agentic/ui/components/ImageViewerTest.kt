@@ -79,6 +79,23 @@ class ImageViewerTest {
         assertEquals(0, closed?.get("second.png")?.size)
     }
 
+    @Test fun navigationWrapsAndRetainsEveryImagesAnnotationsWhileAnnotating() {
+        var closed: Map<String, List<ImageAnnotation>>? = null
+        compose.setContent { MaterialTheme { ImageViewerDialog(images, initialIndex = 1, onClose = { closed = it }) } }
+        compose.onNodeWithContentDescription("Annotate second.png").performClick()
+        compose.onNodeWithContentDescription("Annotation canvas").performClick()
+        compose.onNodeWithText("Next").performClick()
+        compose.onNodeWithText("third.png").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Annotation canvas").performClick()
+        compose.onNodeWithText("Next").performClick()
+        compose.onNodeWithText("first.png").assertIsDisplayed()
+        compose.onNodeWithText("Previous").performClick()
+        compose.onNodeWithText("third.png").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Close image").performClick()
+        assertEquals(1, closed?.get("second.png")?.size)
+        assertEquals(1, closed?.get("third.png")?.size)
+    }
+
     private fun pngDataUrl(): String {
         val bitmap = Bitmap.createBitmap(40, 30, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.GRAY) }
         val bytes = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()

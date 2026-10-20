@@ -106,6 +106,44 @@ import org.junit.jupiter.api.Test
 @OptIn(ExperimentalCoroutinesApi::class)
 class ChatViewModelIntentTest {
     @Test
+    fun `published HTML loads through authenticated assets and retries a failed load`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val current = requireNotNull(repository.focusedThread.value.value)
+        val payload = T3Json.parseToJsonElement("""{"toolName":"t3-code.html_render","status":"completed","output":{"htmlRender":{"attachmentId":"page.html","title":"Gallery","height":420}}}""").jsonObject
+        repository.focusedThread.value = repository.focusedThread.value.copy(value = current.copy(thread = current.thread.copy(
+            activities = listOf(OrchestrationActivity("render", "turn", 1, "tool.updated", "tool", "Render HTML", payload, "2026-10-21T00:00:00Z")),
+        )))
+        var loads = 0
+        val assets = object : de.chennemann.agentic.data.t3.AttachmentAssetClient {
+            override suspend fun loadDataUrl(baseUrl: String, bearerToken: String, attachmentId: String, mimeType: String): String = error("Unexpected image load")
+            override suspend fun loadHtml(baseUrl: String, bearerToken: String, attachmentId: String): String {
+                assertEquals("https://example.test/", baseUrl)
+                assertEquals("test-token", bearerToken)
+                assertEquals("page.html", attachmentId)
+                if (++loads == 1) error("Offline")
+                return "<p>Gallery</p>"
+            }
+        }
+        val viewModel = ChatViewModel(
+            environments = FakeViewModelEnvironmentRepository(), repository = repository,
+            connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+            threads = RecordingThreadActions(repository), chat = NoOpChatActions(),
+            attachmentAssets = assets, credentials = ComposerTestCredentials(), mappingDispatcher = dispatcher,
+        )
+        advanceUntilIdle()
+        assertTrue(viewModel.state.value.timeline.single() is ChatTimelineItemUi.HtmlRender)
+        viewModel.onEvent(ChatUiEvent.HtmlPageRequested("page.html"))
+        advanceUntilIdle()
+        assertEquals(HtmlPageUi.Failed, viewModel.state.value.htmlPages["page.html"])
+        viewModel.onEvent(ChatUiEvent.HtmlPageRequested("page.html"))
+        advanceUntilIdle()
+        assertEquals(HtmlPageUi.Loaded("<p>Gallery</p>"), viewModel.state.value.htmlPages["page.html"])
+        viewModel.onEvent(ChatUiEvent.HtmlPageRequested("page.html"))
+        advanceUntilIdle()
+        assertEquals(2, loads)
+    }
+
+    @Test
     fun `composer skills use the exact workspace catalog and uploaded context binds to server ids`() = runTest(dispatcher) {
         val repository = submissionRepository(ModelSelection("provider", "model"))
         val environments = FakeViewModelEnvironmentRepository()

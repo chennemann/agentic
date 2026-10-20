@@ -159,6 +159,9 @@ interface TerminalRpcClient {
 
 interface AttachmentAssetClient {
     suspend fun loadDataUrl(baseUrl: String, bearerToken: String, attachmentId: String, mimeType: String): String
+    suspend fun loadHtml(baseUrl: String, bearerToken: String, attachmentId: String): String =
+        error("HTML pages are not supported.")
+    suspend fun loadGalleryImage(source: String): String = error("Gallery images are not supported.")
 }
 
 sealed class T3TransportException(

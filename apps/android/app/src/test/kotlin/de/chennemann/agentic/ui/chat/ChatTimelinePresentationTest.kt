@@ -7,6 +7,22 @@ import org.junit.jupiter.api.Test
 
 class ChatTimelinePresentationTest {
     @Test
+    fun `completed HTML replaces tool lifecycle and stays visible in a settled turn`() {
+        val page = de.chennemann.agentic.domain.attachments.HtmlRenderPage("page.html", "Gallery", 500)
+        val started = tool("start", ActivityStatusUi.RUNNING)
+        val completed = tool("end", ActivityStatusUi.COMPLETED).let { entry ->
+            val tool = (entry.item as ChatTimelineItemUi.Activity).value as ChatActivityUi.Tool
+            entry.copy(item = ChatTimelineItemUi.Activity(tool.copy(htmlRender = page)))
+        }
+        val published = publishHtmlRenders(collapseToolLifecycles(listOf(started, completed)))
+        assertEquals(ChatTimelineItemUi.HtmlRender("start", page), published.single().item)
+        val folded = foldSettledTurns(published + tool("other", ActivityStatusUi.COMPLETED), "turn", null, null, null, false)
+        assertTrue(folded.any { it is ChatTimelineItemUi.HtmlRender })
+        assertTrue(folded.any { it is ChatTimelineItemUi.WorkSummary })
+        val failed = completed.copy(item = ChatTimelineItemUi.Activity(((completed.item as ChatTimelineItemUi.Activity).value as ChatActivityUi.Tool).copy(status = ActivityStatusUi.FAILED)))
+        assertTrue(publishHtmlRenders(listOf(failed)).single().item is ChatTimelineItemUi.Activity)
+    }
+    @Test
     fun `ordering compares instants rather than timestamp spellings`() {
         assertEquals(timelineInstant("2026-10-04T12:00:00+02:00"), timelineInstant("2026-10-04T10:00:00Z"))
         assertTrue(timelineInstant("2026-10-04T10:00:00.001Z") > timelineInstant("2026-10-04T10:00:00Z"))

@@ -747,6 +747,8 @@ class ChatViewModel(
             ChatUiEvent.ShortcutErrorDismissed -> shortcutWorkflow?.dismissError()
             is ChatUiEvent.ThemeSelected -> viewModelScope.launch { interfacePreferences?.setTheme(event.value) }
             is ChatUiEvent.InlineImageRequested -> loadInlineImage(event.path)
+            is ChatUiEvent.HtmlPageRequested -> loadHtmlPage(event.attachmentId)
+            is ChatUiEvent.GalleryImageRequested -> loadGalleryImage(event.source)
             is ChatUiEvent.AccentSelected -> viewModelScope.launch { interfacePreferences?.setAccent(event.value) }
             is ChatUiEvent.InterfaceScaleSelected -> if (event.value in SupportedDisplayScales) {
                 viewModelScope.launch { interfacePreferences?.setInterfaceScale(event.value) }
@@ -1107,6 +1109,42 @@ class ChatViewModel(
                 InlineImageUi.Failed(cause.message ?: "The image could not be loaded.")
             }
             update { copy(inlineImages = inlineImages + (path to result)) }
+        }
+    }
+
+    private fun loadHtmlPage(attachmentId: String) {
+        val environment = environments.activeEnvironment.value ?: return
+        val threadId = repository.focusedThreadId.value ?: return
+        val assets = attachmentAssets ?: return
+        val key = "${environment.id}:$threadId:$attachmentId"
+        if (local.value.htmlPages[key]?.let { it !is HtmlPageUi.Failed } == true) return
+        update { copy(htmlPages = htmlPages + (key to HtmlPageUi.Loading)) }
+        viewModelScope.launch {
+            val result = try {
+                val token = credentials?.read(environment.id) ?: error("Authentication required")
+                HtmlPageUi.Loaded(assets.loadHtml(environment.baseUrl, token, attachmentId))
+            } catch (cause: CancellationException) {
+                throw cause
+            } catch (_: Exception) {
+                HtmlPageUi.Failed
+            }
+            update { copy(htmlPages = htmlPages + (key to result)) }
+        }
+    }
+
+    private fun loadGalleryImage(source: String) {
+        val assets = attachmentAssets ?: return
+        if (local.value.inlineImages[source]?.let { it !is InlineImageUi.Failed } == true) return
+        update { copy(inlineImages = inlineImages + (source to InlineImageUi.Loading)) }
+        viewModelScope.launch {
+            val result = try {
+                InlineImageUi.Loaded(assets.loadGalleryImage(source))
+            } catch (cause: CancellationException) {
+                throw cause
+            } catch (_: Exception) {
+                InlineImageUi.Failed("The image could not be loaded.")
+            }
+            update { copy(inlineImages = inlineImages + (source to result)) }
         }
     }
 
@@ -2037,6 +2075,8 @@ class ChatViewModel(
                 errorMessage = local.historyError,
             ),
             inlineImages = local.inlineImages,
+            htmlPages = local.htmlPages.filterKeys { it.startsWith("${environment.active?.id}:${orchestration.threadId}:") }
+                .mapKeys { it.key.removePrefix("${environment.active?.id}:${orchestration.threadId}:") },
             connection = environment.connection.toUi(),
             composer = ComposerUiState(
                 draft = "",
@@ -2396,7 +2436,7 @@ class ChatViewModel(
                     .thenBy { it.lifecycleRank }
                     .thenBy { it.item.id },
             )
-        val collapsed = collapseToolLifecycles(sorted)
+        val collapsed = publishHtmlRenders(collapseToolLifecycles(sorted))
         return foldSettledTurns(collapsed, detail.latestTurn?.turnId, runningTurnId,
             detail.latestTurn?.let { it.startedAt ?: it.requestedAt }, detail.latestTurn?.completedAt,
             detail.latestTurn?.state == "interrupted")
@@ -2531,6 +2571,7 @@ class ChatViewModel(
             changedFiles = changedFiles,
             turnId = activity.turnId,
             isAgent = isAgent,
+            htmlRender = de.chennemann.agentic.data.t3.readHtmlRenderOutput(this),
             lifecycleKey = lifecycleId?.let { "${activity.turnId.orEmpty()}:$it" },
             lifecycleFallbackKey = lifecycleFallbackKey,
         )
@@ -2602,6 +2643,7 @@ class ChatViewModel(
         val commandError: String? = null,
         val draftImages: List<DraftImageAttachment> = emptyList(),
         val inlineImages: Map<String, InlineImageUi> = emptyMap(),
+        val htmlPages: Map<String, HtmlPageUi> = emptyMap(),
         val attachmentDataUrls: Map<String, String> = emptyMap(),
         val renameVisible: Boolean = false,
         val renameDraft: String = "",

@@ -4,6 +4,15 @@ import java.time.Instant
 
 internal fun timelineInstant(timestamp: String): Instant = runCatching { Instant.parse(timestamp) }.getOrDefault(Instant.EPOCH)
 
+/** Published pages remain in the conversation after ordinary work has folded away. */
+internal fun publishHtmlRenders(items: List<TimedItem>): List<TimedItem> = items.map { entry ->
+    val tool = (entry.item as? ChatTimelineItemUi.Activity)?.value as? ChatActivityUi.Tool
+    val page = tool?.htmlRender
+    if (page != null && tool.status == ActivityStatusUi.COMPLETED) {
+        entry.copy(item = ChatTimelineItemUi.HtmlRender(tool.id, page))
+    } else entry
+}
+
 internal fun collapseToolLifecycles(items: List<TimedItem>): List<TimedItem> {
     val result = mutableListOf<TimedItem>()
     val positions = mutableMapOf<String, Int>()

@@ -535,6 +535,37 @@ class KtorT3Client(
         return "data:$mimeType;base64,${android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)}"
     }
 
+    override suspend fun loadHtml(baseUrl: String, bearerToken: String, attachmentId: String): String {
+        val asset: de.chennemann.agentic.t3.contract.AssetCreateUrlResult = rpcCall(
+            baseUrl, bearerToken, "assets.createUrl", buildJsonObject {
+                put("resource", buildJsonObject {
+                    put("_tag", "attachment")
+                    put("attachmentId", attachmentId)
+                    put("mimeType", "text/html")
+                    put("disposition", "inline")
+                })
+            },
+        )
+        val relative = java.net.URI(asset.relativeUrl)
+        require(!relative.isAbsolute && relative.rawAuthority == null && relative.path.startsWith("/api/assets/"))
+        val response = httpClients.client(baseUrl).get(url(baseUrl, asset.relativeUrl))
+        response.checked()
+        return response.body<ByteArray>().toString(Charsets.UTF_8)
+    }
+
+    override suspend fun loadGalleryImage(source: String): String {
+        val uri = java.net.URI(source)
+        require(uri.scheme?.lowercase() in setOf("http", "https") && uri.host != null && uri.userInfo == null)
+        // Gallery URLs are page content. Never send the environment's bearer credential.
+        val response = httpClients.client(source).get(source)
+        response.checked()
+        val mimeType = response.headers["Content-Type"]?.substringBefore(';')?.lowercase()
+        require(mimeType in de.chennemann.agentic.domain.attachments.SupportedImageMimeTypes) { "The image format is not supported." }
+        val bytes = response.body<ByteArray>()
+        require(bytes.size <= de.chennemann.agentic.domain.attachments.MaxImageAttachmentBytes) { "Images must be 10 MiB or smaller." }
+        return "data:$mimeType;base64,${java.util.Base64.getEncoder().encodeToString(bytes)}"
+    }
+
     override fun shellStream(
         baseUrl: String,
         bearerToken: String,

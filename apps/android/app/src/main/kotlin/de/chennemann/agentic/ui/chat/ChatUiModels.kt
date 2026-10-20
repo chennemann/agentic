@@ -47,7 +47,14 @@ data class ChatUiState(
     val history: ThreadHistoryUi = ThreadHistoryUi(),
     /** Images referenced from message Markdown, keyed by their path. */
     val inlineImages: Map<String, InlineImageUi> = emptyMap(),
+    val htmlPages: Map<String, HtmlPageUi> = emptyMap(),
 )
+
+sealed interface HtmlPageUi {
+    data object Loading : HtmlPageUi
+    data class Loaded(val document: String) : HtmlPageUi
+    data object Failed : HtmlPageUi
+}
 
 sealed interface InlineImageUi {
     data object Loading : InlineImageUi
@@ -187,6 +194,7 @@ sealed interface ChatTimelineItemUi {
             is Activity -> "activity:$id"
             is ToolGroup -> "tool-group:$id"
             is WorkSummary -> "work-summary:$id"
+            is HtmlRender -> "html-render:$id"
         }
 
     data class Message(
@@ -194,6 +202,11 @@ sealed interface ChatTimelineItemUi {
     ) : ChatTimelineItemUi {
         override val id: String = value.id
     }
+
+    data class HtmlRender(
+        override val id: String,
+        val page: de.chennemann.agentic.domain.attachments.HtmlRenderPage,
+    ) : ChatTimelineItemUi
 
     data class Activity(
         val value: ChatActivityUi,
@@ -273,6 +286,7 @@ sealed interface ChatActivityUi {
         val changedFiles: List<String> = emptyList(),
         val turnId: String? = null,
         val isAgent: Boolean = false,
+        val htmlRender: de.chennemann.agentic.domain.attachments.HtmlRenderPage? = null,
     ) : ChatActivityUi
 
     data class Approval(
@@ -809,6 +823,8 @@ sealed interface ChatUiEvent {
 
     /** A message refers to an image by path; load it so it can be shown inline. */
     data class InlineImageRequested(val path: String) : ChatUiEvent
+    data class HtmlPageRequested(val attachmentId: String) : ChatUiEvent
+    data class GalleryImageRequested(val source: String) : ChatUiEvent
     data class CacheInspectionRequested(val environmentId: String) : ChatUiEvent
     data object CacheClearConfirmed : ChatUiEvent
     data object CacheClearDismissed : ChatUiEvent

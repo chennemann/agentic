@@ -97,6 +97,7 @@ import de.chennemann.agentic.streamingmarkdown.LocalMarkdownLinkHandler
 import de.chennemann.agentic.streamingmarkdown.StreamingMarkdownText
 import de.chennemann.agentic.ui.components.AnnotationCountBadge
 import de.chennemann.agentic.ui.components.ImageViewerDialog
+import de.chennemann.agentic.ui.components.HtmlRenderView
 import de.chennemann.agentic.ui.components.ViewerImage
 import de.chennemann.agentic.ui.components.decodeDataUrlBitmap
 import androidx.compose.foundation.clickable
@@ -355,6 +356,12 @@ fun T3ChatScreen(
                     ) { item ->
                         CompositionLocalProvider(LocalMarkdownLinkHandler provides openFileLink) {
                         when (item) {
+                            is ChatTimelineItemUi.HtmlRender -> HtmlRenderView(
+                                page = item.page,
+                                content = state.htmlPages[item.page.attachmentId],
+                                onLoad = { onEvent(ChatUiEvent.HtmlPageRequested(item.page.attachmentId)) },
+                                onOpenImages = openImage,
+                            )
                             is ChatTimelineItemUi.WorkSummary -> TextButton(
                                 onClick = { expandedActivities[item.lazyKey] = expandedActivities[item.lazyKey] != true },
                             ) {
@@ -1221,6 +1228,7 @@ data class ImageViewerRequest(val items: List<ImageViewerItem>, val index: Int)
 /** One viewer image; drafts are looked up live so edits land on the attachment. */
 sealed interface ImageViewerItem {
     data class Draft(val imageId: String) : ImageViewerItem
+    data class Remote(val source: String, val name: String) : ImageViewerItem
     data class Conversation(
         val dataUrl: String?,
         val name: String,
@@ -1230,7 +1238,7 @@ sealed interface ImageViewerItem {
 }
 
 @Composable
-private fun ImageViewerHost(
+internal fun ImageViewerHost(
     request: ImageViewerRequest,
     state: ChatUiState,
     onEvent: (ChatUiEvent) -> Unit,
@@ -1239,6 +1247,16 @@ private fun ImageViewerHost(
     val drafts = state.composer.imageAttachments.associateBy { it.id }
     val entries = request.items.mapIndexedNotNull { index, item ->
         when (item) {
+            is ImageViewerItem.Remote -> {
+                val content = state.inlineImages[item.source]
+                item to ViewerImage(
+                    key = "remote:$index",
+                    dataUrl = (content as? InlineImageUi.Loaded)?.dataUrl,
+                    name = item.name,
+                    loadFailed = content is InlineImageUi.Failed,
+                    annotationHint = "Closing adds this image with your annotations to the reply.",
+                )
+            }
             is ImageViewerItem.Draft -> drafts[item.imageId]?.let { image ->
                 item to ViewerImage(
                     key = "draft:${image.id}",
@@ -1267,10 +1285,21 @@ private fun ImageViewerHost(
     ImageViewerDialog(
         images = entries.map { it.second },
         initialIndex = entries.indexOfFirst { it.first == opened }.coerceAtLeast(0),
+        onImageRequested = { image ->
+            (entries.firstOrNull { it.second.key == image.key }?.first as? ImageViewerItem.Remote)?.let {
+                onEvent(ChatUiEvent.GalleryImageRequested(it.source))
+            }
+        },
         onClose = { marksByKey ->
             entries.forEach { (item, image) ->
                 val marks = marksByKey[image.key] ?: return@forEach
                 when (item) {
+                    is ImageViewerItem.Remote -> {
+                        val dataUrl = image.dataUrl
+                        if (dataUrl != null && marks.isNotEmpty()) {
+                            onEvent(ChatUiEvent.ConversationImageAnnotated(dataUrl, item.name, marks, 0))
+                        }
+                    }
                     is ImageViewerItem.Draft ->
                         if (marks != image.annotations) onEvent(ChatUiEvent.ImageAnnotationsSaved(item.imageId, marks))
                     is ImageViewerItem.Conversation -> {
@@ -1358,6 +1387,7 @@ private fun EmptyChatState(
 }
 
 private fun ChatTimelineItemUi?.contentSignature(): Any? = when (this) {
+    is ChatTimelineItemUi.HtmlRender -> id to page
     is ChatTimelineItemUi.Message -> Triple(value.id, value.content.length, value.isStreaming)
     is ChatTimelineItemUi.Activity -> when (val activity = value) {
         is ChatActivityUi.Tool -> Triple(activity.id, activity.status, activity.detail?.length)
