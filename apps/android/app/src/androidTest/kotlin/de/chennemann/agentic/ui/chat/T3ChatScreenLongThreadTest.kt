@@ -12,6 +12,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeDown
@@ -25,6 +26,43 @@ import org.junit.Test
 class T3ChatScreenLongThreadTest {
     @get:Rule
     val compose = createComposeRule()
+
+    @Test
+    fun pending_question_keeps_thread_and_project_navigation_available() {
+        val events = mutableListOf<ChatUiEvent>()
+        compose.setContent {
+            MobileTheme {
+                T3ChatScreen(
+                    state = longThreadState().copy(
+                        timeline = listOf(
+                            ChatTimelineItemUi.Activity(
+                                ChatActivityUi.UserInput(
+                                    "question-activity",
+                                    PendingUserInputUi(
+                                        "request", "Answer later", null,
+                                        listOf(UserInputQuestionUi("question", "Which approach?")),
+                                    ),
+                                ),
+                            ),
+                        ),
+                    ),
+                    onEvent = events::add,
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Open threads").performClick()
+        compose.runOnIdle {
+            assertTrue(events.contains(ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD)))
+        }
+        compose.onNodeWithText("Hide pending requests").performClick()
+        compose.onNodeWithText("Response needed (1)").assertIsDisplayed()
+        compose.onNodeWithContentDescription("Open project picker").performClick()
+        compose.onNodeWithContentDescription("Settings").assertIsDisplayed()
+        compose.runOnIdle {
+            assertTrue(events.none { it is ChatUiEvent.UserInputSubmitted || it is ChatUiEvent.UserInputDismissed })
+        }
+    }
 
     @Test
     fun long_thread_pauses_following_and_recovers_to_streaming_tail_after_reconnect() {

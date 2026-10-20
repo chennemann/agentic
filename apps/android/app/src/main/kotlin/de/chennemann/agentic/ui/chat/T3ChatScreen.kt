@@ -485,7 +485,8 @@ fun T3ChatScreen(
                                 state.composer.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
                             }
                         }
-                    } else IsolatedDraftComposer(
+                    }
+                    IsolatedDraftComposer(
                         onOpenImage = { opened ->
                             val drafts = state.composer.imageAttachments.map { ImageViewerItem.Draft(it.id) }
                             openImage(ImageViewerRequest(drafts, drafts.indexOfFirst { it.imageId == opened.id }))
