@@ -388,6 +388,7 @@ data class ThreadPickerUiState(
     val threads: List<ThreadPickerItemUi> = emptyList(),
     val settledThreads: List<ThreadPickerItemUi> = emptyList(),
     val selectedThreadId: String? = null,
+    val subagents: Map<String, List<ThreadPickerItemUi>> = emptyMap(),
     val showArchived: Boolean = false,
     val showSettled: Boolean = false,
     val loading: Boolean = false,
@@ -409,6 +410,7 @@ data class ThreadPickerItemUi(
     val archived: Boolean = false,
     val active: Boolean = false,
     val snoozedUntil: String? = null,
+    val needsAttention: Boolean = false,
 )
 
 data class EnvironmentPickerUiState(

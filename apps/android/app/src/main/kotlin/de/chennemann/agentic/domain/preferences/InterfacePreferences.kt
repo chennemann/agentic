@@ -24,10 +24,12 @@ data class InterfacePreferences(
     val interfaceScale: Float = 1f,
     val codeScale: Float = 1f,
     val followUpBehavior: FollowUpBehavior = FollowUpBehavior.STEER,
+    val storCertificateAlias: String? = null,
 )
 
 interface InterfacePreferencesRepository {
     val preferences: Flow<InterfacePreferences>
+    suspend fun setStorCertificateAlias(alias: String?)
     suspend fun setTheme(theme: ThemePreference)
     suspend fun setAccent(accent: AccentPreference)
     suspend fun setInterfaceScale(scale: Float)

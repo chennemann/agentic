@@ -28,7 +28,9 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -235,7 +237,7 @@ fun ProjectThreads(
         )
     }
     picker.threads.forEach { thread ->
-        ThreadRow(thread, thread.id == picker.selectedThreadId) { onThreadChosen(thread.id) }
+        key(thread.id) { ThreadWithSubagents(thread, picker, onThreadChosen) }
     }
     if (picker.settledThreads.isNotEmpty()) {
         TextButton(onClick = { onEvent(ChatUiEvent.SettledThreadsVisibilityChanged(!picker.showSettled)) }) {
@@ -243,7 +245,41 @@ fun ProjectThreads(
         }
         if (picker.showSettled) {
             picker.settledThreads.forEach { thread ->
-                ThreadRow(thread, thread.id == picker.selectedThreadId, settled = true) { onThreadChosen(thread.id) }
+                key(thread.id) { ThreadWithSubagents(thread, picker, onThreadChosen, settled = true) }
+            }
+        }
+    }
+}
+
+/** Expansion belongs to the drawer, independently of thread selection. */
+@Composable
+private fun ThreadWithSubagents(
+    thread: ThreadPickerItemUi,
+    picker: ThreadPickerUiState,
+    onThreadChosen: (String) -> Unit,
+    settled: Boolean = false,
+) {
+    val children = picker.subagents[thread.id].orEmpty()
+    var expanded by rememberSaveable(thread.id) { mutableStateOf(false) }
+    val childSelected = children.any { it.id == picker.selectedThreadId }
+    LaunchedEffect(childSelected) { if (childSelected) expanded = true }
+    ThreadRow(thread, thread.id == picker.selectedThreadId, settled = settled) { onThreadChosen(thread.id) }
+    if (children.isNotEmpty()) {
+        TextButton(onClick = { expanded = !expanded }) {
+            Icon(
+                if (expanded) Icons.ChevronUp else Icons.ChevronDown,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            val working = children.count { it.active }
+            val label = if (children.size == 1) "sub-agent" else "sub-agents"
+            Text("${children.size} $label" + if (working > 0) " · $working working" else "")
+        }
+        if (expanded) {
+            Column(Modifier.padding(start = 16.dp)) {
+                children.forEach { child ->
+                    ThreadRow(child, child.id == picker.selectedThreadId) { onThreadChosen(child.id) }
+                }
             }
         }
     }
@@ -354,12 +390,17 @@ internal fun ThreadRow(
             modifier = Modifier.weight(1f),
         )
         val badge = when {
+            thread.needsAttention -> "Needs input"
             thread.archived -> "Archived"
             thread.snoozedUntil != null -> "Snoozed"
             else -> null
         }
         badge?.let {
-            Text(it, style = MaterialTheme.typography.labelSmall, color = LocalContentColor.current.copy(alpha = 0.6f))
+            Text(
+                it,
+                style = MaterialTheme.typography.labelSmall,
+                color = if (thread.needsAttention) MaterialTheme.colorScheme.error else LocalContentColor.current.copy(alpha = 0.6f),
+            )
         }
         onLifecycle?.let {
             IconButton(onClick = it, modifier = Modifier.size(ThreadRowHeight)) {

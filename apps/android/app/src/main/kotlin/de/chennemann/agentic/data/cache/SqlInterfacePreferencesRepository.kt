@@ -24,6 +24,7 @@ class SqlInterfacePreferencesRepository(private val database: AgenticDb, private
         .map { raw -> raw?.let { runCatching { T3Json.decodeFromString<InterfacePreferences>(it) }.getOrNull() }?.validated() ?: InterfacePreferences() }
 
     override suspend fun setFollowUpBehavior(behavior: FollowUpBehavior) = update { copy(followUpBehavior = behavior) }
+    override suspend fun setStorCertificateAlias(alias: String?) = update { copy(storCertificateAlias = alias) }
     override suspend fun setTheme(theme: ThemePreference) = update { copy(theme = theme) }
     override suspend fun setAccent(accent: AccentPreference) = update { copy(accent = accent) }
     override suspend fun setInterfaceScale(scale: Float) = update { copy(interfaceScale = scale).validated() }

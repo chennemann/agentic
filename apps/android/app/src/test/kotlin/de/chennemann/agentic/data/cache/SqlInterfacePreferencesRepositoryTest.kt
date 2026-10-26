@@ -23,6 +23,7 @@ class SqlInterfacePreferencesRepositoryTest {
         first.setAccent(AccentPreference.BLUE)
         first.setInterfaceScale(9f)
         first.setCodeScale(1.15f)
+        first.setStorCertificateAlias("development-certificate")
 
         val recreated = SqlInterfacePreferencesRepository(database, Dispatchers.Unconfined).preferences.first()
         assertEquals(de.chennemann.agentic.domain.preferences.FollowUpBehavior.QUEUE, recreated.followUpBehavior)
@@ -30,6 +31,9 @@ class SqlInterfacePreferencesRepositoryTest {
         assertEquals(AccentPreference.BLUE, recreated.accent)
         assertEquals(1f, recreated.interfaceScale)
         assertEquals(1.15f, recreated.codeScale)
+        assertEquals("development-certificate", recreated.storCertificateAlias)
+        first.setStorCertificateAlias(null)
+        assertEquals(null, first.preferences.first().storCertificateAlias)
         driver.close()
     }
 

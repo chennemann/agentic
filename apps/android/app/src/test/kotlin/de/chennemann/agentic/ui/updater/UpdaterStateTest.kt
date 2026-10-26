@@ -34,9 +34,11 @@ class UpdaterStateTest {
 
     @Test
     fun `permission required exposes settings action`() {
-        val state = initial.withResult(UpdaterResult.PermissionRequired)
+        val state = initial.withResult(UpdaterResult.UpdateAvailable(11)).withResult(UpdaterResult.PermissionRequired)
 
         assertTrue(state.permissionSettingsEnabled)
+        assertTrue(state.installationEnabled)
+        assertEquals(11, state.latestVersionCode)
     }
 
     @Test

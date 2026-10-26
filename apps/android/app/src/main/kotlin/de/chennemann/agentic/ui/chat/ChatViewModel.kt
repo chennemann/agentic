@@ -958,6 +958,10 @@ class ChatViewModel(
         val selection = selectedModel()
             ?: return submissionUnavailable("Choose an available provider and model before sending.")
         val threadId = repository.focusedThreadId.value
+        val selectedThread = shell.threads.firstOrNull { it.id == threadId }
+        if (selectedThread?.lineage?.relationshipToParent == "subagent" && selectedThread.creationSource == "provider") {
+            return submissionUnavailable("This provider-owned sub-agent conversation is read-only.")
+        }
         val detail = repository.focusedThread.value.value?.thread
             ?.takeIf { it.id == threadId }
         val runtimeMode = local.value.runtimeModeId ?: DefaultRuntimeMode
@@ -1397,7 +1401,7 @@ class ChatViewModel(
                 .filter {
                     it.projectId == projectId &&
                         it.archivedAt == null &&
-                        !it.isSettled()
+                        !it.isSettled() && it.lineage?.relationshipToParent != "subagent"
                 }
                 .sortedWith(compareByDescending<de.chennemann.agentic.t3.contract.OrchestrationThreadShell> {
                     it.updatedAt
@@ -1429,7 +1433,7 @@ class ChatViewModel(
                 val projectId = shell?.threads?.firstOrNull { it.id == threadId }?.projectId
                     ?: repository.selectedProjectId.value
                 val fallback = shell?.threads.orEmpty()
-                    .filter { it.id != threadId && it.projectId == projectId && it.archivedAt == null && !it.isSettled() }
+                    .filter { it.id != threadId && it.projectId == projectId && it.archivedAt == null && !it.isSettled() && it.lineage?.relationshipToParent != "subagent" }
                     .maxWithOrNull(compareBy<de.chennemann.agentic.t3.contract.OrchestrationThreadShell> { it.updatedAt }.thenBy { it.id })
                 if (fallback != null) {
                     threads.selectThread(fallback.id)
@@ -2055,6 +2059,8 @@ class ChatViewModel(
             .orEmpty()
             .filter { it.projectId == pickerProjectId && (local.showArchived || it.archivedAt == null) }
             .sortedByDescending { it.updatedAt }
+        val pickerLineage = ThreadLineage(pickerThreads)
+        val allLineage = ThreadLineage(shell?.threads.orEmpty())
         val activeTurnId = detail?.session?.activeTurnId
         val isTurnRunning = detail?.session?.status in ActiveSessionStatuses
         val hasEnvironmentConfig = environment.active != null &&
@@ -2110,8 +2116,13 @@ class ChatViewModel(
                     unreadThreadIds = local.unreadThreadIds,
                 ),
                 sending = local.sending,
-                errorMessage = local.commandError,
-                enabled = environment.active != null && shell != null && project != null,
+                errorMessage = local.commandError ?: if (shellThread?.lineage?.relationshipToParent == "subagent" && shellThread.creationSource == "provider") {
+                    "This provider-owned sub-agent conversation is read-only."
+                } else {
+                    null
+                },
+                enabled = environment.active != null && shell != null && project != null &&
+                    !(shellThread?.lineage?.relationshipToParent == "subagent" && shellThread.creationSource == "provider"),
                 imageAttachments = local.draftImages.map {
                     ChatImageAttachmentUi(
                         id = it.id,
@@ -2167,35 +2178,22 @@ class ChatViewModel(
                             label = it.title,
                             supportingText = it.workspaceRoot,
                             favorite = it.id in favorites.projects,
-                            unsettledThreadCount = shell?.threads.orEmpty().count { thread ->
-                                thread.projectId == it.id && !thread.isSettled()
+                            unsettledThreadCount = allLineage.conversations.count { thread ->
+                                thread.projectId == it.id && (!thread.isSettled() || allLineage.hasAttention(thread.id))
                             },
-                            searchableThreadTitles = shell?.threads.orEmpty()
+                            searchableThreadTitles = allLineage.conversations
                                 .filter { thread -> thread.projectId == it.id }
                                 .map { thread -> thread.title },
                         )
                     },
                 selectedProjectId = pickerProjectId,
-                threads = pickerThreads.filterNot { it.isSettled() }.map {
-                    ThreadPickerItemUi(
-                        id = it.id,
-                        title = it.title,
-                        supportingText = it.snoozedUntil?.let { until -> "Snoozed until $until" } ?: it.updatedAt,
-                        archived = it.archivedAt != null,
-                        active = it.session?.status in ActiveSessionStatuses,
-                        snoozedUntil = it.snoozedUntil,
-                    )
+                threads = pickerLineage.conversations.filterNot { it.isSettled() && !pickerLineage.hasAttention(it.id) }.map {
+                    it.toPickerItem(pickerLineage.hasAttention(it.id))
                 },
-                settledThreads = pickerThreads.filter { it.isSettled() }.map {
-                    ThreadPickerItemUi(
-                        id = it.id,
-                        title = it.title,
-                        supportingText = it.updatedAt,
-                        archived = it.archivedAt != null,
-                        active = it.session?.status in ActiveSessionStatuses,
-                        snoozedUntil = it.snoozedUntil,
-                    )
+                settledThreads = pickerLineage.conversations.filter { it.isSettled() && !pickerLineage.hasAttention(it.id) }.map {
+                    it.toPickerItem(pickerLineage.hasAttention(it.id))
                 },
+                subagents = pickerLineage.subagents.mapValues { (_, children) -> children.map { it.toPickerItem() } },
                 selectedThreadId = orchestration.threadId,
                 showArchived = local.showArchived,
                 showSettled = local.showSettled,
@@ -2865,7 +2863,7 @@ private fun quickSwitchProjects(
 ): List<ProjectQuickSwitchUi> {
     val snapshot = shell ?: return emptyList()
     val activeThreadsByProject = snapshot.threads
-        .filter { it.archivedAt == null && !it.isSettled() && it.snoozedUntil == null }
+        .filter { it.archivedAt == null && !it.isSettled() && it.lineage?.relationshipToParent != "subagent" && it.snoozedUntil == null }
         .groupBy { it.projectId }
     return snapshot.projects
         .mapNotNull { project ->

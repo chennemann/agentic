@@ -12,6 +12,24 @@ import org.junit.jupiter.api.Test
 
 class OrchestrationV2Test {
     @Test
+    fun `shell snapshot and updates retain server lineage and creation source`() {
+        val child = json(thread).toMutableMap().apply {
+            put(
+                "lineage",
+                json("""{"parentThreadId":"parent","relationshipToParent":"subagent","rootThreadId":"root"}""")
+            )
+            put("creationSource", kotlinx.serialization.json.JsonPrimitive("provider"))
+        }
+        val item = V2Orchestration.shellItem(
+            json("""{"kind":"thread.updated","sequence":43,"location":"active","thread":${JsonObject(child)}}""")
+        ) as OrchestrationShellStreamItem.ThreadUpserted
+        assertEquals("parent", item.thread.lineage?.parentThreadId)
+        assertEquals("subagent", item.thread.lineage?.relationshipToParent)
+        assertEquals("root", item.thread.lineage?.rootThreadId)
+        assertEquals("provider", item.thread.creationSource)
+    }
+
+    @Test
     fun `v1 snapshots and event envelopes are rejected`() {
         assertThrows(NoSuchElementException::class.java) {
             V2Orchestration.threadItem(json("""{"kind":"snapshot","snapshot":{"snapshotSequence":1,"thread":{}}}"""))

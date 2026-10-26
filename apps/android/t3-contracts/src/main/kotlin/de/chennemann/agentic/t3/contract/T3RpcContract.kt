@@ -344,6 +344,13 @@ data class OrchestrationProject(
 )
 
 @Serializable
+data class OrchestrationThreadLineage(
+    val parentThreadId: String? = null,
+    val relationshipToParent: String? = null,
+    val rootThreadId: String? = null
+)
+
+@Serializable
 data class OrchestrationThreadShell(
     val id: String,
     val projectId: String,
@@ -366,7 +373,9 @@ data class OrchestrationThreadShell(
     val lastWakeReason: String? = null,
     val hasPendingApprovals: Boolean = false,
     val hasPendingUserInput: Boolean = false,
-    val hasActionableProposedPlan: Boolean = false
+    val hasActionableProposedPlan: Boolean = false,
+    val lineage: OrchestrationThreadLineage? = null,
+    val creationSource: String? = null
 )
 
 @Serializable

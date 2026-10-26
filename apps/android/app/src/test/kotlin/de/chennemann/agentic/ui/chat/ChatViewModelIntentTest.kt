@@ -2927,6 +2927,7 @@ private class RecordingInterfacePreferencesRepository(initial: InterfacePreferen
     val interfaceScales = mutableListOf<Float>()
     val codeScales = mutableListOf<Float>()
 
+    override suspend fun setStorCertificateAlias(alias: String?) { mutablePreferences.value = mutablePreferences.value.copy(storCertificateAlias = alias) }
     override suspend fun setTheme(theme: ThemePreference) {
         themes += theme
         mutablePreferences.value = mutablePreferences.value.copy(theme = theme)
