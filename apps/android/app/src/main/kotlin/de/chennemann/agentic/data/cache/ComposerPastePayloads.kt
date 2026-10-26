@@ -59,12 +59,16 @@ class ComposerPastePayloads(private val directory: File, private val fileDirecto
         // A file is picked before its draft is persisted, so only stale copies may be unreferenced.
         val files = documents.flatMap { it.files }.map { it.localFile }.toSet()
         fileDirectory?.listFiles()
-            ?.filter { ComposerFileName.matches(it.name) && it.name !in files && now - it.lastModified() > UnreferencedFileGraceMillis }
+            ?.filter {
+                ComposerFileName.matches(it.name) &&
+                    it.name !in files &&
+                    now - it.lastModified() > UNREFERENCED_FILE_GRACE_MILLIS
+            }
             ?.forEach { it.delete() }
     }
 
     private companion object {
         val PayloadName = Regex("[a-f0-9]{64}\\.txt")
-        const val UnreferencedFileGraceMillis = 60 * 60 * 1000L
+        const val UNREFERENCED_FILE_GRACE_MILLIS = 60 * 60 * 1000L
     }
 }

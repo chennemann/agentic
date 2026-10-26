@@ -33,7 +33,7 @@ data class ComposerDocument(
         return next.copy(
             records = retained,
             pastes = pastes.filter { it.id in attachments },
-            files = files.filter { it.id in attachments },
+            files = files.filter { it.id in attachments }
         )
     }
 

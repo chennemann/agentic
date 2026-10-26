@@ -53,16 +53,26 @@ class SqlComposerDraftRepositoryTest {
             val fresh = java.util.UUID.randomUUID().toString()
             listOf(kept, stale, fresh).forEach { java.io.File(files, it).writeText("bytes") }
             java.io.File(files, stale).setLastModified(System.currentTimeMillis() - 2 * 60 * 60 * 1000L)
-            val file = de.chennemann.agentic.domain.composer.ComposerFile(kept, "report.pdf", "application/pdf", 5, kept)
+            val file = de.chennemann.agentic.domain.composer.ComposerFile(
+                kept,
+                "report.pdf",
+                "application/pdf",
+                5,
+                kept
+            )
             val doc = de.chennemann.agentic.domain.composer.ComposerDocument(
                 text = de.chennemann.agentic.domain.composer.composerContextReference("file", file.id, file.name),
                 records = listOf(de.chennemann.agentic.domain.composer.composerFileRecord(file)),
-                files = listOf(file),
+                files = listOf(file)
             )
 
             repository.setDocument("env", "thread", doc)
 
-            assertEquals(doc, SqlComposerDraftRepository(db, StandardTestDispatcher(testScheduler)).observeDocument("env", "thread").first())
+            assertEquals(
+                doc,
+                SqlComposerDraftRepository(db, StandardTestDispatcher(testScheduler))
+                    .observeDocument("env", "thread").first()
+            )
             // The stale unreferenced copy goes; a just-picked one waits for its draft to be written.
             assertEquals(setOf(kept, fresh), files.listFiles()!!.map { it.name }.toSet())
         } finally {

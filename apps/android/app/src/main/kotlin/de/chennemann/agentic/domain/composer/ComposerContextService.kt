@@ -65,7 +65,7 @@ class ComposerContextService(
     /** The pending id from [startUpload], if it finished and the server still holds it. */
     private suspend fun earlyUpload(environmentId: String, file: ComposerFile): String? {
         val upload = earlyUploads.remove(environmentId to file.id) ?: return null
-        if (clock() - upload.startedAt > EarlyUploadMaxAgeMillis) return null
+        if (clock() - upload.startedAt > EARLY_UPLOAD_MAX_AGE_MILLIS) return null
         return try {
             upload.id.await()
         } catch (cause: CancellationException) {
@@ -186,7 +186,13 @@ class ComposerContextService(
         } + retained.files.map { file ->
             val id = earlyUpload(environmentId, file) ?: uploadPicked(environmentId, file)
             ids[file.id] = id
-            UploadChatAttachment(type = "file", id = id, name = file.name, mimeType = file.mimeType, sizeBytes = file.sizeBytes)
+            UploadChatAttachment(
+                type = "file",
+                id = id,
+                name = file.name,
+                mimeType = file.mimeType,
+                sizeBytes = file.sizeBytes
+            )
         }
         val records = retained.records.map { record ->
             val replacement = ids[record.string("attachmentId")]
@@ -227,6 +233,6 @@ class ComposerContextService(
 
     private companion object {
         /** The server sweeps pending uploads after a day; reusing one near that age risks a dead id. */
-        const val EarlyUploadMaxAgeMillis = 20 * 60 * 60 * 1000L
+        const val EARLY_UPLOAD_MAX_AGE_MILLIS = 20 * 60 * 60 * 1000L
     }
 }
