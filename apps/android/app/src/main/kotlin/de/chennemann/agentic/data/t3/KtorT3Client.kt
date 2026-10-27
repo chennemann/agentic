@@ -6,6 +6,7 @@ import de.chennemann.agentic.t3.contract.DispatchResult
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
 import de.chennemann.agentic.t3.contract.FilesystemBrowseResult
 import de.chennemann.agentic.t3.contract.ORCHESTRATION_PROTOCOL_VERSION
+import de.chennemann.agentic.t3.contract.OrchestrationProtocolIncompatible
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.ServerConfig
@@ -56,6 +57,7 @@ import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
@@ -652,7 +654,15 @@ class KtorT3Client(
             .getValue("ticket")
             .jsonPrimitive
             .content
-        val session = httpClient.webSocketSession(urlString = webSocketUrl(key.baseUrl, ticket))
+        val session = try {
+            httpClient.webSocketSession(urlString = webSocketUrl(key.baseUrl, ticket))
+        } catch (cause: CancellationException) {
+            throw cause
+        } catch (cause: Exception) {
+            // The upgrade answers 426 when the server speaks another orchestration protocol.
+            if (cause.isUpgradeRequired()) throw T3TransportException.IncompatibleProtocol()
+            throw cause
+        }
         lateinit var created: EffectRpcConnection
         created = EffectRpcConnection(session, scope) {
             scope.launch {
@@ -731,6 +741,10 @@ class KtorT3Client(
         if (status.value == 401 || status.value == 403) {
             throw T3TransportException.Authentication(status.value)
         }
+        if (status.value == 426) {
+            val body = runCatching { T3Json.decodeFromString<OrchestrationProtocolIncompatible>(bodyAsText()) }.getOrNull()
+            throw T3TransportException.IncompatibleProtocol(body?.orchestrationProtocolVersion)
+        }
         throw T3TransportException.Http(status.value)
     }
 
@@ -744,8 +758,8 @@ class KtorT3Client(
         throw T3TransportException.InvalidResponse()
     } catch (cause: JsonConvertException) {
         throw T3TransportException.InvalidResponse()
-    } catch (_: Exception) {
-        throw T3TransportException.Network()
+    } catch (cause: Exception) {
+        throw T3TransportException.Network(networkFailureOf(cause))
     }
 
     private fun url(
@@ -771,6 +785,11 @@ class KtorT3Client(
     }
 }
 
+/** Engines report a refused WebSocket upgrade only through their message, e.g. "expected 101 but was 426". */
+internal fun Throwable.isUpgradeRequired(): Boolean =
+    generateSequence(this) { cause -> cause.cause?.takeIf { it !== cause } }
+        .any { Regex("\\b426\\b").containsMatchIn(it.message.orEmpty()) }
+
 internal fun requireSupportedStreamKind(item: JsonElement, supportedKinds: Set<String>) {
     val kind = item.jsonObject["kind"]?.jsonPrimitive?.content
     if (kind != null && kind !in supportedKinds) {
@@ -787,16 +806,34 @@ private class EffectRpcConnection(
     private val pending = ConcurrentHashMap<String, Channel<JsonObject>>()
     private val writeMutex = Mutex()
     private val closed = AtomicBoolean(false)
+    private val receivedFrames = AtomicLong(0)
     private var heartbeat: Job? = null
     private val reader = scope.launch { readIncoming() }
 
     init {
         heartbeat = scope.launch {
+            var lastSeen = receivedFrames.get()
+            var silentBeats = 0
             while (!closed.get()) {
                 delay(HeartbeatMillis)
+                val seen = receivedFrames.get()
+                silentBeats = if (seen == lastSeen) silentBeats + 1 else 0
+                lastSeen = seen
+                // A healthy server answers every ping, so silence means the host froze, slept or left the network.
+                if (silentBeats >= SilentHeartbeatsBeforeTimeout) {
+                    abandon(T3TransportException.Unresponsive((silentBeats * HeartbeatMillis / 1_000).toInt()))
+                    return@launch
+                }
                 send(buildJsonObject { put("_tag", "Ping") })
             }
         }
+    }
+
+    private fun abandon(failure: T3TransportException) {
+        if (!closed.compareAndSet(false, true)) return
+        pending.values.forEach { it.close(failure) }
+        pending.clear()
+        session.cancel()
     }
 
     fun isActive(): Boolean = !closed.get() && reader.isActive
@@ -887,9 +924,11 @@ private class EffectRpcConnection(
     }
 
     private suspend fun readIncoming() {
-        var failure: Throwable = T3TransportException.Network()
+        // The socket opened, so a later loss is the host going away rather than the network path.
+        var failure: Throwable = T3TransportException.Network(NetworkFailure.DISCONNECTED)
         try {
             for (frame in session.incoming) {
+                receivedFrames.incrementAndGet()
                 if (frame !is Frame.Text) continue
                 val message = T3Json.parseToJsonElement(frame.readText()).jsonObject
                 when (message.tag()) {
@@ -906,7 +945,11 @@ private class EffectRpcConnection(
             failure = cause
             throw cause
         } catch (cause: Throwable) {
-            failure = cause
+            failure = when (cause) {
+                is T3TransportException -> cause
+                is SerializationException -> T3TransportException.InvalidResponse()
+                else -> T3TransportException.Network(NetworkFailure.DISCONNECTED)
+            }
         } finally {
             closed.set(true)
             heartbeat?.cancel()
@@ -950,6 +993,7 @@ private class EffectRpcConnection(
 
     private companion object {
         const val HeartbeatMillis = 10_000L
+        const val SilentHeartbeatsBeforeTimeout = 3
     }
 }
 

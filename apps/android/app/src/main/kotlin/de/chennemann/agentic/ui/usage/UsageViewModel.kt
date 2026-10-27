@@ -5,8 +5,11 @@ import androidx.lifecycle.viewModelScope
 import de.chennemann.agentic.domain.usage.UsageService
 import de.chennemann.agentic.domain.usage.accountActionId
 import de.chennemann.agentic.domain.usage.collectLimitAccounts
+import de.chennemann.agentic.domain.usage.hasSharedSubscriptionUsage
 import de.chennemann.agentic.domain.usage.mergeUsage
 import de.chennemann.agentic.domain.usage.resetOutcome
+import de.chennemann.agentic.domain.usage.usageProviderLabel
+import de.chennemann.agentic.domain.usage.usageProviderLabels
 import de.chennemann.agentic.domain.usage.usageWindow
 import de.chennemann.agentic.t3.contract.UsageBucket
 import de.chennemann.agentic.t3.contract.UsageModelPrice
@@ -238,6 +241,8 @@ class UsageViewModel(
         val environments = selectedEnvironments()
         val merged = mergeUsage(environments, selected.input)
         val buckets = merged.buckets
+        val providerLabels = usageProviderLabels(environments)
+        fun providerName(provider: String) = usageProviderLabel(provider, providerLabels)
         val cost = buckets.sumOf { it.costUsd }
         val tokens = buckets.sumOf { it.totals.total }
         fun rows(groups: Map<String, List<UsageBucket>>, labels: (String) -> String = { it }): List<UsageRowUi> =
@@ -306,7 +311,7 @@ class UsageViewModel(
                     meanTimeLeft
                 )
             }
-            LimitAccountUi("pool:$driver", driver, "${members.size} accounts", null, "", windows, null, null, false)
+            LimitAccountUi("pool:$driver", providerName(driver), "${members.size} accounts", null, "", windows, null, null, false)
         }
         val envRows = service.repository.state.value.values.map { env ->
             val prices = (env.settings ?: env.config?.settings)?.usagePriceOverrides.orEmpty().map { (model, price) ->
@@ -370,7 +375,7 @@ class UsageViewModel(
             val values = periodGroups[key].orEmpty()
             val row = rows(mapOf(key to values), ::periodLabel).first()
             row.copy(
-                series = values.groupBy { it.provider }.map { (provider, cells) ->
+                series = values.groupBy { providerName(it.provider) }.map { (provider, cells) ->
                     val amount = if (selected.metric ==
                         UsageMetric.COST
                     ) {
@@ -463,11 +468,12 @@ class UsageViewModel(
             rows(
                 buckets.groupBy {
                     it.provider
-                }
+                },
+                ::providerName
             ).map { row -> row.copy(detail = "${merged.sessions[row.id] ?: 0} sessions · ${row.detail}") },
             rows(
                 buckets.groupBy {
-                    it.provider + " / " + it.model
+                    providerName(it.provider) + " / " + it.model
                 }
             ).sortedByDescending { it.fraction },
             periods, coverage,
@@ -511,13 +517,7 @@ class UsageViewModel(
                 }
             } +
                 quality,
-            environments.any { env ->
-                env.config?.providers?.any {
-                    it.auth.status == "authenticated" &&
-                        it.auth.subscriptionSharing
-                } ==
-                    true
-            }
+            hasSharedSubscriptionUsage(environments)
         )
     }
 }

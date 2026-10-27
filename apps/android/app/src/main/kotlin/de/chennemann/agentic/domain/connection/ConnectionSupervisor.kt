@@ -43,6 +43,13 @@ class ConnectionSupervisor(
     override val state: StateFlow<ConnectionState> = mutableState.asStateFlow()
     private val restartGeneration = MutableStateFlow(0L)
     private val replayingPendingCommands = AtomicBoolean(false)
+    private val mutableHostNotice = MutableStateFlow<HostFreezeNotice?>(null)
+
+    /** Why the active host recently dropped, when it reported a freeze on reconnect. */
+    val hostNotice: StateFlow<HostFreezeNotice?> = mutableHostNotice.asStateFlow()
+
+    @Volatile
+    private var dismissedHostNotice: String? = null
 
     init {
         scope.launch {
@@ -56,6 +63,9 @@ class ConnectionSupervisor(
                 ConnectionTarget(environment, online, generation)
             }.collectLatest { target ->
                 val environment = target.environment
+                if (mutableHostNotice.value?.key?.startsWith("${environment?.id}:") != true) {
+                    mutableHostNotice.value = null
+                }
                 if (environment == null) {
                     mutableState.value = ConnectionState.NoEnvironment
                 } else if (!target.online) {
@@ -121,11 +131,20 @@ class ConnectionSupervisor(
                     "Authentication expired. Pair this environment again.",
                 )
                 awaitCancellation()
+            } catch (cause: IncompatibleServer) {
+                // Retrying cannot help until one side updates; a foreground wake or reconnect checks again.
+                mutableState.value = ConnectionState.UnsupportedProtocol(cause.message)
+                awaitCancellation()
+            } catch (cause: T3TransportException.IncompatibleProtocol) {
+                mutableState.value = ConnectionState.UnsupportedProtocol(
+                    connectionFailureMessage(cause, environment.label),
+                )
+                awaitCancellation()
             } catch (cause: Exception) {
                 if (!network.online.value) continue
                 mutableState.value = ConnectionState.Backoff(
                     retryInMillis = retryDelay,
-                    message = cause.message ?: "Connection interrupted.",
+                    message = connectionFailureMessage(cause, environment.label),
                     traceId = cause.traceId(),
                 )
                 delay(retryDelay)
@@ -142,9 +161,12 @@ class ConnectionSupervisor(
             ?: throw T3TransportException.Authentication(401)
         val descriptor = metadata.environmentDescriptor(environment.baseUrl)
         if (descriptor.environmentId != environment.id) throw EnvironmentMismatch()
+        descriptor.protocolMismatchMessage()?.let { throw IncompatibleServer(it) }
         val clientConfig = rpc.serverConfig(environment.baseUrl, token)
         if (clientConfig.environment.environmentId != environment.id) throw EnvironmentMismatch()
-        orchestration.setClientConfig(environment.id, clientConfig, ProjectionSource.LIVE)
+        showHostNotice(hostFreezeNotice(environment.id, environment.label, clientConfig.lastEventLoopStall))
+        // A stall describes the host at connect time, so it is never cached.
+        orchestration.setClientConfig(environment.id, clientConfig.copy(lastEventLoopStall = null), ProjectionSource.LIVE)
         launch {
             rpc.configStream(environment.baseUrl, token).collect { event ->
                 val current = orchestration.clientConfig.value.value ?: return@collect
@@ -225,6 +247,8 @@ class ConnectionSupervisor(
                 throw cause
             } catch (cause: T3TransportException.Authentication) {
                 throw cause
+            } catch (cause: T3TransportException.IncompatibleProtocol) {
+                throw cause
             } catch (cause: T3TransportException.UnsupportedStreamItem) {
                 forceSnapshot = true
                 retryDelay = InitialRetryMillis
@@ -238,7 +262,7 @@ class ConnectionSupervisor(
                 if (consecutiveFailures >= FailuresBeforeBackoffUi) {
                     mutableState.value = ConnectionState.Backoff(
                         retryInMillis = retryDelay,
-                        message = cause.message ?: "Connection interrupted.",
+                        message = connectionFailureMessage(cause, environment.label),
                         traceId = cause.traceId(),
                     )
                 }
@@ -289,6 +313,8 @@ class ConnectionSupervisor(
                 throw cause
             } catch (cause: T3TransportException.Authentication) {
                 throw cause
+            } catch (cause: T3TransportException.IncompatibleProtocol) {
+                throw cause
             } catch (_: SequenceGap) {
                 sequence = null
                 retryDelay = InitialRetryMillis
@@ -322,7 +348,20 @@ class ConnectionSupervisor(
 
     private class SequenceGap : Exception("Projection sequence gap detected.")
 
-    private class EnvironmentMismatch : Exception("The T3 environment identity changed.")
+    private class EnvironmentMismatch :
+        Exception("This address now serves a different T3 environment. Pair it again to use it.")
+
+    private class IncompatibleServer(override val message: String) : Exception(message)
+
+    private fun showHostNotice(notice: HostFreezeNotice?) {
+        mutableHostNotice.value = notice?.takeIf { it.key != dismissedHostNotice }
+    }
+
+    /** Dismissing hides this stall for good; the server keeps reporting it for a few minutes after it happened. */
+    fun dismissHostNotice() {
+        dismissedHostNotice = mutableHostNotice.value?.key ?: return
+        mutableHostNotice.value = null
+    }
 
     private fun Throwable.traceId(): String? = (this as? T3TransportException.Rpc)?.traceId
 

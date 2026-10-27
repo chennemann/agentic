@@ -207,6 +207,31 @@ fun collectLimitAccounts(environments: List<EnvironmentUsage>): List<LimitAccoun
     }
 }
 
+/**
+ * Usage series are keyed by provider kind. A kind takes the display name its connected provider instances agree on,
+ * so newly supported providers read naturally without a client-side table.
+ */
+fun usageProviderLabels(environments: List<EnvironmentUsage>): Map<String, String> = environments
+    .filter { it.connected }
+    .flatMap { it.config?.providers.orEmpty() }
+    .filter { !it.driver.isNullOrBlank() && !it.displayName.isNullOrBlank() }
+    .groupBy({ it.driver!! }, { it.displayName!!.trim() })
+    .mapNotNull { (driver, names) -> names.distinct().singleOrNull()?.let { driver to it } }
+    .toMap()
+
+fun usageProviderLabel(provider: String, labels: Map<String, String>): String =
+    labels[provider] ?: provider.split('-', '_', ' ').filter { it.isNotEmpty() }
+        .joinToString(" ") { it.replaceFirstChar(Char::uppercase) }
+        .ifEmpty { provider }
+
+/** Disconnected environments keep their cached config; like limits, they must not surface account hints. */
+fun hasSharedSubscriptionUsage(environments: List<EnvironmentUsage>): Boolean = environments.any { environment ->
+    environment.connected &&
+        environment.config?.providers?.any {
+            it.enabled && it.auth.status == "authenticated" && it.auth.subscriptionSharing
+        } == true
+}
+
 fun resetOutcome(result: ConsumeResetResult): String = when (result.outcome) {
     "reset" -> "Reset applied. Your windows have cleared."
     "nothingToReset" -> "Nothing to reset right now."

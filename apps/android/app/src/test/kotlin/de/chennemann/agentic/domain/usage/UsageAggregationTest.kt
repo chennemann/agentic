@@ -181,4 +181,47 @@ class UsageAggregationTest {
         val changed = account.copy(target = account.target!!.copy(creditId = "credit-3"))
         assertNotEquals(accountActionId(account), accountActionId(changed))
     }
+
+    private fun config(vararg providers: ProviderInstance) = ServerConfig(
+        ExecutionEnvironmentDescriptor("a", "a", EnvironmentPlatform("linux", "x64"), "1", ExecutionEnvironmentCapabilities()),
+        ServerAuthDescriptor("required", emptyList(), emptyList(), "session"),
+        providers.toList()
+    )
+
+    @Test fun `provider series take the name their connected instances agree on`() {
+        val labels = usageProviderLabels(
+            listOf(
+                environment("a").copy(
+                    connected = true,
+                    config = config(
+                        ProviderInstance("muse", "Muse Code", "muse"),
+                        ProviderInstance("work", "Work", "custom"),
+                        ProviderInstance("home", "Home", "custom")
+                    )
+                ),
+                environment("b").copy(config = config(ProviderInstance("stale", "Stale name", "other")))
+            )
+        )
+        assertEquals("Muse Code", usageProviderLabel("muse", labels))
+        assertEquals("Custom", usageProviderLabel("custom", labels))
+        assertEquals("Other", usageProviderLabel("other", labels))
+        assertEquals("Open Code", usageProviderLabel("open-code", emptyMap()))
+    }
+
+    @Test fun `disconnected connections keep their cached config out of limits and sharing hints`() {
+        val limits = ProviderUsageLimits("2026-10-04T10:00:00Z", listOf(UsageWindow("weekly", "weekly", "Weekly", 40.0)))
+        val sharing = ProviderInstance(
+            "shared",
+            "Shared",
+            "custom",
+            auth = ProviderAuth("person@example.test", status = "authenticated", subscriptionSharing = true),
+            usageLimits = limits
+        )
+        val disconnected = environment("a").copy(config = config(sharing), connected = false)
+
+        assertTrue(collectLimitAccounts(listOf(disconnected)).isEmpty())
+        assertEquals(false, hasSharedSubscriptionUsage(listOf(disconnected)))
+        assertEquals(true, hasSharedSubscriptionUsage(listOf(disconnected.copy(connected = true))))
+        assertEquals(1, collectLimitAccounts(listOf(disconnected.copy(connected = true))).size)
+    }
 }

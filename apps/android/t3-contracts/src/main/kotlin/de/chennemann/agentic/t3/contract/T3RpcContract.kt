@@ -98,7 +98,8 @@ data class ServerConfig(
     val threadResumeCompletionMarker: Boolean = false,
     val scratchWorkspaceRoot: String? = null,
     val usageLimitSources: List<UsageLimitSource> = emptyList(),
-    val newProjectsRoot: String? = null
+    val newProjectsRoot: String? = null,
+    val lastEventLoopStall: ServerEventLoopStall? = null
 )
 
 @Serializable

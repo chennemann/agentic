@@ -132,14 +132,12 @@ class UsageService(
             launch {
                 try {
                     if (refreshRates) rpcCall(environment, "server.refreshUsageRates", buildJsonObject {})
-                    val summary = T3Json.decodeFromJsonElement<UsageSummary>(
-                        rpcCall(
-                            environment,
-                            "server.getUsageSummary",
-                            T3Json.encodeToJsonElement(UsageSummaryInput.serializer(), input).jsonObject
-                        )
-                    )
+                    val summary = summary(environment, input)
                     repository.update(environment) { it.copy(summary = summary, error = null) }
+                    if (summary.sources.any { it.refreshing }) {
+                        val fresh = summary(environment, input.copy(awaitRefresh = true))
+                        repository.update(environment) { it.copy(summary = fresh, error = null) }
+                    }
                     val settings = T3Json.decodeFromJsonElement<ServerSettings>(
                         rpcCall(
                             environment,
@@ -262,6 +260,14 @@ class UsageService(
     ) { "Environment removed." }
     private suspend fun token(environment: SavedEnvironment) =
         requireNotNull(credentials.read(environment.id)) { "Pair this environment again." }
+    private suspend fun summary(environment: SavedEnvironment, input: UsageSummaryInput) =
+        T3Json.decodeFromJsonElement<UsageSummary>(
+            rpcCall(
+                environment,
+                "server.getUsageSummary",
+                T3Json.encodeToJsonElement(UsageSummaryInput.serializer(), input).jsonObject
+            )
+        )
     private suspend fun rpcCall(environment: SavedEnvironment, method: String, input: JsonObject) =
         rpc.usageCall(environment.baseUrl, token(environment), method, input)
 }

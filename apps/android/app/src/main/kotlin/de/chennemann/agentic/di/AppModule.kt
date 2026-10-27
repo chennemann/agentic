@@ -374,4 +374,14 @@ val appModule = module {
             composerFiles = get(),
         )
     }
+    single<de.chennemann.agentic.domain.settings.ServerSettingsRpcClient> {
+        val client = get<KtorT3Client>()
+        de.chennemann.agentic.domain.settings.ServerSettingsRpcClient { baseUrl, token, method, input ->
+            client.usageCall(baseUrl, token, method, input)
+        }
+    }
+    single { de.chennemann.agentic.domain.settings.ServerSettingsRepository() }
+    single { de.chennemann.agentic.domain.settings.ServerSettingsService(get(), get(), get(), get(), get()) }
+    viewModel { de.chennemann.agentic.ui.settings.ServerSettingsViewModel(get(), get()) }
+    viewModel { de.chennemann.agentic.ui.components.HostNoticeViewModel(get()) }
 }

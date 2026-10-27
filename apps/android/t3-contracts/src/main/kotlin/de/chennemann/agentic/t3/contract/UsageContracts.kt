@@ -104,7 +104,9 @@ data class UsageSource(
     val malformedRecords: Long,
     val distinctSessions: Long,
     val message: String? = null,
-    val action: String? = null
+    val action: String? = null,
+    /** The server answered from cache while it rescans; repeat with [UsageSummaryInput.awaitRefresh]. */
+    val refreshing: Boolean = false
 )
 
 @Serializable
@@ -130,7 +132,8 @@ data class UsageSummaryInput(
     val timeZone: String,
     val resolution: String,
     val sinceTime: String? = null,
-    val untilTime: String? = null
+    val untilTime: String? = null,
+    val awaitRefresh: Boolean? = null
 )
 
 @Serializable

@@ -9,7 +9,9 @@ import de.chennemann.agentic.domain.environment.SavedEnvironment
 import de.chennemann.agentic.t3.contract.AuthSession
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
 import de.chennemann.agentic.t3.contract.ServerConfigStreamEvent
+import de.chennemann.agentic.t3.contract.T3Json
 import de.chennemann.agentic.t3.contract.TokenExchangeResponse
+import de.chennemann.agentic.t3.contract.UsageSummaryInput
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -117,5 +119,35 @@ class UsageServiceTest {
         release.complete(Unit)
         first.await()
         assertEquals(1, calls)
+    }
+
+    @Test fun `cached summaries served during a rescan are replaced by a fresh scan`() = runTest {
+        val summaries = mutableListOf<JsonObject>()
+        fun summary(refreshing: Boolean, sessions: Int) = T3Json.parseToJsonElement(
+            """
+            {"contractVersion":6,"readAt":"2026-10-27T10:00:00.000Z","timeZone":"UTC","sinceDay":"2026-10-21","untilDay":"2026-10-27",
+             "buckets":[],"sources":[{"fingerprint":{"hostId":"h","provider":"muse","resolvedHomePath":"/m","volumeId":"1"},
+             "status":"ok","scannedFiles":1,"skippedFiles":0,"malformedRecords":0,"distinctSessions":$sessions,"message":null
+             ${if (refreshing) ",\"refreshing\":true" else ""}}],
+             "pricing":{"status":"fresh","source":"litellm","fetchedAt":null,"knownModels":1},"scanDurationMs":1}
+            """.trimIndent()
+        )
+        val rpc = object : UsageRpcClient {
+            override fun usageConfigStream(baseUrl: String, bearerToken: String) = emptyFlow<ServerConfigStreamEvent>()
+            override suspend fun usageCall(baseUrl: String, bearerToken: String, method: String, input: JsonObject): JsonElement =
+                when (method) {
+                    "server.getUsageSummary" -> {
+                        summaries += input
+                        summary(refreshing = summaries.size == 1, sessions = summaries.size)
+                    }
+                    else -> JsonObject(emptyMap())
+                }
+        }
+        val repository = UsageRepository()
+        UsageService(environments, credentials, rpc, auth, repository)
+            .refresh(null, UsageSummaryInput("2026-10-21", "2026-10-27", "UTC", "day"))
+
+        assertEquals(listOf(null, "true"), summaries.map { it["awaitRefresh"]?.toString() })
+        assertEquals(2L, repository.state.value.getValue("env").summary?.sources?.single()?.distinctSessions)
     }
 }

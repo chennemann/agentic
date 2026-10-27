@@ -30,9 +30,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.semantics.contentDescription
@@ -354,19 +359,35 @@ private fun UsageChart(rows: List<UsageRowUi>, metric: UsageMetric) {
     ) {
         if (rows.isNotEmpty()) {
             val width = size.width / rows.size
+            val barWidth = (width - 2.dp.toPx()).coerceAtLeast(1f)
             rows.forEachIndexed { index, row ->
-                var bottom = size.height
-                row.series.forEach { series ->
-                    val height = size.height * series.fraction / maximum
-                    drawRect(
-                        colors[providers.indexOf(series.provider) % colors.size],
-                        Offset(
-                            width * index,
-                            bottom - height
-                        ),
-                        Size((width - 2.dp.toPx()).coerceAtLeast(1f), height)
+                val barHeight = row.series.sumOf { (size.height * it.fraction / maximum).toDouble() }.toFloat()
+                if (barHeight <= 0f) return@forEachIndexed
+                // Stacked segments share one outline, rounded only where the bar ends at the top.
+                val corner = CornerRadius(minOf(4.dp.toPx(), barWidth / 2, barHeight))
+                val outline = Path().apply {
+                    addRoundRect(
+                        RoundRect(
+                            Rect(Offset(width * index, size.height - barHeight), Size(barWidth, barHeight)),
+                            topLeft = corner,
+                            topRight = corner
+                        )
                     )
-                    bottom -= height
+                }
+                clipPath(outline) {
+                    var bottom = size.height
+                    row.series.forEach { series ->
+                        val height = size.height * series.fraction / maximum
+                        drawRect(
+                            colors[providers.indexOf(series.provider) % colors.size],
+                            Offset(
+                                width * index,
+                                bottom - height
+                            ),
+                            Size(barWidth, height)
+                        )
+                        bottom -= height
+                    }
                 }
             }
         }

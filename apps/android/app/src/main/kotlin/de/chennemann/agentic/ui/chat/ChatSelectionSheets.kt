@@ -89,6 +89,7 @@ fun ChatSelectionSheets(
     onOpenUpdater: () -> Unit = {},
     onOpenUsage: () -> Unit = {},
     onOpenPullRequests: () -> Unit = {},
+    onOpenServerSettings: () -> Unit = {},
 ) {
     when (state.activePicker) {
         ChatPickerUi.NAVIGATION -> {
@@ -99,6 +100,7 @@ fun ChatSelectionSheets(
                 onOpenUsage = onOpenUsage,
                 onOpenPullRequests = onOpenPullRequests,
                 onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
+                onOpenServerSettings = onOpenServerSettings,
             )
         }
 
@@ -677,6 +679,7 @@ private fun SettingsSheet(
     onOpenUsage: () -> Unit,
     onOpenPullRequests: () -> Unit,
     onDismiss: () -> Unit,
+    onOpenServerSettings: () -> Unit = {},
 ) {
     val environment = state.environmentPicker.environments
         .firstOrNull { it.id == state.environmentPicker.selectedEnvironmentId }
@@ -697,6 +700,15 @@ private fun SettingsSheet(
                 )
             }
             item { SettingsRow("Pair or manage environments", onClick = { onEvent(ChatUiEvent.PairEnvironmentRequested) }) }
+            if (environment != null) {
+                item {
+                    SettingsRow(
+                        title = "Server settings",
+                        subtitle = "Settings stored on ${state.environmentLabel}",
+                        onClick = onOpenServerSettings,
+                    )
+                }
+            }
 
             item { SettingsSectionLabel("Appearance") }
             item {

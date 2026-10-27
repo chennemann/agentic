@@ -126,6 +126,18 @@ fun AppNavHost() {
                         onOpenTerminal = onOpenTerminal,
                         onOpenChanges = { threadId -> stack.add(ReviewDiffRoute(threadId)) },
                         onRunProjectScript = onRunProjectScript,
+                        onOpenServerSettings = {
+                            viewModel.onEvent(ChatUiEvent.PickerDismissed)
+                            stack.add(ServerSettingsRoute(state.projectId))
+                        },
+                        connectionNotice = {
+                            val noticeViewModel: de.chennemann.agentic.ui.components.HostNoticeViewModel = koinViewModel()
+                            val notice by noticeViewModel.notice.collectAsStateWithLifecycle()
+                            de.chennemann.agentic.ui.components.HostFreezeNoticeBanner(
+                                notice = notice,
+                                onDismiss = noticeViewModel::dismiss,
+                            )
+                        },
                     )
                 }
 
@@ -198,6 +210,19 @@ fun AppNavHost() {
                         onClear = viewModel::clear,
                         onRestart = viewModel::restart,
                         onClose = viewModel::close,
+                    )
+                }
+
+                is ServerSettingsRoute -> NavEntry(route) {
+                    val viewModel: de.chennemann.agentic.ui.settings.ServerSettingsViewModel = koinViewModel()
+                    val state by viewModel.state.collectAsStateWithLifecycle()
+                    LaunchedEffect(route) { viewModel.load(route.projectId) }
+                    de.chennemann.agentic.ui.settings.ServerSettingsScreen(
+                        state = state,
+                        onBack = { stack.removeLastOrNull() },
+                        onRefresh = viewModel::refresh,
+                        onSaveGlobalText = viewModel::saveGlobalText,
+                        onSaveProjectText = viewModel::saveProjectText,
                     )
                 }
 

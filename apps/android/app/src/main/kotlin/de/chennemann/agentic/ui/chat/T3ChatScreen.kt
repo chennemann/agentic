@@ -141,6 +141,8 @@ fun T3ChatScreen(
     onOpenTerminal: (String) -> Unit = {},
     onOpenChanges: (String) -> Unit = {},
     onRunProjectScript: (String, ProjectScriptUi) -> Unit = { _, _ -> },
+    onOpenServerSettings: () -> Unit = {},
+    connectionNotice: @Composable () -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     val currentThreadId by rememberUpdatedState(state.threadId)
@@ -304,6 +306,7 @@ fun T3ChatScreen(
                     onRetry = { onEvent(ChatUiEvent.ConnectionRetryRequested) },
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                 )
+                connectionNotice()
 
                 if (state.history.hasMore) {
                     TextButton(
@@ -540,6 +543,7 @@ fun T3ChatScreen(
         onOpenUpdater = onOpenUpdater,
         onOpenUsage = onOpenUsage,
                 onOpenPullRequests = onOpenPullRequests,
+        onOpenServerSettings = onOpenServerSettings,
     )
 
     state.renameDialog?.let { rename ->

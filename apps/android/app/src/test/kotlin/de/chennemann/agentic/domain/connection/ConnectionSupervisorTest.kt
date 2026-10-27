@@ -619,6 +619,96 @@ class ConnectionSupervisorTest {
         assertTrue("thread-active" in transport.threadRequests)
         assertTrue("thread-idle" !in transport.threadRequests)
     }
+
+    @Test
+    fun `outdated server blocks with an update hint instead of retrying`() = runTest {
+        val transport = SupervisorTransport(protocolVersion = 1)
+        val supervisor = supervisor(transport)
+        runCurrent()
+
+        val state = supervisor.state.value as ConnectionState.UnsupportedProtocol
+        assertEquals("one runs an older T3 Code. Update T3 Code on one to connect.", state.message)
+        assertEquals(0, transport.serverConfigRequests)
+        advanceTimeBy(60_000)
+        runCurrent()
+        assertEquals(1, transport.descriptorRequests)
+
+        supervisor.reconnect()
+        runCurrent()
+        assertEquals(2, transport.descriptorRequests)
+    }
+
+    @Test
+    fun `refused protocol upgrade blocks as incompatible`() = runTest {
+        val transport = SupervisorTransport(
+            failFirstDescriptor = true,
+            descriptorFailure = { T3TransportException.IncompatibleProtocol(serverProtocolVersion = 3) },
+        )
+        val supervisor = supervisor(transport)
+        runCurrent()
+
+        val state = supervisor.state.value as ConnectionState.UnsupportedProtocol
+        assertTrue(state.message.contains("Update Agentic"))
+    }
+
+    @Test
+    fun `failed attempts name the reason without blaming the network for a dropped host`() = runTest {
+        val unresolved = supervisor(
+            SupervisorTransport(
+                failFirstDescriptor = true,
+                descriptorFailure = { T3TransportException.Network(de.chennemann.agentic.data.t3.NetworkFailure.UNRESOLVED_HOST) },
+            ),
+        )
+        runCurrent()
+        assertTrue((unresolved.state.value as ConnectionState.Backoff).message.startsWith("Can't find one."))
+
+        val frozen = supervisor(
+            SupervisorTransport(failFirstDescriptor = true, descriptorFailure = { T3TransportException.Unresponsive(30) }),
+        )
+        runCurrent()
+        assertEquals(
+            "one stopped responding for 30s. It may be overloaded, asleep, or off the network.",
+            (frozen.state.value as ConnectionState.Backoff).message,
+        )
+    }
+
+    @Test
+    fun `a reported freeze explains the drop once and is never cached`() = runTest {
+        val stall = de.chennemann.agentic.t3.contract.ServerEventLoopStall(
+            detectedAt = "2026-10-27T10:00:00.000Z",
+            durationMs = 12_400,
+            loadAverage = 9.6,
+            cpuCount = 4,
+        )
+        val orchestration = SupervisorOrchestrationRepository()
+        val supervisor = supervisor(SupervisorTransport(stall = stall), orchestration)
+        runCurrent()
+
+        val notice = requireNotNull(supervisor.hostNotice.value)
+        assertEquals("one froze for 12s", notice.title)
+        assertEquals("Its CPU is overloaded (load 10 on 4 cores).", notice.description)
+        assertEquals(null, orchestration.clientConfig.value.value?.lastEventLoopStall)
+
+        supervisor.dismissHostNotice()
+        assertEquals(null, supervisor.hostNotice.value)
+        supervisor.reconnect()
+        runCurrent()
+        assertEquals(null, supervisor.hostNotice.value)
+    }
+
+    private fun kotlinx.coroutines.test.TestScope.supervisor(
+        transport: SupervisorTransport,
+        orchestration: SupervisorOrchestrationRepository = SupervisorOrchestrationRepository(),
+    ) = ConnectionSupervisor(
+        environments = SupervisorEnvironmentRepository(savedEnvironment("one")),
+        orchestration = orchestration,
+        credentials = SupervisorCredentialStore("token"),
+        metadata = transport,
+        rpc = transport,
+        network = OnlineMonitor,
+        pendingCommands = NoOpPendingCommandReplayer,
+        scope = backgroundScope,
+    )
 }
 
 private val NoOpPendingCommandReplayer = PendingCommandReplayer { }
@@ -716,6 +806,9 @@ private class SupervisorTransport(
     private val unknownFirstThreadStream: Boolean = false,
     private val shellThreads: List<OrchestrationThreadShell> = emptyList(),
     private val completeFirstConfigStream: Boolean = false,
+    private val protocolVersion: Int = de.chennemann.agentic.t3.contract.ORCHESTRATION_PROTOCOL_VERSION,
+    private val stall: de.chennemann.agentic.t3.contract.ServerEventLoopStall? = null,
+    private val descriptorFailure: () -> Exception = { IllegalStateException("Environment unavailable") },
 ) : EnvironmentMetadataClient,
     T3RpcClient {
     var descriptorRequests = 0
@@ -746,15 +839,19 @@ private class SupervisorTransport(
             }
         }
         if (failFirstDescriptor && descriptorRequests == 1) {
-            error("Environment unavailable")
+            throw descriptorFailure()
         }
         return descriptor(baseUrl.substringAfter("https://").substringBefore('.'))
+            .copy(orchestrationProtocolVersion = protocolVersion)
     }
+
+    var serverConfigRequests = 0
 
     override suspend fun serverConfig(
         baseUrl: String,
         bearerToken: String,
     ): ServerConfig = ServerConfig(
+        lastEventLoopStall = stall.also { serverConfigRequests++ },
         environment = descriptor(baseUrl.substringAfter("https://").substringBefore('.')),
         auth = ServerAuthDescriptor(
             policy = "remote-reachable",
@@ -944,6 +1041,7 @@ private fun descriptor(id: String): ExecutionEnvironmentDescriptor = ExecutionEn
     platform = EnvironmentPlatform("linux", "x64"),
     serverVersion = "1",
     capabilities = ExecutionEnvironmentCapabilities(),
+    orchestrationProtocolVersion = de.chennemann.agentic.t3.contract.ORCHESTRATION_PROTOCOL_VERSION,
 )
 
 private fun threadSnapshot(threadId: String): OrchestrationThreadDetailSnapshot =

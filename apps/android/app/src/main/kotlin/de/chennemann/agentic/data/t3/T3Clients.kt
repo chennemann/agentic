@@ -206,7 +206,44 @@ sealed class T3TransportException(
         val traceId: String? = null,
     ) : T3TransportException(message)
 
-    class Network : T3TransportException("The T3 environment could not be reached.")
+    class Network(
+        val reason: NetworkFailure = NetworkFailure.UNREACHABLE,
+    ) : T3TransportException(reason.message)
+
+    /** The host stopped answering on an open connection, so the network path was already working. */
+    class Unresponsive(
+        val silentSeconds: Int,
+    ) : T3TransportException("The T3 environment stopped responding for ${silentSeconds}s.")
+
+    /** The server rejected this client's orchestration protocol (HTTP 426). */
+    class IncompatibleProtocol(
+        val serverProtocolVersion: Int? = null,
+    ) : T3TransportException("The T3 server uses an incompatible orchestration protocol.")
+}
+
+/** Why a request never got an answer; only failures before a socket opened can blame the network path. */
+enum class NetworkFailure(val message: String) {
+    UNREACHABLE("The T3 environment could not be reached."),
+    UNRESOLVED_HOST("The T3 environment's address could not be resolved."),
+    REFUSED("Nothing accepted the connection at the T3 environment's address."),
+    TIMEOUT("The T3 environment did not answer in time."),
+    TLS("A secure connection to the T3 environment could not be established."),
+    DISCONNECTED("The T3 environment closed the connection."),
+}
+
+fun networkFailureOf(cause: Throwable): NetworkFailure {
+    var current: Throwable? = cause
+    while (current != null) {
+        when (current) {
+            is java.net.UnknownHostException -> return NetworkFailure.UNRESOLVED_HOST
+            is java.net.ConnectException -> return NetworkFailure.REFUSED
+            is java.net.SocketTimeoutException -> return NetworkFailure.TIMEOUT
+            is javax.net.ssl.SSLException -> return NetworkFailure.TLS
+        }
+        if (current.javaClass.simpleName.contains("Timeout")) return NetworkFailure.TIMEOUT
+        current = current.cause?.takeIf { it !== current }
+    }
+    return NetworkFailure.UNREACHABLE
 }
 
 fun redactTransportText(
