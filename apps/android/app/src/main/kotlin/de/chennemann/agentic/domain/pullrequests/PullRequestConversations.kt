@@ -20,19 +20,19 @@ class PullRequestConversations(
     }
 
     /** Prepare a prompt for the user's chosen model without sending or overwriting an unsent draft. */
-    suspend fun discuss(environmentId: String, projectId: String, url: String) {
+    suspend fun discuss(environmentId: String, projectId: String, url: String, noun: String = "pull request") {
         val id = projectDraftId(projectId)
         val current = drafts.observeDocument(environmentId, id).first()
-        drafts.setDocument(environmentId, id, preparePullRequestDraft(current, url))
+        drafts.setDocument(environmentId, id, preparePullRequestDraft(current, url, noun))
         environments.select(environmentId)
         threads.selectProject(projectId)
         threads.selectThread(null)
     }
 }
 
-internal fun preparePullRequestDraft(current: ComposerDocument, url: String): ComposerDocument {
+internal fun preparePullRequestDraft(current: ComposerDocument, url: String, noun: String = "pull request"): ComposerDocument {
     if (url in current.text) return current
-    val request = "Please help me review this pull request: $url"
+    val request = "Please help me review this $noun: $url"
     val text = listOf(current.text, request).filter { it.isNotBlank() }.joinToString("\n\n")
     require(text.length <= COMPOSER_INPUT_MAX_CHARS) { "The existing draft is too long to add the pull request." }
     return current.withText(text)

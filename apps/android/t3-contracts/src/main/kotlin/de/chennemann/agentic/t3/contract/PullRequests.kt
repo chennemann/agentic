@@ -14,10 +14,10 @@ data class PullRequestRef(
 }
 
 @Serializable
-data class PullRequestActor(val login: String, val name: String? = null)
+data class PullRequestActor(val login: String, val name: String? = null, val isBot: Boolean? = null)
 
 @Serializable
-data class PullRequestLabel(val name: String)
+data class PullRequestLabel(val name: String, val color: String? = null)
 
 @Serializable
 data class PullRequestEntry(
@@ -39,7 +39,9 @@ data class PullRequestEntry(
     val updatedAt: String,
     val labels: List<PullRequestLabel> = emptyList(),
     val reviewDecision: String? = null,
-    val checksState: String? = null
+    val checksState: String? = null,
+    val provider: String? = null,
+    val viewerReviewRequested: Boolean = false
 ) {
     fun ref() = PullRequestRef(projectId, repository, number, host)
 }
@@ -49,7 +51,8 @@ data class PullRequestProvider(
     val host: String,
     val configured: Boolean,
     val searchesOnHost: Boolean,
-    val detail: String? = null
+    val detail: String? = null,
+    val kind: String? = null
 )
 
 @Serializable
@@ -85,9 +88,12 @@ data class PullRequestCapabilities(
     val review: PullRequestReviewCapabilities,
     val updateMethods: List<String> = emptyList(),
     val edit: PullRequestEditCapabilities? = null,
-    val labels: Boolean = false
+    val labels: Boolean = false,
+    val reactions: Boolean = false,
+    val search: Boolean = false
 )
 
+/** Unreported host permissions are granted, so optional grants stay nullable. */
 @Serializable
 data class PullRequestViewerPermissions(
     val actions: List<String>,
@@ -95,8 +101,8 @@ data class PullRequestViewerPermissions(
     val resolve: Boolean,
     val verdicts: List<String>,
     val updateMethods: List<String> = emptyList(),
-    val editChangeRequest: Boolean = false,
-    val labels: Boolean = false
+    val editChangeRequest: Boolean? = null,
+    val labels: Boolean? = null
 )
 
 @Serializable
@@ -107,7 +113,8 @@ data class PullRequestCheck(
     val name: String,
     val status: String,
     val description: String? = null,
-    val url: String? = null
+    val url: String? = null,
+    val required: Boolean? = null
 )
 
 @Serializable
@@ -136,7 +143,20 @@ data class PullRequestDetail(
     val mergeCapabilities: PullRequestMergeCapabilities,
     val headSha: String? = null,
     val viewer: String? = null,
-    val autoMergeEnabled: Boolean? = null
+    val autoMergeEnabled: Boolean? = null,
+    val provider: String? = null,
+    val observedAt: Double? = null
+)
+
+@Serializable
+data class PullRequestChecks(val state: String, val checks: List<PullRequestCheck>, val observedAt: Double? = null)
+
+@Serializable
+data class PullRequestReaction(
+    val content: String,
+    val count: Int,
+    val actors: List<String> = emptyList(),
+    val viewerHasReacted: Boolean
 )
 
 @Serializable
@@ -148,11 +168,23 @@ data class PullRequestComment(
     val createdAt: String,
     val url: String? = null,
     val path: String? = null,
-    val reviewState: String? = null
+    val reviewState: String? = null,
+    val editedAt: String? = null,
+    val reactions: List<PullRequestReaction>? = null,
+    val canEdit: Boolean? = null
 )
 
 @Serializable
-data class PullRequestThreadComment(val id: String, val author: PullRequestActor? = null, val body: String)
+data class PullRequestThreadComment(
+    val id: String,
+    val author: PullRequestActor? = null,
+    val body: String,
+    val createdAt: String? = null,
+    val editedAt: String? = null,
+    val url: String? = null,
+    val reactions: List<PullRequestReaction>? = null,
+    val canEdit: Boolean? = null
+)
 
 @Serializable
 data class PullRequestReviewThread(
@@ -176,7 +208,8 @@ data class PullRequestActivity(
     val commentsTruncated: Boolean,
     val reviewThreads: List<PullRequestReviewThread>,
     val commits: List<PullRequestCommit>,
-    val reviewThreadsTruncated: Boolean = false
+    val reviewThreadsTruncated: Boolean = false,
+    val reactions: List<PullRequestReaction>? = null
 )
 
 @Serializable
@@ -192,3 +225,46 @@ data class PullRequestLinkedThread(
 
 @Serializable
 data class PullRequestLinkedThreads(val threads: List<PullRequestLinkedThread>)
+
+@Serializable
+data class PullRequestDiffStat(
+    val projectId: String,
+    val repository: String,
+    val number: Int,
+    val additions: Int,
+    val deletions: Int
+)
+
+@Serializable
+data class PullRequestListStatsResult(val stats: List<PullRequestDiffStat>)
+
+@Serializable
+data class PullRequestFilterOptions(
+    val labels: List<PullRequestLabel> = emptyList(),
+    val authors: List<PullRequestActor> = emptyList(),
+    val truncated: Boolean = false
+)
+
+@Serializable
+data class PullRequestLabelCandidate(
+    val name: String,
+    val color: String? = null,
+    val description: String? = null,
+    val isApplied: Boolean
+)
+
+@Serializable
+data class PullRequestLabelCandidateList(val candidates: List<PullRequestLabelCandidate>, val truncated: Boolean)
+
+@Serializable
+data class PullRequestLineCount(val additions: Int = 0, val deletions: Int = 0)
+
+/** Servers from before the docs split send no docs key; their docs lines sit in code. */
+@Serializable
+data class PullRequestChangeBreakdown(
+    val code: PullRequestLineCount,
+    val tests: PullRequestLineCount,
+    val mocks: PullRequestLineCount,
+    val generated: PullRequestLineCount,
+    val docs: PullRequestLineCount = PullRequestLineCount()
+)

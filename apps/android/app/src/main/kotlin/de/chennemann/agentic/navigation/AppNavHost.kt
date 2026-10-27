@@ -186,7 +186,8 @@ fun AppNavHost() {
                         viewModel::open, viewModel::back, viewModel::changes, viewModel::comment,
                         viewModel::review, viewModel::action, viewModel::resolve, viewModel::reply,
                         { id -> viewModel.openThread(id) { stack.removeLastOrNull() } },
-                        { viewModel.discuss { stack.removeLastOrNull() } }
+                        { viewModel.discuss { stack.removeLastOrNull() } },
+                        viewModel.extraActions
                     )
                 }
 

@@ -96,6 +96,80 @@ class PullRequestsRepositoryTest {
         assertFalse(rpc.calls.any { it.first == "pullRequests.comment" })
     }
 
+    @Test
+    fun `list filters are sent to the host and rows without counts read their stats`() = runTest {
+        val rpc = FakePullRequestsRpc().apply { list = listJson("github.com", "", false, additions = 0) }
+        val repository = repository(rpc)
+        repository.list("open", "all", "  fix ", filters = PullRequestListFilterState(labels = listOf("bug"), author = "me"))
+        val input = rpc.calls.first { it.first == "pullRequests.list" }.second
+        assertEquals("fix", input["query"]?.jsonPrimitive?.content)
+        assertEquals("bug", input["filters"]?.jsonObject?.get("labels")?.jsonArray?.single()?.jsonArray?.single()?.jsonPrimitive?.content)
+        val stats = rpc.calls.single { it.first == "pullRequests.listStats" }.second
+        assertEquals(42, stats["refs"]?.jsonArray?.single()?.jsonObject?.get("number")?.jsonPrimitive?.int)
+        val entry = repository.state.value.list!!.entries.single()
+        assertEquals(7, repository.state.value.stats.fill(listOf(entry)).single().additions)
+    }
+
+    @Test
+    fun `a pushed row refreshes its diff stats on the next listing`() = runTest {
+        val rpc = FakePullRequestsRpc().apply { list = listJson("github.com", "", false, additions = 0) }
+        val repository = repository(rpc)
+        repository.list("open", "all", "")
+        repository.list("open", "all", "")
+        assertEquals(1, rpc.calls.count { it.first == "pullRequests.listStats" })
+        rpc.list = listJson("github.com", "", false, additions = 0, updatedAt = "2026-10-20T10:00:00Z")
+        repository.list("open", "all", "")
+        assertEquals(2, rpc.calls.count { it.first == "pullRequests.listStats" })
+    }
+
+    @Test
+    fun `live checks replace the detail checks until the host reports none`() = runTest {
+        val rpc = FakePullRequestsRpc()
+        val repository = repository(rpc)
+        repository.open(ref)
+        rpc.checks = json("""{"state":"open","checks":[{"name":"ci","status":"success","description":null,"url":null}]}""")
+        assertTrue(repository.refreshChecks())
+        assertEquals("success", repository.state.value.detail?.checks?.single()?.status)
+        assertEquals("account-42", rpc.calls.last { it.first == "pullRequests.checks" }.second["expectedAccountId"]?.jsonPrimitive?.content)
+        rpc.checks = JsonNull
+        assertFalse(repository.refreshChecks())
+    }
+
+    @Test
+    fun `editing a change request sends only the changed fields`() = runTest {
+        val rpc = FakePullRequestsRpc().apply { detail = writableDetailJson }
+        val repository = repository(rpc)
+        repository.open(ref)
+        assertTrue(PullRequestsService(repository).update("Review this change", "New description"))
+        val input = rpc.calls.single { it.first == "pullRequests.update" }.second
+        assertNull(input["title"])
+        assertEquals("New description", input["body"]?.jsonPrimitive?.content)
+    }
+
+    @Test
+    fun `comment edits name the comment kind and labels change one at a time`() = runTest {
+        val rpc = FakePullRequestsRpc().apply { detail = writableDetailJson }
+        val repository = repository(rpc)
+        repository.open(ref)
+        assertTrue(PullRequestsService(repository).updateComment("r1", "Updated"))
+        assertEquals("review-comment", rpc.calls.single { it.first == "pullRequests.updateComment" }.second["kind"]?.jsonPrimitive?.content)
+        assertTrue(PullRequestsService(repository).setLabel("bug", applied = true))
+        val labels = rpc.calls.single { it.first == "pullRequests.setLabels" }.second
+        assertEquals("bug", labels["labels"]?.jsonArray?.single()?.jsonPrimitive?.content)
+        assertEquals(true, labels["applied"]?.jsonPrimitive?.boolean)
+        assertTrue(repository.state.value.labelCandidates?.candidates?.single()?.isApplied == true)
+    }
+
+    @Test
+    fun `a failed reaction puts the host's reactions back`() = runTest {
+        val rpc = FakePullRequestsRpc().apply { detail = writableDetailJson; reactionFails = true }
+        val repository = repository(rpc)
+        repository.open(ref)
+        assertFalse(PullRequestsService(repository).react(null, "heart", reacted = true))
+        assertEquals(listOf(1), repository.state.value.activity?.reactions?.map { it.count })
+        assertNull(rpc.calls.single { it.first == "pullRequests.setReaction" }.second["subjectId"])
+    }
+
     private fun repository(rpc: FakePullRequestsRpc, write: Boolean = true) = PullRequestsRepository(
         object : EnvironmentRepository {
             override val environments = MutableStateFlow(listOf(environment("one"), environment("two")))
@@ -123,13 +197,27 @@ class PullRequestsRepositoryTest {
 
 private val ref = PullRequestRef("project", "owner/repo", 42, "github.com")
 private fun json(value: String) = T3Json.parseToJsonElement(value)
-private fun listJson(host: String, cursor: String, truncated: Boolean = true) = json("""{
+private fun listJson(host: String, cursor: String, truncated: Boolean = true, additions: Int = 2, updatedAt: String = "2026-10-19T10:00:00Z") = json("""{
   "viewers":{"github.com":"viewer-login"},"providers":[{"host":"$host","configured":true,"searchesOnHost":true}],
   "entries":[{"host":"$host","projectId":"project","projectTitle":"Project","repository":"owner/repo","number":42,
   "title":"Review this change","url":"https://$host/owner/repo/pull/42","headBranch":"feature","baseBranch":"main","state":"open",
-  "isDraft":false,"mergeability":"mergeable","additions":2,"deletions":1,"updatedAt":"2026-10-19T10:00:00Z"}],
+  "isDraft":false,"mergeability":"mergeable","additions":$additions,"deletions":${if (additions == 0) 0 else 1},"updatedAt":"$updatedAt"}],
   "errors":[],"truncated":$truncated,"nextCursors":{"$host owner/repo":"$cursor"}}
 """)
+private val writableDetailJson = json("""{
+  "provider":"github","capabilities":{"diff":true,"comment":true,"actions":[],"mergeMethods":[],"search":true,"reactions":true,"labels":true,
+  "edit":{"changeRequest":true,"comment":true},"review":{"inlineComment":true,"reply":true,"resolve":true,"verdicts":[]},
+  "reviewers":{"request":false,"listCandidates":false}},
+  "viewerPermissions":{"actions":[],"comment":true,"resolve":true,"verdicts":[],"requestReviewers":false},
+  "projectId":"project","projectTitle":"Project","repository":"owner/repo","number":42,"title":"Review this change","body":"Description",
+  "url":"https://github.com/owner/repo/pull/42","author":{"login":"viewer-login","name":null,"avatarUrl":null},"state":"open","isDraft":false,
+  "mergeability":"mergeable","additions":2,"deletions":1,"changedFiles":1,"headBranch":"feature","baseBranch":"main","checks":[],"labels":[],
+  "reviewers":[],"mergeCapabilities":{"merge":false,"squash":true,"rebase":false},"viewer":"viewer-login"}
+""")
+private val activityJson = json("""{"comments":[],"commentCount":0,"commentsTruncated":false,
+  "reviewThreads":[{"id":"t1","path":"a.kt","line":1,"side":"right","isResolved":false,"isOutdated":false,
+  "comments":[{"id":"r1","author":{"login":"viewer-login","name":null,"avatarUrl":null},"body":"Old","createdAt":"2026-10-19T10:00:00Z","url":null}]}],
+  "commits":[],"reactions":[{"content":"heart","count":1,"actors":["sam"],"viewerHasReacted":false}]}""")
 private val detailJson = json("""{
   "capabilities":{"diff":true,"comment":true,"actions":["merge","close"],"mergeMethods":["squash"],
   "review":{"inlineComment":true,"reply":true,"resolve":true,"verdicts":["approve","request-changes"]}},
@@ -146,16 +234,25 @@ private class FakePullRequestsRpc : PullRequestsRpcClient {
     var activityFails = false
     var commentFails = false
     var invalidateFails = false
+    var reactionFails = false
+    var detail = detailJson
+    var checks: JsonElement = JsonNull
+    private var labelApplied = false
     override fun pullRequestRefreshes(baseUrl: String, token: String) = emptyFlow<Long>()
     override suspend fun pullRequestDiff(baseUrl: String, token: String, input: JsonObject) = json("""{"patch":"","truncated":false,"nextCursor":null}""")
     override suspend fun pullRequestCall(baseUrl: String, token: String, method: String, input: JsonObject): JsonElement {
         calls += method to input
         return when (method) {
             "pullRequests.list" -> pendingList?.await() ?: list
+            "pullRequests.listStats" -> json("""{"stats":[{"projectId":"project","repository":"owner/repo","number":42,"additions":7,"deletions":3}]}""")
             "pullRequests.routing" -> json("""{"accountId":"account-42"}""")
-            "pullRequests.detail" -> detailJson
+            "pullRequests.detail" -> detail
+            "pullRequests.checks" -> checks
             "pullRequests.linkedThreads" -> json("""{"threads":[]}""")
-            "pullRequests.activity" -> { check(!activityFails); json("""{"comments":[],"commentCount":0,"commentsTruncated":false,"reviewThreads":[],"commits":[]}""") }
+            "pullRequests.labelCandidates" -> json("""{"candidates":[{"name":"bug","color":null,"description":null,"isApplied":$labelApplied}],"truncated":false}""")
+            "pullRequests.setLabels" -> { labelApplied = input["applied"]!!.jsonPrimitive.boolean; JsonNull }
+            "pullRequests.setReaction" -> { check(!reactionFails); JsonNull }
+            "pullRequests.activity" -> { check(!activityFails); activityJson }
             "pullRequests.comment" -> { check(!commentFails); JsonNull }
             "pullRequests.invalidate" -> { check(!invalidateFails); assertNotNull(input["reference"]); JsonNull }
             else -> JsonNull
