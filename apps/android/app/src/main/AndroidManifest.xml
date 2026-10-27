@@ -44,6 +44,11 @@
                 <data android:scheme="agentic" android:host="shortcut" />
             </intent-filter>
         </activity>
+        <provider
+            android:name=".ui.files.SharedFileProvider"
+            android:authorities="${applicationId}.sharedfiles"
+            android:exported="false"
+            android:grantUriPermissions="true" />
     </application>
 
 </manifest>

@@ -43,3 +43,13 @@ data class ServerSettingsRoute(val projectId: String? = null) : AppRoute
 
 @Serializable
 data object ThreadSearchRoute : AppRoute
+
+/** A file a conversation shares: a message attachment, or a path on the environment host. */
+@Serializable
+data class SharedFileRoute(
+    val name: String,
+    val attachmentId: String? = null,
+    val mimeType: String? = null,
+    val threadId: String? = null,
+    val path: String? = null,
+) : AppRoute

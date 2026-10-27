@@ -2,6 +2,8 @@ package de.chennemann.agentic.domain.orchestration
 
 import de.chennemann.agentic.data.auth.CredentialStore
 import de.chennemann.agentic.data.t3.WorkspaceFilesRpcClient
+import de.chennemann.agentic.domain.attachments.SharedFileLoader
+import de.chennemann.agentic.domain.attachments.SharedFileSource
 import de.chennemann.agentic.domain.environment.EnvironmentRepository
 
 data class WorkspaceFileEntry(val path: String, val isDirectory: Boolean)
@@ -47,6 +49,7 @@ class WorkspaceFilesService(
     private val credentials: CredentialStore,
     private val repository: OrchestrationRepository,
     private val rpc: WorkspaceFilesRpcClient,
+    private val sharedFiles: SharedFileLoader? = null,
 ) : WorkspaceFilesBrowser {
     override suspend fun list(threadId: String): WorkspaceFileListing {
         val context = context(threadId)
@@ -60,7 +63,21 @@ class WorkspaceFilesService(
 
     override suspend fun preview(threadId: String, path: String): WorkspaceFilePreview {
         val context = context(threadId)
-        val relativePath = workspacePath(path, context.cwd)
+        val relativePath = try {
+            workspacePath(path, context.cwd)
+        } catch (outside: IllegalArgumentException) {
+            // Transcripts also link files elsewhere on the host; open them at the path the link resolves to.
+            val loader = sharedFiles?.takeIf { isAbsoluteEnvironmentPath(path) || path.startsWith("~/") || path.startsWith("~\\") }
+                ?: throw outside
+            val text = loader.text(SharedFileSource.HostPath(threadId, path))
+            return WorkspaceFilePreview.Text(
+                path = path,
+                contents = text.contents,
+                byteLength = text.byteLength,
+                truncated = text.truncated,
+                markdown = path.substringAfterLast('.', "").lowercase() in setOf("md", "mdx"),
+            )
+        }
         val type = previewType(relativePath)
         if (type is PreviewType.Unsupported) return WorkspaceFilePreview.Unsupported(relativePath, type.reason)
         if (type is PreviewType.Image) {

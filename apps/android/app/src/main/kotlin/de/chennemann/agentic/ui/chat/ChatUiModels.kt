@@ -257,6 +257,7 @@ data class ChatFileAttachmentUi(
     val id: String,
     val name: String,
     val sizeBytes: Long,
+    val mimeType: String? = null,
 )
 
 data class ChatImageAttachmentUi(

@@ -301,7 +301,7 @@ val appModule = module {
     single<ProjectDestinationBrowser> { get<ProjectDestinationService>() }
     single { ThreadWorkspaceService(get(), get(), get(), get()) }
     single<ThreadWorkspaceBrowser> { get<ThreadWorkspaceService>() }
-    single { WorkspaceFilesService(get(), get(), get(), get()) }
+    single { WorkspaceFilesService(get(), get(), get(), get(), get()) }
     single<WorkspaceFilesBrowser> { get<WorkspaceFilesService>() }
     single { TerminalSessionService(get(), get(), get(), get()) }
     single<TerminalSessions> { get<TerminalSessionService>() }

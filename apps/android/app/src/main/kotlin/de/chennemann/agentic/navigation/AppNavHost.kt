@@ -30,6 +30,10 @@ import de.chennemann.agentic.ui.files.WorkspaceFilesViewModel
 import de.chennemann.agentic.ui.guestshare.GuestShareController
 import de.chennemann.agentic.ui.guestshare.GuestShareViewModel
 import de.chennemann.agentic.ui.guestshare.LocalGuestShare
+import de.chennemann.agentic.domain.attachments.SharedFileSource
+import de.chennemann.agentic.domain.attachments.opensInSharedViewer
+import de.chennemann.agentic.ui.files.SharedFileScreen
+import de.chennemann.agentic.ui.files.SharedFileViewModel
 import de.chennemann.agentic.ui.onboarding.OnboardingUiEvent
 import de.chennemann.agentic.ui.onboarding.OnboardingViewModel
 import de.chennemann.agentic.ui.onboarding.T3OnboardingScreen
@@ -99,7 +103,7 @@ fun AppNavHost() {
                     }
                     val onOpenFiles: (String) -> Unit = { threadId -> stack.add(WorkspaceFilesRoute(threadId)) }
                     val onOpenFileLink: (String, FileLinkTarget) -> Unit = { threadId, target ->
-                        stack.add(WorkspaceFilesRoute(threadId, target.path, target.line, target.column))
+                        stack.add(fileLinkRoute(threadId, target))
                     }
                     val onOpenUpdater: () -> Unit = { stack.add(StorUpdaterRoute) }
                     val onOpenUsage: () -> Unit = { viewModel.onEvent(ChatUiEvent.PickerDismissed); stack.add(UsageRoute) }
@@ -148,6 +152,7 @@ fun AppNavHost() {
                             )
                         },
                         onOpenSearch = { viewModel.onEvent(ChatUiEvent.PickerDismissed); stack.add(ThreadSearchRoute) },
+                        onOpenSharedFile = { stack.add(it.route()) },
                     )
                     }
                 }
@@ -167,10 +172,14 @@ fun AppNavHost() {
                         state = state,
                         onBack = { stack.removeLastOrNull() },
                         onRefresh = viewModel::refresh,
-                        onOpenFile = viewModel::open,
-                        onOpenFileLink = { target ->
-                            stack.add(WorkspaceFilesRoute(route.threadId, target.path, target.line, target.column))
+                        onOpenFile = { path ->
+                            if (opensInSharedViewer(path)) {
+                                stack.add(SharedFileSource.HostPath(route.threadId, path).route())
+                            } else {
+                                viewModel.open(path)
+                            }
                         },
+                        onOpenFileLink = { target -> stack.add(fileLinkRoute(route.threadId, target)) },
                         // A linked file has no tree behind it, so closing it returns to the chat.
                         onClosePreview = {
                             if (linkedPath == null) viewModel.closePreview() else stack.removeLastOrNull()
@@ -247,6 +256,13 @@ fun AppNavHost() {
                         onQueryChange = viewModel::changeQuery,
                         onOpenThread = { threadId -> viewModel.open(threadId) { stack.removeLastOrNull() } },
                     )
+                }
+
+                is SharedFileRoute -> NavEntry(route) {
+                    val viewModel: SharedFileViewModel = koinViewModel()
+                    val state by viewModel.state.collectAsStateWithLifecycle()
+                    LaunchedEffect(route) { route.source()?.let(viewModel::load) ?: stack.removeLastOrNull() }
+                    SharedFileScreen(state, onBack = { stack.removeLastOrNull() }, onRetry = viewModel::retry)
                 }
 
                 else -> error("Unknown application route")

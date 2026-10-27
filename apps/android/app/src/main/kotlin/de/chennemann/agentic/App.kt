@@ -35,7 +35,7 @@ class App : Application() {
         }
         startKoin {
             androidContext(this@App)
-            modules(appModule, de.chennemann.agentic.di.storModule)
+            modules(appModule, de.chennemann.agentic.di.storModule, de.chennemann.agentic.di.sharedFilesModule)
         }
     }
 

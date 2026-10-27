@@ -38,7 +38,9 @@ import io.ktor.client.request.get
 import io.ktor.client.request.header
 import io.ktor.client.request.setBody
 import io.ktor.client.request.post
+import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
 import io.ktor.http.ContentType
 import io.ktor.http.Parameters
@@ -47,6 +49,7 @@ import io.ktor.http.content.OutgoingContent
 import io.ktor.http.isSuccess
 import io.ktor.util.cio.readChannel
 import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.readAvailable
 import io.ktor.serialization.JsonConvertException
 import io.ktor.websocket.Frame
 import io.ktor.websocket.close
@@ -99,6 +102,7 @@ class KtorT3Client(
     WorkspaceFilesRpcClient,
     TerminalRpcClient,
     ReviewDiffRpcClient,
+    SharedFileAssetClient,
     ComposerRpcClient,
     AttachmentAssetClient,
     UsageRpcClient,
@@ -578,6 +582,50 @@ class KtorT3Client(
         val response = httpClients.client(baseUrl).get(url(baseUrl, asset.relativeUrl))
         response.checked()
         return response.body<ByteArray>().toString(Charsets.UTF_8)
+    }
+
+    override suspend fun downloadAsset(
+        baseUrl: String,
+        bearerToken: String,
+        resource: JsonObject,
+        target: File,
+        maxBytes: Long,
+        truncate: Boolean,
+    ): AssetDownload {
+        val asset: de.chennemann.agentic.t3.contract.AssetCreateUrlResult = rpcCall(
+            baseUrl, bearerToken, "assets.createUrl", buildJsonObject { put("resource", resource) },
+        )
+        val relative = URI(asset.relativeUrl)
+        require(!relative.isAbsolute && relative.rawAuthority == null && relative.path.startsWith("/api/assets/"))
+        val download = transport {
+            httpClients.client(baseUrl).prepareGet(url(baseUrl, asset.relativeUrl)).execute { response ->
+                response.checked()
+                val channel = response.bodyAsChannel()
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                var written = 0L
+                var truncated = false
+                target.outputStream().use { output ->
+                    while (true) {
+                        val count = channel.readAvailable(buffer, 0, buffer.size)
+                        if (count < 0) break
+                        if (written + count > maxBytes) {
+                            output.write(buffer, 0, (maxBytes - written).toInt())
+                            written = maxBytes
+                            truncated = true
+                            break
+                        }
+                        output.write(buffer, 0, count)
+                        written += count
+                    }
+                }
+                AssetDownload(written, truncated, response.headers["Content-Length"]?.toLongOrNull())
+            }
+        }
+        if (download.truncated && !truncate) {
+            target.delete()
+            throw AssetTooLargeException(maxBytes)
+        }
+        return download
     }
 
     override suspend fun loadGalleryImage(source: String): String {

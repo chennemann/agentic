@@ -338,7 +338,7 @@ private fun WorkspaceFilePreviewContent(state: WorkspaceFilesUiState, onOpenFile
  * is highlighted and opened with a few lines of context above it, scrolled sideways so [column] shows.
  */
 @Composable
-private fun CodeView(path: String, contents: String, line: Int?, column: Int?) {
+internal fun CodeView(path: String, contents: String, line: Int?, column: Int?) {
     val scheme = MaterialTheme.colorScheme
     val syntax = rememberCodeSyntaxStyles()
     val lines by produceState<List<AnnotatedString>?>(null, path, contents, syntax) {

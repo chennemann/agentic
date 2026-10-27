@@ -115,15 +115,16 @@ import de.chennemann.agentic.icons.ArchiveRestore
 import de.chennemann.agentic.icons.Copy
 import de.chennemann.agentic.icons.DoubleChevronDown
 import de.chennemann.agentic.icons.Icons
-import de.chennemann.agentic.icons.Paperclip
 import de.chennemann.agentic.icons.Rename
-import de.chennemann.agentic.domain.attachments.formatByteSize
+import de.chennemann.agentic.domain.attachments.SharedFileSource
 import de.chennemann.agentic.domain.orchestration.FileLinkTarget
 import de.chennemann.agentic.ui.files.FileLinkHandler
 import de.chennemann.agentic.ui.guestshare.GuestShareBar
 import de.chennemann.agentic.ui.guestshare.GuestShareSheetHost
 import de.chennemann.agentic.ui.guestshare.LocalGuestShare
 import de.chennemann.agentic.ui.guestshare.guestPendingMessages
+import de.chennemann.agentic.ui.files.LocalSharedFiles
+import de.chennemann.agentic.ui.files.SharedFileHost
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.StateFlow
@@ -148,10 +149,13 @@ fun T3ChatScreen(
     onOpenServerSettings: () -> Unit = {},
     connectionNotice: @Composable () -> Unit = {},
     onOpenSearch: () -> Unit = {},
+    onOpenSharedFile: (SharedFileSource) -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     val currentThreadId by rememberUpdatedState(state.threadId)
     val currentOpenFileLink by rememberUpdatedState(onOpenFileLink)
+    val currentOpenSharedFile by rememberUpdatedState(onOpenSharedFile)
+    val sharedFiles = remember(state.threadId) { SharedFileHost(state.threadId) { currentOpenSharedFile(it) } }
     // Stable so streaming recompositions do not invalidate every markdown text that reads it.
     val openFileLink = remember {
         FileLinkHandler { target -> currentThreadId?.let { currentOpenFileLink(it, target) } }
@@ -368,7 +372,7 @@ fun T3ChatScreen(
                         items = timeline,
                         key = { it.lazyKey },
                     ) { item ->
-                        CompositionLocalProvider(LocalMarkdownLinkHandler provides openFileLink) {
+                        CompositionLocalProvider(LocalMarkdownLinkHandler provides openFileLink, LocalSharedFiles provides sharedFiles) {
                         when (item) {
                             is ChatTimelineItemUi.HtmlRender -> HtmlRenderView(
                                 page = item.page,
@@ -1024,6 +1028,7 @@ private fun MessageItem(
                             if (message.content.isNotBlank()) segments.forEach { segment ->
                                 when (segment) {
                                     is MessageSegment.Image -> inlineImage(segment)
+                                    is MessageSegment.Audio -> MessageAudio(segment)
                                     is MessageSegment.Text -> SelectionContainer {
                                         StreamingMarkdownText(
                                             content = segment.markdown,
@@ -1048,6 +1053,7 @@ private fun MessageItem(
                     segments.forEachIndexed { index, segment ->
                         when (segment) {
                             is MessageSegment.Image -> inlineImage(segment)
+                            is MessageSegment.Audio -> MessageAudio(segment)
                             is MessageSegment.Text -> SelectionContainer {
                                 val codeScale = LocalCodeScale.current
                                 val localDensity = LocalDensity.current
@@ -1134,36 +1140,6 @@ private fun MessageCopyButton(
                 MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
             },
         )
-    }
-}
-
-@Composable
-private fun MessageFiles(files: List<ChatFileAttachmentUi>) {
-    if (files.isEmpty()) return
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        files.forEach { file ->
-            Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.surfaceVariant) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Icon(Icons.Paperclip, contentDescription = null, modifier = Modifier.size(14.dp))
-                    Text(
-                        text = file.name,
-                        style = MaterialTheme.typography.labelMedium,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false),
-                    )
-                    Text(
-                        text = formatByteSize(file.sizeBytes),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
-        }
     }
 }
 

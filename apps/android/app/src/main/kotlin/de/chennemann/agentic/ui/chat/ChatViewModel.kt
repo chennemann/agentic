@@ -2963,7 +2963,7 @@ private fun de.chennemann.agentic.t3.contract.OrchestrationMessage.unreferencedF
         .mapNotNull { (it as? JsonObject)?.string("attachmentId") }
         .toSet()
     return attachments.filter { !it.isImage() && it.id !in referenced }.map {
-        ChatFileAttachmentUi(id = it.id, name = it.name, sizeBytes = it.sizeBytes)
+        ChatFileAttachmentUi(id = it.id, name = it.name, sizeBytes = it.sizeBytes, mimeType = it.mimeType)
     }
 }
 
