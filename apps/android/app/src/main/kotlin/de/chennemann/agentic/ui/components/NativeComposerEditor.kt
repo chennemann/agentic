@@ -105,7 +105,7 @@ fun NativeComposerEditor(
     val placeholder = when (state.voiceInputStatus) {
         VoiceInputStatusUi.RECORDING -> "Recording…"
         VoiceInputStatusUi.TRANSCRIBING -> "Transcribing…"
-        else -> "Message"
+        else -> if (state.approvalPending) "Send a message to decline and redirect the agent" else "Ask anything"
     }
     val theme = remember(primary, border) {
         JSONObject().put("text", "#ffffff").put("placeholder", "#b8b8b8")

@@ -464,7 +464,12 @@ enum class EnvironmentConnectionIndicatorUi {
     BLOCKED,
 }
 
-data class QueuedMessageUi(val id: String, val text: String, val paused: Boolean, val error: String?)
+data class QueuedMessageUi(val id: String, val text: String, val attachmentCount: Int = 0, val editable: Boolean = true)
+
+/** The send action of a queued message: steer the running turn, or start it while the thread is stopped. */
+enum class QueuedSendActionUi { STEER, SEND_NOW }
+
+data class QueuedMessageEditUi(val id: String, val text: String, val saving: Boolean = false, val error: String? = null)
 
 data class ComposerUiState(
     val clipboardFragment: String = "",
@@ -477,6 +482,15 @@ data class ComposerUiState(
     val contextPreview: ComposerContextPreviewUi? = null,
     val followUpBehavior: FollowUpBehavior = FollowUpBehavior.STEER,
     val queuedMessages: List<QueuedMessageUi> = emptyList(),
+    val queueHeld: Boolean = false,
+    val queuedSendAction: QueuedSendActionUi? = null,
+    val queuedEditBlockedReason: String? = null,
+    val queuedBusyId: String? = null,
+    val queuedEdit: QueuedMessageEditUi? = null,
+    /** The running turn cannot take steering, so follow-ups can only queue. */
+    val followUpQueueOnly: Boolean = false,
+    /** Sending declines the pending approvals and redirects the agent. */
+    val approvalPending: Boolean = false,
     val draft: String = "",
     val selectedProviderModelId: String? = null,
     val providerModels: List<ProviderModelOptionUi> = emptyList(),
@@ -662,6 +676,10 @@ sealed interface ChatUiEvent {
     data class FollowUpBehaviorSelected(val value: FollowUpBehavior) : ChatUiEvent
     data class QueuedMessageSendRequested(val id: String) : ChatUiEvent
     data class QueuedMessageRemoved(val id: String) : ChatUiEvent
+    data class QueuedMessageEditRequested(val id: String) : ChatUiEvent
+    data class QueuedMessageEditSaved(val value: String) : ChatUiEvent
+    data object QueuedMessageEditCancelled : ChatUiEvent
+    data object QueueResumeRequested : ChatUiEvent
 
     data class ImagesSelected(val uris: List<String>) : ChatUiEvent
 

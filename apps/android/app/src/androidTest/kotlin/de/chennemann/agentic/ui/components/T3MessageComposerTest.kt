@@ -115,11 +115,11 @@ class T3MessageComposerTest {
         }
 
         compose.onAllNodesWithText("Done").assertCountEquals(0)
-        compose.onNodeWithText("Message").performClick().assertIsFocused()
+        compose.onNodeWithText("Ask anything").performClick().assertIsFocused()
         compose.onNodeWithContentDescription(
             "Open model controls",
         ).performClick()
-        compose.onNodeWithText("Message").assertIsNotFocused()
+        compose.onNodeWithText("Ask anything").assertIsNotFocused()
         compose.onNodeWithText("Done").assertIsDisplayed()
         compose.onNodeWithText("xhigh").assertIsDisplayed()
         compose.onAllNodesWithText("Extra high").assertCountEquals(0)
@@ -135,7 +135,7 @@ class T3MessageComposerTest {
         )
         compose.onAllNodesWithContentDescription("Access: Full access").assertCountEquals(0)
 
-        compose.onNodeWithText("Message").performClick()
+        compose.onNodeWithText("Ask anything").performClick()
         compose.onAllNodesWithText("Done").assertCountEquals(0)
         compose.onNodeWithContentDescription("Model Model").assertIsDisplayed()
     }

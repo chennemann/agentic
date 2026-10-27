@@ -23,7 +23,8 @@ import de.chennemann.agentic.domain.orchestration.WorkspaceFilesBrowser
 import de.chennemann.agentic.t3.contract.UploadChatAttachment
 import java.util.UUID
 import de.chennemann.agentic.domain.preferences.FollowUpBehavior
-import de.chennemann.agentic.domain.orchestration.MessageQueueService
+import de.chennemann.agentic.domain.orchestration.ThreadQueueActions
+import de.chennemann.agentic.domain.orchestration.queueState
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import de.chennemann.agentic.domain.connection.ConnectionState
@@ -136,13 +137,16 @@ class ChatViewModel(
     private val attachmentAssets: AttachmentAssetClient? = null,
     private val credentials: CredentialStore? = null,
     private val threadHistory: ThreadHistory? = null,
-    private val messageQueue: MessageQueueService? = null,
+    private val threadQueue: ThreadQueueActions? = null,
     private val annotatedImages: AnnotatedImageRenderer? = null,
     private val workspaceFiles: WorkspaceFilesBrowser? = null,
     private val composerContext: ComposerContextActions? = null,
     private val composerFiles: ComposerFileStore? = null,
 ) : ViewModel() {
     private val local = MutableStateFlow(LocalState())
+    private val queueController = ThreadQueueController(viewModelScope, environments, repository, threadQueue) {
+        update { copy(commandError = it) }
+    }
     private val knownComposerSkills = mutableMapOf<String, ComposerSuggestionUi>()
     private var suggestionJob: Job? = null
     private var composerSelectionStart = 0
@@ -232,6 +236,16 @@ class ChatViewModel(
                 val closed = activities.closedRequestIds("approval") + activities.closedRequestIds("user-input")
                 if (closed.any { it in local.value.inFlightRequests }) {
                     update { copy(inFlightRequests = inFlightRequests - closed) }
+                }
+                // Answer drafts of a closed question are never shown again, whoever answered it.
+                val answered = { key: String -> key.substringBefore('\u0000') in closed }
+                if (local.value.textAnswers.keys.any(answered) || local.value.optionAnswers.keys.any(answered)) {
+                    update {
+                        copy(
+                            textAnswers = textAnswers.filterKeys { !answered(it) },
+                            optionAnswers = optionAnswers.filterKeys { !answered(it) },
+                        )
+                    }
                 }
             }
         }
@@ -381,9 +395,9 @@ class ChatViewModel(
         local,
         groqApiKeys?.configured ?: flowOf(false),
         workflowPresentation,
-        combine(displayAndWork, messageQueue?.messages ?: flowOf(emptyList())) { display, queue -> display to queue },
+        combine(displayAndWork, queueController.state) { display, queue -> display to queue },
     ) { mapped, local, groqConfigured, workflows, displayAndQueue ->
-        val (displayAndWork, queued) = displayAndQueue
+        val (displayAndWork, queueInteraction) = displayAndQueue
         val display = displayAndWork.first
         val shared = workflows.shared
         val project = workflows.project
@@ -391,17 +405,11 @@ class ChatViewModel(
         mapped.copy(
             composer = mapped.composer.copy(
                 followUpBehavior = display.followUpBehavior,
-                queuedMessages = queued.filter {
-                    it.environmentId == environments.activeEnvironment.value?.id &&
-                        it.threadId == repository.focusedThreadId.value
-                }.map {
-                    QueuedMessageUi(it.id, it.command.message.text.ifBlank { "Image message" }, it.paused, it.error)
-                },
                 sending = local.sending,
                 errorMessage = local.commandError,
                 voiceInputAvailable = groqConfigured && voiceInput != null,
                 voiceInputStatus = local.voiceInputStatus,
-            ),
+            ).withQueueInteraction(queueInteraction, environments.activeEnvironment.value?.id, mapped.threadId),
             groqSettings = GroqSettingsUiState(
                 dialogVisible = local.groqSettingsVisible,
                 apiKeyConfigured = groqConfigured,
@@ -490,8 +498,12 @@ class ChatViewModel(
             ChatUiEvent.MessageSubmitted -> submitMessage()
             ChatUiEvent.AlternateMessageSubmitted -> submitMessage(alternate = true)
             is ChatUiEvent.FollowUpBehaviorSelected -> viewModelScope.launch { interfacePreferences?.setFollowUpBehavior(event.value) }
-            is ChatUiEvent.QueuedMessageSendRequested -> messageQueue?.sendNow(event.id)
-            is ChatUiEvent.QueuedMessageRemoved -> messageQueue?.remove(event.id)
+            is ChatUiEvent.QueuedMessageSendRequested -> queueController.send(event.id)
+            is ChatUiEvent.QueuedMessageRemoved -> queueController.remove(event.id)
+            is ChatUiEvent.QueuedMessageEditRequested -> queueController.requestEdit(event.id)
+            is ChatUiEvent.QueuedMessageEditSaved -> queueController.saveEdit(event.value)
+            ChatUiEvent.QueuedMessageEditCancelled -> queueController.cancelEdit()
+            ChatUiEvent.QueueResumeRequested -> queueController.resume()
             is ChatUiEvent.ImagesSelected -> addImages(event.uris)
             is ChatUiEvent.FilesSelected -> addFiles(event.uris)
             is ChatUiEvent.ImageRemoved -> {
@@ -536,7 +548,6 @@ class ChatViewModel(
             ChatUiEvent.TurnInterruptRequested -> launchCommand {
                 val detail = repository.focusedThread.value.value?.thread ?: return@launchCommand
                 if (detail.id != repository.focusedThreadId.value || detail.session?.status !in ActiveSessionStatuses) return@launchCommand
-                environments.activeEnvironment.value?.id?.let { messageQueue?.pause(it, detail.id) }
                 chat.interrupt(detail.id, detail.session?.activeTurnId)
             }
 
@@ -962,28 +973,30 @@ class ChatViewModel(
         if (selectedThread?.lineage?.relationshipToParent == "subagent" && selectedThread.creationSource == "provider") {
             return submissionUnavailable("This provider-owned sub-agent conversation is read-only.")
         }
-        val detail = repository.focusedThread.value.value?.thread
-            ?.takeIf { it.id == threadId }
+        val snapshot = repository.focusedThread.value.value?.takeIf { it.thread.id == threadId }
+        val detail = snapshot?.thread
         val runtimeMode = local.value.runtimeModeId ?: DefaultRuntimeMode
-        val behavior = state.value.composer.followUpBehavior.let { if (alternate) it.alternate() else it }
+        // Sending while approvals wait declines them and redirects the agent, so it steers by default.
+        val declinedApprovals = detail?.takeIf { threadId != null && !it.hasOpenQuestion() }
+            ?.pendingApprovalRequestIds()
+            .orEmpty()
+        if (declinedApprovals.any { it in local.value.inFlightRequests }) {
+            return submissionUnavailable("An approval response is still being sent.")
+        }
+        val preferred = if (declinedApprovals.isEmpty()) state.value.composer.followUpBehavior else FollowUpBehavior.STEER
+        val behavior = preferred.let { if (alternate) it.alternate() else it }
+        // A run still preparing its workspace cannot take steering input yet.
+        val setupRunning = snapshot?.projection?.queueState()?.activeRunStatus in SetupRunStatuses
         if (threadId != null &&
             detail?.session?.status in ActiveSessionStatuses &&
-            behavior == FollowUpBehavior.QUEUE
+            (behavior == FollowUpBehavior.QUEUE || setupRunning)
         ) {
-            val queue = messageQueue ?: return submissionUnavailable("Message queuing is unavailable.")
-            val environmentId = environments.activeEnvironment.value?.id ?: return
+            val queue = threadQueue ?: return submissionUnavailable("Message queuing is unavailable.")
             update { copy(sending = true, commandError = null) }
             launchCommand {
+                declineApprovals(threadId, declinedApprovals)
                 val message = prepareComposerMessage(targetEnvironmentId, document, attachments)
-                queue.enqueue(
-                    environmentId,
-                    threadId,
-                    message.text,
-                    selection,
-                    runtimeMode,
-                    message.attachments,
-                    message.context
-                )
+                queue.enqueue(threadId, message.text, selection, runtimeMode, message.attachments, message.context)
                 setDraft(draftKey, "", persistImmediately = true)
                 update { copy(sending = false, draftImages = emptyList(), commandError = null) }
             }
@@ -991,6 +1004,7 @@ class ChatViewModel(
         }
         update { copy(sending = true, commandError = null) }
         launchCommand {
+            if (threadId != null) declineApprovals(threadId, declinedApprovals)
             val message = prepareComposerMessage(targetEnvironmentId, document, attachments)
             val result = chat.startTurn(
                 threadId = threadId,
@@ -1473,6 +1487,19 @@ class ChatViewModel(
                 chat.respondToApproval(threadId, event.requestId, event.decision.contractValue())
             } catch (error: Exception) {
                 update { copy(inFlightRequests = inFlightRequests - event.requestId) }
+                throw error
+            }
+        }
+    }
+
+    /** Declines every live approval a redirecting send replaces; any one left pending would block the agent. */
+    private suspend fun declineApprovals(threadId: String, requestIds: List<String>) {
+        for (requestId in requestIds) {
+            update { copy(inFlightRequests = inFlightRequests + requestId) }
+            try {
+                chat.respondToApproval(threadId, requestId, ApprovalDecisionUi.DECLINE.contractValue())
+            } catch (error: Exception) {
+                update { copy(inFlightRequests = inFlightRequests - requestId) }
                 throw error
             }
         }
@@ -2135,7 +2162,7 @@ class ChatViewModel(
                     )
                 },
                 fileAttachmentsAvailable = composerFiles != null && (composerContext?.maxFileUploadBytes() ?: 0) > 0,
-            ),
+            ).withThreadQueue(orchestration.thread.value?.takeIf { it.thread.id == orchestration.threadId }),
             environmentPicker = EnvironmentPickerUiState(
                 environments = environment.all.map {
                     EnvironmentPickerItemUi(
@@ -3267,6 +3294,7 @@ private val RuntimeModes = listOf(
     ),
 )
 private val ActiveSessionStatuses = setOf("starting", "running")
+private val SetupRunStatuses = setOf("preparing", "starting")
 private const val MaxQuickSwitchProjects = 5
 private const val NewThreadDraftPrefix = "new-project:"
 private const val DefaultRuntimeMode = "full-access"

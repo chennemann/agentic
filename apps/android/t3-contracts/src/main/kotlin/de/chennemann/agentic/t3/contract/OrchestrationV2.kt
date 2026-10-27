@@ -92,7 +92,10 @@ data class V2Projection(
 
     fun detail(): OrchestrationThreadDetail {
         val base = T3Json.decodeFromJsonElement<OrchestrationThreadDetail>(thread)
-        val latest = runs.maxByOrNull { it.number("ordinal") }
+        // Queued runs, and queued runs cancelled before they started, are not the thread's latest turn.
+        val latest = runs.filterNot {
+            it.text("status") == "queued" || (it.text("status") == "cancelled" && it.text("startedAt") == null)
+        }.maxByOrNull { it.number("ordinal") }
         val active = runs.filter { it.text("status") in ActiveRunStatuses }.maxByOrNull { it.number("ordinal") }
         val run = active ?: latest
         val status = run?.text("status") ?: "idle"

@@ -652,7 +652,9 @@ sealed interface ClientOrchestrationCommand {
         val interactionMode: String,
         val runtimeMode: String,
         val bootstrap: StartTurnBootstrap? = null,
-        val sourceProposedPlan: SourceProposedPlan? = null
+        val sourceProposedPlan: SourceProposedPlan? = null,
+        /** Waits in the server queue behind the active run instead of steering it. */
+        val queue: Boolean = false
     ) : ClientOrchestrationCommand
 
     @Serializable
@@ -731,4 +733,37 @@ sealed interface ClientOrchestrationCommand {
     @SerialName("thread.user-input.dismiss")
     data class DismissUserInput(override val commandId: String, val threadId: String, val requestId: String) :
         ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("queued-run.cancel")
+    data class CancelQueuedRun(override val commandId: String, val threadId: String, val runId: String) :
+        ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("queued-run.start")
+    data class StartQueuedRun(override val commandId: String, val threadId: String, val runId: String) :
+        ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("queue.resume")
+    data class ResumeQueue(override val commandId: String, val threadId: String) : ClientOrchestrationCommand
+
+    @Serializable
+    @SerialName("queued-message.promote-to-steer")
+    data class PromoteQueuedRun(
+        override val commandId: String,
+        val threadId: String,
+        val queuedRunId: String,
+        val targetRunId: String
+    ) : ClientOrchestrationCommand
+
+    /** Text-only edit; the server keeps the queued message's attachments and context. */
+    @Serializable
+    @SerialName("queued-run.edit")
+    data class EditQueuedRun(
+        override val commandId: String,
+        val threadId: String,
+        val runId: String,
+        val text: String
+    ) : ClientOrchestrationCommand
 }

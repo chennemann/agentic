@@ -80,6 +80,11 @@ private fun ClientOrchestrationCommand.threadTarget(): String? = when (this) {
     is ClientOrchestrationCommand.RespondToApproval -> threadId
     is ClientOrchestrationCommand.RespondToUserInput -> threadId
     is ClientOrchestrationCommand.DismissUserInput -> threadId
+    is ClientOrchestrationCommand.CancelQueuedRun -> threadId
+    is ClientOrchestrationCommand.StartQueuedRun -> threadId
+    is ClientOrchestrationCommand.ResumeQueue -> threadId
+    is ClientOrchestrationCommand.PromoteQueuedRun -> threadId
+    is ClientOrchestrationCommand.EditQueuedRun -> threadId
     is ClientOrchestrationCommand.CreateProject,
     is ClientOrchestrationCommand.UpdateProjectMetadata,
     is ClientOrchestrationCommand.DeleteProject,
@@ -87,7 +92,13 @@ private fun ClientOrchestrationCommand.threadTarget(): String? = when (this) {
 }
 
 private fun ClientOrchestrationCommand.safeLabel(): String = when (this) {
-    is ClientOrchestrationCommand.StartTurn -> "Send message"
+    is ClientOrchestrationCommand.StartTurn -> if (queue) "Queue message" else "Send message"
+    is ClientOrchestrationCommand.StartQueuedRun,
+    is ClientOrchestrationCommand.ResumeQueue,
+    is ClientOrchestrationCommand.PromoteQueuedRun,
+    -> "Send queued message"
+    is ClientOrchestrationCommand.CancelQueuedRun -> "Remove queued message"
+    is ClientOrchestrationCommand.EditQueuedRun -> "Edit queued message"
     is ClientOrchestrationCommand.DeleteThread -> "Delete thread"
     is ClientOrchestrationCommand.InterruptTurn -> "Stop turn"
     is ClientOrchestrationCommand.CreateProject -> "Create project"

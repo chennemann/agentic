@@ -224,6 +224,68 @@ class OrchestrationV2Test {
         )
     }
 
+    @Test
+    fun `queued follow ups wait behind the active run and stop without a run stops the thread`() {
+        val start = start().copy(queue = true)
+        val queued = V2Commands.requests(start, V2Commands.message(start, JsonArray(emptyList()), emptyMap())).last()
+        assertEquals(
+            "queue_after_active",
+            queued.payload.getValue("dispatchMode").jsonObject.getValue("type").jsonPrimitive.content
+        )
+        assertFalse(queued.payload.containsKey("deliveryIntent"))
+        assertFalse(queued.payload.containsKey("queue"))
+
+        val stop = V2Commands.requests(ClientOrchestrationCommand.InterruptTurn("command", "thread-1")).single()
+        assertEquals("orchestration.dispatchCommand", stop.method)
+        assertEquals(
+            json("""{"type":"thread.stop","commandId":"command","threadId":"thread-1"}"""),
+            stop.payload
+        )
+    }
+
+    @Test
+    fun `queue management commands use the server queue command shapes`() {
+        fun payload(command: ClientOrchestrationCommand) = V2Commands.requests(command).single().payload
+        assertEquals(
+            json(
+                """{"type":"queued-message.promote-to-steer","commandId":"c","threadId":"t","queuedRunId":"q","targetRunId":"a"}"""
+            ),
+            payload(ClientOrchestrationCommand.PromoteQueuedRun("c", "t", "q", "a"))
+        )
+        assertEquals(
+            json("""{"type":"queued-run.start","commandId":"c","threadId":"t","runId":"q"}"""),
+            payload(ClientOrchestrationCommand.StartQueuedRun("c", "t", "q"))
+        )
+        assertEquals(
+            json("""{"type":"queue.resume","commandId":"c","threadId":"t"}"""),
+            payload(ClientOrchestrationCommand.ResumeQueue("c", "t"))
+        )
+        assertEquals(
+            json("""{"type":"queued-run.cancel","commandId":"c","threadId":"t","runId":"q"}"""),
+            payload(ClientOrchestrationCommand.CancelQueuedRun("c", "t", "q"))
+        )
+        assertEquals(
+            json("""{"type":"queued-run.edit","commandId":"c","threadId":"t","runId":"q","text":"Edited"}"""),
+            payload(ClientOrchestrationCommand.EditQueuedRun("c", "t", "q", "Edited"))
+        )
+    }
+
+    @Test
+    fun `queued and never started runs are not the latest turn`() {
+        val projection = T3Json.decodeFromString<V2Projection>(
+            """{"thread":$thread,"runs":[
+            {"id":"run-1","ordinal":1,"status":"interrupted","requestedAt":"2026-10-19T10:00:00Z",
+              "startedAt":"2026-10-19T10:00:01Z","completedAt":"2026-10-19T10:00:05Z"},
+            {"id":"run-2","ordinal":2,"status":"queued","queueHeld":true,"requestedAt":"2026-10-19T10:00:02Z"},
+            {"id":"run-3","ordinal":3,"status":"cancelled","requestedAt":"2026-10-19T10:00:03Z"}
+            ],"updatedAt":"2026-10-19T10:00:00Z"}"""
+        )
+        val detail = projection.detail()
+        assertEquals("run-1", detail.latestTurn?.turnId)
+        assertEquals("interrupted", detail.latestTurn?.state)
+        assertEquals("ready", detail.session?.status)
+    }
+
     private fun start() = ClientOrchestrationCommand.StartTurn(
         "command",
         "thread-1",

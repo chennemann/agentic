@@ -27,10 +27,15 @@ object V2Commands {
                 payload["type"] = JsonPrimitive("thread.metadata.update")
             }
             is ClientOrchestrationCommand.InterruptTurn -> {
-                payload["type"] = JsonPrimitive("run.interrupt")
-                payload["runId"] = JsonPrimitive(requireNotNull(command.turnId) { "There is no active run to stop." })
-                payload["holdQueue"] = JsonPrimitive(true)
                 payload.remove("turnId")
+                if (command.turnId == null) {
+                    // Stops whatever the thread still runs, including delegated tasks, and holds its queue.
+                    payload["type"] = JsonPrimitive("thread.stop")
+                } else {
+                    payload["type"] = JsonPrimitive("run.interrupt")
+                    payload["runId"] = JsonPrimitive(command.turnId)
+                    payload["holdQueue"] = JsonPrimitive(true)
+                }
             }
             is ClientOrchestrationCommand.RespondToApproval, is ClientOrchestrationCommand.RespondToUserInput ->
                 payload["type"] = JsonPrimitive("runtime-request.respond")
@@ -107,8 +112,13 @@ object V2Commands {
                         command.sourceProposedPlan?.let {
                             put("sourcePlanRef", T3Json.encodeToJsonElement(SourceProposedPlan.serializer(), it))
                         }
-                        put("deliveryIntent", "auto")
-                        put("dispatchMode", buildJsonObject { put("type", "start_immediately") })
+                        if (command.queue) {
+                            put("dispatchMode", buildJsonObject { put("type", "queue_after_active") })
+                        } else {
+                            // Steering travels as "auto" so a run that ended meanwhile starts a new one.
+                            put("deliveryIntent", "auto")
+                            put("dispatchMode", buildJsonObject { put("type", "start_immediately") })
+                        }
                     }
                 )
             }

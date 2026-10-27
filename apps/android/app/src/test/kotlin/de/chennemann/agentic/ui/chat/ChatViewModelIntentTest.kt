@@ -372,22 +372,14 @@ class ChatViewModelIntentTest {
     }
 
     @Test
-    fun `follow up tap steers by default and long press queues with reversed configuration`() = runTest(dispatcher) {
+    fun `follow up tap steers by default and long press queues on the server with reversed configuration`() = runTest(dispatcher) {
         for (behavior in de.chennemann.agentic.domain.preferences.FollowUpBehavior.entries) {
-            val fixture = QueueFixture(backgroundScope)
-            fixture.setRunning(true, 7)
-            val snapshot = requireNotNull(fixture.repository.focusedThread.value.value)
-            fixture.repository.focusedThread.value = fixture.repository.focusedThread.value.copy(value = snapshot.copy(
-                thread = snapshot.thread.copy(session = ThreadSession("thread-1", "running", activeTurnId = "active", updatedAt = "now")),
-            ))
+            val repository = submissionRepository(ModelSelection("provider", "model"))
+            repository.setQueueProjection(runs = """[${queueRun("active", "running", 1, attempt = "attempt-1")}]""", running = true)
             val chat = NoOpChatActions()
+            val queue = RecordingThreadQueue()
             val preferences = RecordingInterfacePreferencesRepository(InterfacePreferences(followUpBehavior = behavior))
-            val viewModel = ChatViewModel(
-                environments = fixture.environments, repository = fixture.repository,
-                connection = fixture.connection, environmentService = EnvironmentSelector {},
-                threads = RecordingThreadActions(fixture.repository), chat = chat, mappingDispatcher = dispatcher,
-                interfacePreferences = preferences, messageQueue = fixture.queue,
-            )
+            val viewModel = queueViewModel(repository, chat, queue, preferences)
             runCurrent()
             viewModel.onEvent(ChatUiEvent.DraftChanged("tap"))
             runCurrent()
@@ -399,86 +391,165 @@ class ChatViewModelIntentTest {
             runCurrent()
             val steerDefault = behavior == de.chennemann.agentic.domain.preferences.FollowUpBehavior.STEER
             assertEquals(listOf(if (steerDefault) "tap" else "hold"), chat.startTurnCalls.map { it.prompt })
-            assertEquals(listOf(if (steerDefault) "hold" else "tap"), fixture.queue.messages.value.map { it.command.message.text })
+            assertEquals(listOf(if (steerDefault) "hold" else "tap"), queue.enqueued)
             assertEquals("", viewModel.draft.value)
             viewModel.onEvent(ChatUiEvent.TurnInterruptRequested)
             runCurrent()
-            assertTrue(fixture.queue.messages.value.single().paused)
             assertEquals(listOf("thread-1" to "active"), chat.interruptedTurns)
         }
     }
 
     @Test
-    fun `queued messages wait for completion and projection acknowledgement in FIFO order off screen`() = runTest(dispatcher) {
-        val fixture = QueueFixture(backgroundScope)
-        fixture.setRunning(true, 7)
-        fixture.enqueue("first")
-        fixture.enqueue("second")
-        fixture.repository.focusedThreadId.value = "thread-2"
+    fun `follow ups queue while the run is still preparing its workspace`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        repository.setQueueProjection(runs = """[${queueRun("active", "preparing", 1)}]""", running = true)
+        val chat = NoOpChatActions()
+        val queue = RecordingThreadQueue()
+        val viewModel = queueViewModel(repository, chat, queue)
         runCurrent()
-        assertTrue(fixture.sent.isEmpty())
-        fixture.setRunning(false, 8)
+        assertTrue(viewModel.state.value.composer.followUpQueueOnly)
+        viewModel.onEvent(ChatUiEvent.DraftChanged("wait"))
         runCurrent()
-        assertEquals(listOf("first"), fixture.sent.map { it.message.text })
-        fixture.setRunning(true, 9)
+        viewModel.onEvent(ChatUiEvent.MessageSubmitted)
         runCurrent()
-        assertEquals(1, fixture.sent.size)
-        fixture.setRunning(false, 10)
-        runCurrent()
-        assertEquals(listOf("first", "second"), fixture.sent.map { it.message.text })
-        assertTrue(fixture.queue.messages.value.isEmpty())
+        assertEquals(listOf("wait"), queue.enqueued)
+        assertTrue(chat.startTurnCalls.isEmpty())
     }
 
     @Test
-    fun `queue holds for offline cache environment mismatch approvals and stop`() = runTest(dispatcher) {
-        val fixture = QueueFixture(backgroundScope)
-        fixture.setRunning(true, 7)
-        fixture.enqueue("pending")
+    fun `server queue steers a selected message and edits keep their claim until the save settles`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val runs = "[${queueRun("active", "running", 1, attempt = "attempt-1")},${queueRun("queued", "queued", 2, position = 1)}]"
+        repository.setQueueProjection(runs = runs, messages = """[${queueMessage("queued", "first draft")}]""", running = true)
+        val queue = RecordingThreadQueue()
+        val viewModel = queueViewModel(repository, NoOpChatActions(), queue)
         runCurrent()
-        fixture.connectionState.value = ConnectionState.Cached
-        fixture.setRunning(false, 8)
+        val composer = viewModel.state.value.composer
+        assertEquals(listOf("first draft"), composer.queuedMessages.map { it.text })
+        assertEquals(QueuedSendActionUi.STEER, composer.queuedSendAction)
+        viewModel.onEvent(ChatUiEvent.QueuedMessageSendRequested("queued"))
         runCurrent()
-        assertTrue(fixture.sent.isEmpty())
-        fixture.connectionState.value = ConnectionState.Live
-        fixture.repository.shell.value = fixture.repository.shell.value.copy(source = ProjectionSource.CACHE)
+        assertEquals(listOf("steer:queued>active"), queue.calls)
+
+        val gate = kotlinx.coroutines.CompletableDeferred<Unit>()
+        queue.editGate = gate
+        viewModel.onEvent(ChatUiEvent.QueuedMessageEditRequested("queued"))
         runCurrent()
-        assertTrue(fixture.sent.isEmpty())
-        fixture.repository.shell.value = fixture.repository.shell.value.copy(source = ProjectionSource.LIVE)
-        val config = fixture.repository.clientConfig.value
-        fixture.repository.clientConfig.value = config.copy(value = config.value?.copy(environment = config.value.environment.copy(environmentId = "other")))
+        assertEquals("first draft", viewModel.state.value.composer.queuedEdit?.text)
+        viewModel.onEvent(ChatUiEvent.QueuedMessageEditSaved("  second draft "))
         runCurrent()
-        assertTrue(fixture.sent.isEmpty())
-        fixture.repository.clientConfig.value = config
-        fixture.setRunning(false, 9, approval = true)
-        fixture.queue.sendNow(fixture.queue.messages.value.single().id)
+        assertTrue(viewModel.state.value.composer.queuedEdit?.saving == true)
+        viewModel.onEvent(ChatUiEvent.QueuedMessageEditCancelled)
+        // The run starting while the save is out does not end the edit yet.
+        repository.setQueueProjection(
+            runs = "[${queueRun("active", "completed", 1)},${queueRun("queued", "running", 2, attempt = "attempt-2")}]",
+            messages = """[${queueMessage("queued", "first draft")}]""",
+            running = true,
+        )
         runCurrent()
-        assertTrue(fixture.sent.isEmpty())
-        fixture.queue.pause("environment", "thread-1")
-        fixture.setRunning(false, 10)
+        assertTrue(viewModel.state.value.composer.queuedEdit?.saving == true)
+        gate.complete(Unit)
         runCurrent()
-        assertTrue(fixture.sent.isEmpty())
-        fixture.queue.sendNow(fixture.queue.messages.value.single().id)
-        runCurrent()
-        assertEquals(1, fixture.sent.size)
+        assertEquals("edit:queued:second draft", queue.calls.last())
+        assertNull(viewModel.state.value.composer.queuedEdit)
     }
 
     @Test
-    fun `queue failure retains message without resubmitting an outbox owned command`() = runTest(dispatcher) {
-        val fixture = QueueFixture(backgroundScope)
-        fixture.failure = IllegalStateException("Offline")
-        fixture.enqueue("keep me")
-        fixture.setRunning(false, 8)
+    fun `queued edit ends when its run starts and cannot begin while a question is open`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val queuedRuns = "[${queueRun("active", "running", 1, attempt = "attempt-1")},${queueRun("queued", "queued", 2)}]"
+        val messages = """[${queueMessage("queued", "later")}]"""
+        repository.setQueueProjection(runs = queuedRuns, messages = messages, running = true)
+        val viewModel = queueViewModel(repository, NoOpChatActions(), RecordingThreadQueue())
         runCurrent()
-        val failed = fixture.queue.messages.value.single()
-        assertEquals("keep me", failed.command.message.text)
-        assertTrue(failed.paused)
-        assertTrue(failed.error != null)
-        fixture.queue.sendNow(failed.id)
-        fixture.setRunning(false, 10)
+        viewModel.onEvent(ChatUiEvent.QueuedMessageEditRequested("queued"))
         runCurrent()
-        assertEquals(1, fixture.sent.size)
-        fixture.queue.remove(failed.id)
-        assertTrue(fixture.queue.messages.value.isEmpty())
+        assertEquals("queued", viewModel.state.value.composer.queuedEdit?.id)
+        repository.setQueueProjection(
+            runs = "[${queueRun("active", "completed", 1)},${queueRun("queued", "running", 2, attempt = "attempt-2")}]",
+            messages = messages,
+            running = true,
+        )
+        runCurrent()
+        assertNull(viewModel.state.value.composer.queuedEdit)
+
+        repository.setQueueProjection(
+            runs = queuedRuns,
+            messages = messages,
+            running = true,
+            activities = listOf(requestActivity("question", "user-input.requested", "request-q")),
+        )
+        runCurrent()
+        assertTrue(viewModel.state.value.composer.queuedEditBlockedReason != null)
+        viewModel.onEvent(ChatUiEvent.QueuedMessageEditRequested("queued"))
+        runCurrent()
+        assertNull(viewModel.state.value.composer.queuedEdit)
+    }
+
+    @Test
+    fun `stopped thread sends a selected held message now and resumes the held queue`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        val runs = "[${queueRun("done", "interrupted", 1)},${queueRun("held", "queued", 2, held = true)}," +
+            "${queueRun("other", "queued", 3, held = true)}]"
+        repository.setQueueProjection(runs = runs, messages = """[${queueMessage("held", "one")},${queueMessage("other", "two")}]""")
+        val queue = RecordingThreadQueue()
+        val viewModel = queueViewModel(repository, NoOpChatActions(), queue)
+        runCurrent()
+        val composer = viewModel.state.value.composer
+        assertTrue(composer.queueHeld)
+        assertEquals(QueuedSendActionUi.SEND_NOW, composer.queuedSendAction)
+        viewModel.onEvent(ChatUiEvent.QueuedMessageSendRequested("other"))
+        runCurrent()
+        viewModel.onEvent(ChatUiEvent.QueueResumeRequested)
+        runCurrent()
+        viewModel.onEvent(ChatUiEvent.QueuedMessageRemoved("held"))
+        runCurrent()
+        assertEquals(listOf("send:other", "resume", "cancel:held"), queue.calls)
+    }
+
+    @Test
+    fun `sending while an approval waits declines it and redirects the agent`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        repository.setQueueProjection(
+            runs = """[${queueRun("active", "waiting", 1, attempt = "attempt-1")}]""",
+            running = true,
+            activities = listOf(requestActivity("approval", "approval.requested", "request-a")),
+        )
+        val chat = NoOpChatActions()
+        val queue = RecordingThreadQueue()
+        val preferences = RecordingInterfacePreferencesRepository(
+            InterfacePreferences(followUpBehavior = de.chennemann.agentic.domain.preferences.FollowUpBehavior.QUEUE),
+        )
+        val viewModel = queueViewModel(repository, chat, queue, preferences)
+        runCurrent()
+        assertTrue(viewModel.state.value.composer.approvalPending)
+        viewModel.onEvent(ChatUiEvent.DraftChanged("do this instead"))
+        runCurrent()
+        viewModel.onEvent(ChatUiEvent.MessageSubmitted)
+        runCurrent()
+        assertEquals(listOf(Triple("thread-1", "request-a", "decline")), chat.approvalResponses)
+        assertEquals(listOf("do this instead"), chat.startTurnCalls.map { it.prompt })
+        assertTrue(queue.enqueued.isEmpty())
+    }
+
+    @Test
+    fun `a failed decline keeps the draft and sends nothing`() = runTest(dispatcher) {
+        val repository = submissionRepository(ModelSelection("provider", "model"))
+        repository.setQueueProjection(
+            runs = """[${queueRun("active", "waiting", 1, attempt = "attempt-1")}]""",
+            running = true,
+            activities = listOf(requestActivity("approval", "approval.requested", "request-a")),
+        )
+        val chat = NoOpChatActions().apply { approvalFailure = IllegalStateException("Offline") }
+        val viewModel = queueViewModel(repository, chat, RecordingThreadQueue())
+        runCurrent()
+        viewModel.onEvent(ChatUiEvent.DraftChanged("redirect"))
+        runCurrent()
+        viewModel.onEvent(ChatUiEvent.MessageSubmitted)
+        runCurrent()
+        assertTrue(chat.startTurnCalls.isEmpty())
+        assertEquals("redirect", viewModel.draft.value)
+        assertEquals("Offline", viewModel.state.value.composer.errorMessage)
     }
 
     @Test
@@ -3117,6 +3188,8 @@ private class NoOpChatActions(
     val interruptedTurns = mutableListOf<Pair<String, String?>>()
     var userInputFailure: Throwable? = null
     val userInputResponses = mutableListOf<JsonObject>()
+    var approvalFailure: Exception? = null
+    val approvalResponses = mutableListOf<Triple<String, String, String>>()
 
     override suspend fun startTurn(
         threadId: String?,
@@ -3153,7 +3226,11 @@ private class NoOpChatActions(
         threadId: String,
         requestId: String,
         decision: String,
-    ) = DispatchResult(1)
+    ): DispatchResult {
+        approvalFailure?.let { throw it }
+        approvalResponses += Triple(threadId, requestId, decision)
+        return DispatchResult(1)
+    }
 
     override suspend fun respondToUserInput(
         threadId: String,
@@ -3563,40 +3640,109 @@ private class FakeVoiceInputService(
     }
 }
 
-private class QueueFixture(scope: CoroutineScope) {
-    val repository = submissionRepository(ModelSelection("provider", "model"))
-    val environments = FakeViewModelEnvironmentRepository()
-    val connectionState = MutableStateFlow<ConnectionState>(ConnectionState.Live)
-    val connection = object : ConnectionController {
-        override val state = connectionState
-        override fun wake() = Unit
-        override fun retryPendingCommands() = Unit
+private class RecordingThreadQueue : de.chennemann.agentic.domain.orchestration.ThreadQueueActions {
+    val enqueued = mutableListOf<String>()
+    val calls = mutableListOf<String>()
+    var editGate: kotlinx.coroutines.CompletableDeferred<Unit>? = null
+
+    override suspend fun enqueue(
+        threadId: String,
+        prompt: String,
+        modelSelection: ModelSelection,
+        runtimeMode: String,
+        attachments: List<de.chennemann.agentic.t3.contract.UploadChatAttachment>,
+        context: JsonObject?,
+    ): DispatchResult {
+        enqueued += prompt
+        return DispatchResult(1)
     }
-    val sent = mutableListOf<de.chennemann.agentic.t3.contract.ClientOrchestrationCommand.StartTurn>()
-    var failure: Exception? = null
-    val queue = de.chennemann.agentic.domain.orchestration.MessageQueueService(
-        repository, environments, connection,
-        object : de.chennemann.agentic.domain.orchestration.CommandDispatcher {
-            override suspend fun dispatch(command: de.chennemann.agentic.t3.contract.ClientOrchestrationCommand): DispatchResult {
-                sent += command as de.chennemann.agentic.t3.contract.ClientOrchestrationCommand.StartTurn
-                failure?.let { throw it }
-                return DispatchResult(requireNotNull(repository.shell.value.sequence) + 1)
-            }
-        }, scope,
-    )
-    fun enqueue(text: String) = queue.enqueue("environment", "thread-1", text, ModelSelection("provider", "model"), "full-access", emptyList())
-    fun setRunning(running: Boolean, sequence: Long, approval: Boolean = false) {
-        val current = repository.shell.value
-        repository.shell.value = current.copy(sequence = sequence, value = current.value?.copy(
-            threads = current.value.threads.map { thread ->
-                if (thread.id == "thread-1") thread.copy(
-                    session = ThreadSession("thread-1", if (running) "running" else "ready", activeTurnId = if (running) "active" else null, updatedAt = "now"),
-                    hasPendingApprovals = approval,
-                ) else thread
-            },
-        ))
+
+    override suspend fun cancel(threadId: String, runId: String) = record("cancel:$runId")
+    override suspend fun sendNow(threadId: String, runId: String) = record("send:$runId")
+    override suspend fun resume(threadId: String) = record("resume")
+    override suspend fun promoteToSteer(threadId: String, runId: String, targetRunId: String) =
+        record("steer:$runId>$targetRunId")
+    override suspend fun edit(threadId: String, runId: String, text: String): DispatchResult {
+        editGate?.await()
+        return record("edit:$runId:$text")
+    }
+
+    private fun record(call: String): DispatchResult {
+        calls += call
+        return DispatchResult(1)
     }
 }
+
+private fun queueViewModel(
+    repository: FakeOrchestrationRepository,
+    chat: ChatActions,
+    queue: de.chennemann.agentic.domain.orchestration.ThreadQueueActions,
+    preferences: InterfacePreferencesRepository? = null,
+) = ChatViewModel(
+    environments = FakeViewModelEnvironmentRepository(), repository = repository,
+    connection = FakeConnectionController(), environmentService = EnvironmentSelector {},
+    threads = RecordingThreadActions(repository), chat = chat, mappingDispatcher = Dispatchers.Main,
+    interfacePreferences = preferences, threadQueue = queue,
+)
+
+/** Replaces the focused thread's projection with the given server runs, messages and request activities. */
+private fun FakeOrchestrationRepository.setQueueProjection(
+    runs: String,
+    messages: String = "[]",
+    running: Boolean = false,
+    activities: List<OrchestrationActivity> = emptyList(),
+) {
+    val current = requireNotNull(focusedThread.value.value)
+    val projection = T3Json.decodeFromString(
+        de.chennemann.agentic.t3.contract.V2Projection.serializer(),
+        """{"thread":${current.projection.thread},"runs":$runs,"messages":$messages,"updatedAt":"2026-07-29T10:01:00Z"}""",
+    )
+    focusedThread.value = focusedThread.value.copy(
+        value = current.copy(
+            projection = projection,
+            thread = current.thread.copy(
+                session = ThreadSession(
+                    "thread-1",
+                    if (running) "running" else "ready",
+                    activeTurnId = if (running) "active" else null,
+                    updatedAt = "2026-07-29T10:01:00Z",
+                ),
+                activities = activities,
+            ),
+        ),
+        sequence = (focusedThread.value.sequence ?: 0) + 1,
+    )
+}
+
+private fun queueRun(
+    id: String,
+    status: String,
+    ordinal: Int,
+    attempt: String? = null,
+    position: Int? = null,
+    held: Boolean = false,
+) = buildString {
+    append("""{"id":"$id","threadId":"thread-1","ordinal":$ordinal,"providerInstanceId":"provider",""")
+    append(""""modelSelection":{"instanceId":"provider","model":"model"},"providerThreadId":null,""")
+    append(""""userMessageId":"message-$id","rootNodeId":null,"activeAttemptId":${attempt?.let { "\"$it\"" } ?: "null"},""")
+    append(""""status":"$status",""")
+    position?.let { append(""""queuePosition":$it,""") }
+    if (held) append(""""queueHeld":true,""")
+    append(""""requestedAt":"2026-07-29T10:00:00Z","startedAt":null,"completedAt":null,""")
+    append(""""checkpointId":null,"contextHandoffId":null}""")
+}
+
+private fun queueMessage(runId: String, text: String) =
+    """{"id":"message-$runId","role":"user","text":"$text","attachments":[],"createdAt":"2026-07-29T10:00:00Z"}"""
+
+private fun requestActivity(id: String, kind: String, requestId: String) = OrchestrationActivity(
+    id = id,
+    kind = kind,
+    tone = "info",
+    summary = "Request",
+    payload = JsonObject(mapOf("requestId" to JsonPrimitive(requestId))),
+    createdAt = "2026-07-29T10:00:00Z",
+)
 
 private class RecordingComposerContext : de.chennemann.agentic.domain.composer.ComposerContextActions {
     val queries = mutableListOf<Pair<String, String>>()

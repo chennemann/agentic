@@ -198,32 +198,7 @@ fun T3MessageComposer(
                 }
             }
 
-            Column(Modifier.heightIn(max = 160.dp).verticalScroll(rememberScrollState())) {
-                state.queuedMessages.forEach { message ->
-                    Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
-                        Text(
-                            if (message.paused) "Queued (paused)" else "Queued",
-                            style = MaterialTheme.typography.labelSmall,
-                        )
-                        Text(message.text, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                        if (message.error != null) {
-                            Text(message.error, color = MaterialTheme.colorScheme.error)
-                            TextButton(onClick = { onEvent(ChatUiEvent.QueuedMessageRemoved(message.id)) }) {
-                                Text("Dismiss")
-                            }
-                        } else {
-                            Row {
-                                TextButton(onClick = { onEvent(ChatUiEvent.QueuedMessageSendRequested(message.id)) }) {
-                                    Text("Send now")
-                                }
-                                TextButton(onClick = { onEvent(ChatUiEvent.QueuedMessageRemoved(message.id)) }) {
-                                    Text("Remove")
-                                }
-                            }
-                        }
-                    }
-                }
-            }
+            QueuedMessages(state, onEvent)
             if (state.suggestions.isNotEmpty() || state.suggestionsLoading || state.suggestionsError != null) {
                 Column(Modifier.fillMaxWidth().heightIn(max = 180.dp).verticalScroll(rememberScrollState()).padding(horizontal = 16.dp)) {
                     state.suggestions.forEach { suggestion ->
@@ -307,10 +282,15 @@ fun T3MessageComposer(
                     }
                     val actionEnabled = state.enabled && (showStop || !state.sending &&
                         if (voiceControlVisible) state.voiceInputStatus != VoiceInputStatusUi.TRANSCRIBING else hasMessage)
-                    val steerDefault = state.followUpBehavior == FollowUpBehavior.STEER
+                    // A redirect declines pending approvals to steer; a turn that cannot take steering only queues.
+                    val steerDefault = state.approvalPending ||
+                        state.followUpBehavior == FollowUpBehavior.STEER && !state.followUpQueueOnly
+                    val hasAlternate = turnRunning && hasMessage && (state.approvalPending || !state.followUpQueueOnly)
                     val actionLabel = when {
                         showStop -> "Stop turn"
+                        hasMessage && turnRunning && state.approvalPending -> "Decline and redirect"
                         hasMessage && turnRunning -> if (steerDefault) "Steer message" else "Queue message"
+                        hasMessage && state.approvalPending -> "Decline and send"
                         hasMessage -> "Send message"
                         state.voiceInputStatus == VoiceInputStatusUi.RECORDING -> "Stop recording and transcribe"
                         else -> "Start voice input"
@@ -328,10 +308,10 @@ fun T3MessageComposer(
                             .combinedClickable(
                                 enabled = actionEnabled,
                                 role = Role.Button,
-                                onLongClickLabel = if (turnRunning && hasMessage) {
+                                onLongClickLabel = if (hasAlternate) {
                                     if (steerDefault) "Queue message" else "Steer message"
                                 } else null,
-                                onLongClick = if (turnRunning && hasMessage) {
+                                onLongClick = if (hasAlternate) {
                                     { onEvent(ChatUiEvent.AlternateMessageSubmitted) }
                                 } else null,
                                 onClick = {
