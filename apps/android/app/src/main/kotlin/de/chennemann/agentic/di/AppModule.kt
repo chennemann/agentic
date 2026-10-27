@@ -398,4 +398,16 @@ val appModule = module {
         )
     }
     viewModel { de.chennemann.agentic.ui.guestshare.GuestShareViewModel(get()) }
+    single<de.chennemann.agentic.data.t3.ThreadSearchRpcClient> { get<KtorT3Client>() }
+    single<de.chennemann.agentic.domain.search.ThreadMessageSearch> {
+        de.chennemann.agentic.domain.search.ThreadSearchService(get(), get(), get(), get())
+    }
+    viewModel {
+        de.chennemann.agentic.ui.search.ThreadSearchViewModel(
+            repository = get(),
+            search = get(),
+            threads = get(),
+            mappingDispatcher = get<DispatcherProvider>().default,
+        )
+    }
 }

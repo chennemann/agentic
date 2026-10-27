@@ -40,3 +40,6 @@ data class ReviewDiffRoute(val threadId: String) : AppRoute
 /** Server settings of the active environment; [projectId] offers that project's overrides too. */
 @Serializable
 data class ServerSettingsRoute(val projectId: String? = null) : AppRoute
+
+@Serializable
+data object ThreadSearchRoute : AppRoute

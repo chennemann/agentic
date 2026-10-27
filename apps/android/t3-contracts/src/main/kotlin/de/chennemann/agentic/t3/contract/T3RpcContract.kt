@@ -380,7 +380,13 @@ data class OrchestrationThreadShell(
     val hasPendingUserInput: Boolean = false,
     val hasActionableProposedPlan: Boolean = false,
     val lineage: OrchestrationThreadLineage? = null,
-    val creationSource: String? = null
+    val creationSource: String? = null,
+    @SerialName("status")
+    val runStatus: String? = null,
+    val activityRunStatus: String? = null,
+    val activityRunStartedAt: String? = null,
+    val blockedOnThreadWait: Boolean = false,
+    val pendingBackgroundTasks: List<OrchestrationPendingBackgroundTask> = emptyList()
 )
 
 @Serializable

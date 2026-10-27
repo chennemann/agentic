@@ -33,4 +33,5 @@ internal fun OrchestrationThreadShell.toPickerItem(needsAttention: Boolean = fal
     active = session?.status in setOf("running", "starting"),
     snoozedUntil = snoozedUntil,
     needsAttention = needsAttention || hasPendingApprovals || hasPendingUserInput,
+    activity = activity(),
 )

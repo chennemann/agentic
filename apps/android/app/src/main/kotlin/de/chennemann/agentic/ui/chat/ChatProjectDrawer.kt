@@ -52,6 +52,7 @@ import de.chennemann.agentic.icons.Settings
 import de.chennemann.agentic.icons.Star
 import de.chennemann.agentic.icons.StarOutline
 import de.chennemann.agentic.icons.Terminal
+import de.chennemann.agentic.ui.search.ThreadSearchEntry
 
 /**
  * Left drawer: environment and settings on top, projects with their threads in the middle,
@@ -68,6 +69,7 @@ fun ChatProjectDrawer(
     onOpenUsage: () -> Unit,
     onOpenChanges: (String) -> Unit = {},
     onOpenPullRequests: () -> Unit = {},
+    onOpenSearch: () -> Unit = {},
 ) {
     ModalDrawerSheet {
         Row(
@@ -85,6 +87,7 @@ fun ChatProjectDrawer(
             }
         }
         HorizontalDivider(Modifier.padding(vertical = 8.dp))
+        ThreadSearchEntry(onClick = { onClose(); onOpenSearch() })
         TextButton(onClick = { onClose(); onOpenPullRequests() }, modifier = Modifier.fillMaxWidth()) {
             Text("Pull requests")
         }
@@ -236,8 +239,12 @@ fun ProjectThreads(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
         )
     }
-    picker.threads.forEach { thread ->
+    val (activeThreads, workingThreads) = picker.threads.splitWorkingSection()
+    activeThreads.forEach { thread ->
         key(thread.id) { ThreadWithSubagents(thread, picker, onThreadChosen) }
+    }
+    if (workingThreads.isNotEmpty()) {
+        WorkingSection(workingThreads, picker, onThreadChosen)
     }
     if (picker.settledThreads.isNotEmpty()) {
         TextButton(onClick = { onEvent(ChatUiEvent.SettledThreadsVisibilityChanged(!picker.showSettled)) }) {
@@ -281,6 +288,34 @@ private fun ThreadWithSubagents(
                     ThreadRow(child, child.id == picker.selectedThreadId) { onThreadChosen(child.id) }
                 }
             }
+        }
+    }
+}
+
+/** Collapsed like the T3 clients' Working section, but opens itself for the selected thread. */
+@Composable
+private fun WorkingSection(
+    threads: List<ThreadPickerItemUi>,
+    picker: ThreadPickerUiState,
+    onThreadChosen: (String) -> Unit,
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+    val selectedInside = threads.any { thread ->
+        thread.id == picker.selectedThreadId || picker.subagents[thread.id].orEmpty().any { it.id == picker.selectedThreadId }
+    }
+    LaunchedEffect(selectedInside) { if (selectedInside) expanded = true }
+    TextButton(onClick = { expanded = !expanded }) {
+        Icon(
+            if (expanded) Icons.ChevronUp else Icons.ChevronDown,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp),
+        )
+        Spacer(Modifier.size(6.dp))
+        Text("Working · ${threads.size}")
+    }
+    if (expanded) {
+        threads.forEach { thread ->
+            key(thread.id) { ThreadWithSubagents(thread, picker, onThreadChosen) }
         }
     }
 }
@@ -389,17 +424,24 @@ internal fun ThreadRow(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f),
         )
+        val activity = thread.activity?.takeUnless { settled || thread.archived || thread.needsAttention || thread.snoozedUntil != null }
+        val now = rememberTickingNow(activity?.since != null)
         val badge = when {
             thread.needsAttention -> "Needs input"
             thread.archived -> "Archived"
             thread.snoozedUntil != null -> "Snoozed"
+            activity != null -> activity.label(now)
             else -> null
         }
         badge?.let {
             Text(
                 it,
                 style = MaterialTheme.typography.labelSmall,
-                color = if (thread.needsAttention) MaterialTheme.colorScheme.error else LocalContentColor.current.copy(alpha = 0.6f),
+                color = when {
+                    thread.needsAttention -> MaterialTheme.colorScheme.error
+                    activity?.kind == ThreadActivityKind.WORKING && !selected -> MaterialTheme.colorScheme.primary
+                    else -> LocalContentColor.current.copy(alpha = 0.6f)
+                },
             )
         }
         onLifecycle?.let {

@@ -147,6 +147,7 @@ fun AppNavHost() {
                                 onDismiss = noticeViewModel::dismiss,
                             )
                         },
+                        onOpenSearch = { viewModel.onEvent(ChatUiEvent.PickerDismissed); stack.add(ThreadSearchRoute) },
                     )
                     }
                 }
@@ -234,6 +235,17 @@ fun AppNavHost() {
                         onRefresh = viewModel::refresh,
                         onSaveGlobalText = viewModel::saveGlobalText,
                         onSaveProjectText = viewModel::saveProjectText,
+                    )
+                }
+
+                ThreadSearchRoute -> NavEntry(route) {
+                    val viewModel: de.chennemann.agentic.ui.search.ThreadSearchViewModel = koinViewModel()
+                    val state by viewModel.state.collectAsStateWithLifecycle()
+                    de.chennemann.agentic.ui.search.ThreadSearchScreen(
+                        state = state,
+                        onBack = { stack.removeLastOrNull() },
+                        onQueryChange = viewModel::changeQuery,
+                        onOpenThread = { threadId -> viewModel.open(threadId) { stack.removeLastOrNull() } },
                     )
                 }
 

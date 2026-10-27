@@ -147,6 +147,7 @@ fun T3ChatScreen(
     onRunProjectScript: (String, ProjectScriptUi) -> Unit = { _, _ -> },
     onOpenServerSettings: () -> Unit = {},
     connectionNotice: @Composable () -> Unit = {},
+    onOpenSearch: () -> Unit = {},
 ) {
     val listState = rememberLazyListState()
     val currentThreadId by rememberUpdatedState(state.threadId)
@@ -287,6 +288,7 @@ fun T3ChatScreen(
                 onRunProjectScript = onRunProjectScript,
                 onOpenUsage = onOpenUsage,
                 onOpenPullRequests = onOpenPullRequests,
+                onOpenSearch = onOpenSearch,
             )
         },
     ) {

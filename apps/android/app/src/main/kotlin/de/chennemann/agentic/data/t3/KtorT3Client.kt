@@ -24,6 +24,9 @@ import de.chennemann.agentic.t3.contract.V2WireCompaction
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailPage
 import de.chennemann.agentic.t3.contract.TokenExchangeResponse
 import de.chennemann.agentic.t3.contract.VcsListRefsResult
+import de.chennemann.agentic.t3.contract.ORCHESTRATION_SEARCH_THREADS_METHOD
+import de.chennemann.agentic.t3.contract.OrchestrationSearchThreadsResult
+import de.chennemann.agentic.t3.contract.orchestrationSearchThreadsInput
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.plugins.websocket.DefaultClientWebSocketSession
@@ -99,7 +102,8 @@ class KtorT3Client(
     ComposerRpcClient,
     AttachmentAssetClient,
     UsageRpcClient,
-    GuestShareRpcClient {
+    GuestShareRpcClient,
+    ThreadSearchRpcClient {
     constructor(httpClient: HttpClient, scope: CoroutineScope) : this(
         T3HttpClientProvider { httpClient },
         scope,
@@ -170,6 +174,14 @@ class KtorT3Client(
 
     override suspend fun guestShareCall(baseUrl: String, bearerToken: String, method: String, input: JsonObject): JsonElement =
         rpcCall(baseUrl, bearerToken, method, input)
+
+    override suspend fun searchThreads(
+        baseUrl: String,
+        bearerToken: String,
+        query: String,
+        limit: Int,
+    ): OrchestrationSearchThreadsResult =
+        rpcCall(baseUrl, bearerToken, ORCHESTRATION_SEARCH_THREADS_METHOD, orchestrationSearchThreadsInput(query, limit))
 
     override suspend fun ensureScratch(baseUrl: String, bearerToken: String): ProjectEnsureScratchResult =
         rpcCall(baseUrl, bearerToken, "projects.ensureScratch", buildJsonObject {})

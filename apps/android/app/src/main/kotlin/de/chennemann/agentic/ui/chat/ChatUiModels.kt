@@ -440,6 +440,7 @@ data class ThreadPickerItemUi(
     val active: Boolean = false,
     val snoozedUntil: String? = null,
     val needsAttention: Boolean = false,
+    val activity: ThreadActivityUi? = null,
 )
 
 data class EnvironmentPickerUiState(
