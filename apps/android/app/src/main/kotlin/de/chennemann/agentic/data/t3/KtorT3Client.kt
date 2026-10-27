@@ -5,6 +5,7 @@ import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.DispatchResult
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
 import de.chennemann.agentic.t3.contract.FilesystemBrowseResult
+import de.chennemann.agentic.t3.contract.GuestShareContracts
 import de.chennemann.agentic.t3.contract.ORCHESTRATION_PROTOCOL_VERSION
 import de.chennemann.agentic.t3.contract.OrchestrationProtocolIncompatible
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
@@ -97,7 +98,8 @@ class KtorT3Client(
     ReviewDiffRpcClient,
     ComposerRpcClient,
     AttachmentAssetClient,
-    UsageRpcClient {
+    UsageRpcClient,
+    GuestShareRpcClient {
     constructor(httpClient: HttpClient, scope: CoroutineScope) : this(
         T3HttpClientProvider { httpClient },
         scope,
@@ -165,6 +167,9 @@ class KtorT3Client(
 
     override fun usageConfigStream(baseUrl: String, bearerToken: String): Flow<ServerConfigStreamEvent> =
         rpcStream(baseUrl, bearerToken, "subscribeServerConfig", buildJsonObject { put("usageLimitSources", true) })
+
+    override suspend fun guestShareCall(baseUrl: String, bearerToken: String, method: String, input: JsonObject): JsonElement =
+        rpcCall(baseUrl, bearerToken, method, input)
 
     override suspend fun ensureScratch(baseUrl: String, bearerToken: String): ProjectEnsureScratchResult =
         rpcCall(baseUrl, bearerToken, "projects.ensureScratch", buildJsonObject {})
@@ -1008,6 +1013,7 @@ internal fun decodeRpcFailure(cause: JsonArray?): T3TransportException {
             ?: return T3TransportException.Rpc("T3 authorization failed.")
         return T3TransportException.Authorization(requiredScope)
     }
+    error?.let(GuestShareContracts::createFailureMessage)?.let { return T3TransportException.Rpc(it) }
     val message = error?.get("message")?.jsonPrimitive?.contentOrNull
         ?.let(::redactTransportText)
         ?: "T3 RPC request failed."

@@ -76,6 +76,8 @@ import de.chennemann.agentic.icons.ArchiveRestore
 import de.chennemann.agentic.icons.Check
 import de.chennemann.agentic.icons.Icons
 import de.chennemann.agentic.icons.Undo
+import de.chennemann.agentic.ui.guestshare.GuestShareUiEvent
+import de.chennemann.agentic.ui.guestshare.LocalGuestShare
 import java.time.Instant
 import java.time.temporal.ChronoUnit
 import de.chennemann.agentic.domain.preferences.AccentPreference
@@ -665,6 +667,14 @@ fun ThreadActionMenuItems(
         DropdownMenuItem(
             text = { Text("Delete permanently", color = MaterialTheme.colorScheme.error) },
             onClick = { run { onEvent(ChatUiEvent.DeleteThreadRequested) } },
+        )
+    }
+    val guestShare = LocalGuestShare.current
+    val threadId = state.threadId
+    if (guestShare != null && threadId != null && !state.isThreadArchived) {
+        DropdownMenuItem(
+            text = { Text(if (guestShare.state.threadId == threadId) "Guest link…" else "Share with guest") },
+            onClick = { run { guestShare.onEvent(GuestShareUiEvent.SheetRequested(threadId)) } },
         )
     }
 }

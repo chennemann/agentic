@@ -386,4 +386,16 @@ val appModule = module {
     single { de.chennemann.agentic.domain.settings.ServerSettingsService(get(), get(), get(), get(), get()) }
     viewModel { de.chennemann.agentic.ui.settings.ServerSettingsViewModel(get(), get()) }
     viewModel { de.chennemann.agentic.ui.components.HostNoticeViewModel(get()) }
+    single<de.chennemann.agentic.data.t3.GuestShareRpcClient> { get<KtorT3Client>() }
+    single {
+        de.chennemann.agentic.domain.guestshare.GuestShareService(
+            environments = get(),
+            credentials = get(),
+            auth = get(),
+            rpc = get(),
+            assets = get(),
+            repository = get(),
+        )
+    }
+    viewModel { de.chennemann.agentic.ui.guestshare.GuestShareViewModel(get()) }
 }

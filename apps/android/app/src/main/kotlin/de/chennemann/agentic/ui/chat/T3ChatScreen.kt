@@ -120,6 +120,10 @@ import de.chennemann.agentic.icons.Rename
 import de.chennemann.agentic.domain.attachments.formatByteSize
 import de.chennemann.agentic.domain.orchestration.FileLinkTarget
 import de.chennemann.agentic.ui.files.FileLinkHandler
+import de.chennemann.agentic.ui.guestshare.GuestShareBar
+import de.chennemann.agentic.ui.guestshare.GuestShareSheetHost
+import de.chennemann.agentic.ui.guestshare.LocalGuestShare
+import de.chennemann.agentic.ui.guestshare.guestPendingMessages
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.StateFlow
@@ -167,6 +171,8 @@ fun T3ChatScreen(
         }
     }
     var followLatest by remember(state.threadId) { mutableStateOf(true) }
+    val guestShare = LocalGuestShare.current
+    val threadGuestShare = guestShare?.takeIf { state.threadId != null && it.state.threadId == state.threadId }
     var inputFocusRequested by remember(state.threadId) { mutableStateOf<Boolean?>(null) }
     var inputFocusedManually by remember(state.threadId) { mutableStateOf(false) }
     var messageIdWhenKeyboardOpened by remember(state.threadId) { mutableStateOf<String?>(null) }
@@ -254,6 +260,7 @@ fun T3ChatScreen(
         expandedActivities.toMap(),
         composerHeightPx,
         followLatest,
+        threadGuestShare?.state?.pendingMessages?.size,
     ) {
         if (followLatest) {
             listState.scrollToLatest()
@@ -410,6 +417,8 @@ fun T3ChatScreen(
                         }
                     }
 
+                        guestPendingMessages(threadGuestShare)
+
                         state.latestTurnTiming?.let { timing ->
                             item("latest-turn-timing:${timing.startedAt}") {
                                 TurnTimingRow(timing)
@@ -498,6 +507,7 @@ fun T3ChatScreen(
                             }
                         }
                     }
+                    threadGuestShare?.let { GuestShareBar(it) }
                     IsolatedDraftComposer(
                         onOpenImage = { opened ->
                             val drafts = state.composer.imageAttachments.map { ImageViewerItem.Draft(it.id) }
@@ -547,6 +557,8 @@ fun T3ChatScreen(
                 onOpenPullRequests = onOpenPullRequests,
         onOpenServerSettings = onOpenServerSettings,
     )
+
+    guestShare?.let { GuestShareSheetHost(it) }
 
     state.renameDialog?.let { rename ->
         AlertDialog(

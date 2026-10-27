@@ -4,6 +4,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +27,9 @@ import de.chennemann.agentic.ui.chat.ProjectScriptUi
 import de.chennemann.agentic.ui.chat.T3ChatScreen
 import de.chennemann.agentic.ui.files.WorkspaceFilesScreen
 import de.chennemann.agentic.ui.files.WorkspaceFilesViewModel
+import de.chennemann.agentic.ui.guestshare.GuestShareController
+import de.chennemann.agentic.ui.guestshare.GuestShareViewModel
+import de.chennemann.agentic.ui.guestshare.LocalGuestShare
 import de.chennemann.agentic.ui.onboarding.OnboardingUiEvent
 import de.chennemann.agentic.ui.onboarding.OnboardingViewModel
 import de.chennemann.agentic.ui.onboarding.T3OnboardingScreen
@@ -114,6 +118,11 @@ fun AppNavHost() {
                             ),
                         )
                     }
+                    val guestShareViewModel: GuestShareViewModel = koinViewModel()
+                    val guestShareState by guestShareViewModel.state.collectAsStateWithLifecycle()
+                    CompositionLocalProvider(
+                        LocalGuestShare provides GuestShareController(guestShareState, guestShareViewModel::onEvent),
+                    ) {
                     T3ChatScreen(
                         state = state,
                         composerDraft = viewModel.draft,
@@ -139,6 +148,7 @@ fun AppNavHost() {
                             )
                         },
                     )
+                    }
                 }
 
                 is WorkspaceFilesRoute -> NavEntry(route) {
