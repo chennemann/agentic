@@ -24,6 +24,8 @@ val T3CommandJson = Json(T3Json) {
     explicitNulls = true
 }
 
+const val ORCHESTRATION_PROTOCOL_VERSION = 2
+
 @Serializable
 data class ExecutionEnvironmentDescriptor(
     val environmentId: String,
@@ -32,7 +34,9 @@ data class ExecutionEnvironmentDescriptor(
     val serverVersion: String,
     val capabilities: ExecutionEnvironmentCapabilities,
     val orchestrationProtocolVersion: Int = 1
-)
+) {
+    val supportsOrchestrationProtocol: Boolean get() = orchestrationProtocolVersion == ORCHESTRATION_PROTOCOL_VERSION
+}
 
 @Serializable
 data class EnvironmentPlatform(val os: String, val arch: String)
@@ -447,10 +451,6 @@ sealed interface OrchestrationShellStreamItem {
     @Serializable
     @SerialName("synchronized")
     data object Synchronized : OrchestrationShellStreamItem
-
-    @Serializable
-    @SerialName("ignored")
-    data class Ignored(val sequence: Long) : OrchestrationShellStreamItem
 }
 
 @Serializable

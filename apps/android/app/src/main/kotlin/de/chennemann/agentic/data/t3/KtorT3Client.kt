@@ -5,6 +5,7 @@ import de.chennemann.agentic.t3.contract.ClientOrchestrationCommand
 import de.chennemann.agentic.t3.contract.DispatchResult
 import de.chennemann.agentic.t3.contract.ExecutionEnvironmentDescriptor
 import de.chennemann.agentic.t3.contract.FilesystemBrowseResult
+import de.chennemann.agentic.t3.contract.ORCHESTRATION_PROTOCOL_VERSION
 import de.chennemann.agentic.t3.contract.OrchestrationShellStreamItem
 import de.chennemann.agentic.t3.contract.OrchestrationThreadStreamItem
 import de.chennemann.agentic.t3.contract.ServerConfig
@@ -180,7 +181,7 @@ class KtorT3Client(
         val response = httpClients.client(baseUrl).get(url(baseUrl, "/api/orchestration/threads/$encodedId/$endpoint")) {
             bearerAuth(bearerToken)
             accept(ContentType.Application.Json)
-            header("x-t3-orchestration-protocol", "2")
+            header("x-t3-orchestration-protocol", ORCHESTRATION_PROTOCOL_VERSION.toString())
             url {
                 beforeCursor?.let { parameters.append("cursor", it) }
             }
@@ -631,7 +632,7 @@ class KtorT3Client(
         connections[key]?.takeIf(EffectRpcConnection::isActive)?.let { return@withLock it }
 
         val httpClient = httpClients.client(key.baseUrl)
-        val ticketResponse = httpClient.post(url(key.baseUrl, "/api/auth/websocket-ticket")) {
+        val ticketResponse = httpClient.post(url(key.baseUrl, "/api/auth/websocket-ticket/rpc")) {
             bearerAuth(bearerToken)
             accept(ContentType.Application.Json)
         }
@@ -695,7 +696,8 @@ class KtorT3Client(
         }
         val path = source.rawPath.orEmpty().trimEnd('/') + "/ws"
         val encodedTicket = URLEncoder.encode(ticket, StandardCharsets.UTF_8).replace("+", "%20")
-        return "$scheme://${source.rawAuthority}$path?wsTicket=$encodedTicket&orchestrationProtocol=2"
+        return "$scheme://${source.rawAuthority}$path?wsTicket=$encodedTicket" +
+            "&orchestrationProtocol=$ORCHESTRATION_PROTOCOL_VERSION"
     }
 
     private suspend fun HttpResponse.checked() {
@@ -753,8 +755,6 @@ class KtorT3Client(
             "project.removed",
             "thread.updated",
             "thread.removed",
-            "todo-upserted",
-            "todo-removed",
             "synchronized",
         )
         val ThreadStreamKinds = setOf("snapshot", "event", "synchronized")

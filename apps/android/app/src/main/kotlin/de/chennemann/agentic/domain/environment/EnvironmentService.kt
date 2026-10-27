@@ -54,6 +54,9 @@ class EnvironmentService(
 
     suspend fun pair(preview: PairingPreview) {
         val bootstrapCredential = preview.target.bootstrapCredential ?: throw PairingException.MissingCredential()
+        if (!preview.descriptor.supportsOrchestrationProtocol) {
+            throw PairingException.IncompatibleProtocol(preview.descriptor.serverVersion)
+        }
         val exchanged = authClient.exchangeToken(
             preview.target.baseUrl,
             bootstrapCredential,

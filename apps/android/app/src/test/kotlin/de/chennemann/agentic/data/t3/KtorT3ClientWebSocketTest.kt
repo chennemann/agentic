@@ -174,7 +174,7 @@ class KtorT3ClientWebSocketTest {
         assertEquals("term-2", terminal.terminalId)
         val ticketRequest = server.takeRequest(1, TimeUnit.SECONDS)
         val webSocketRequest = server.takeRequest(1, TimeUnit.SECONDS)
-        assertEquals("/api/auth/websocket-ticket", ticketRequest?.path)
+        assertEquals("/api/auth/websocket-ticket/rpc", ticketRequest?.path)
         assertEquals("Bearer access-token", ticketRequest?.getHeader("authorization"))
         assertEquals("/ws?wsTicket=ticket-value&orchestrationProtocol=2", webSocketRequest?.path)
         val rpcRequests = buildList {

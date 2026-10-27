@@ -27,6 +27,10 @@ sealed class PairingException(
     class PublicCleartext : PairingException("Public T3 environments require HTTPS.")
 
     class EnvironmentMismatch : PairingException("The pairing link belongs to a different environment.")
+
+    class IncompatibleProtocol(serverVersion: String) : PairingException(
+        "This T3 server ($serverVersion) uses an incompatible protocol. Update T3 Code or Agentic and pair again."
+    )
 }
 
 object PairingUrlParser {

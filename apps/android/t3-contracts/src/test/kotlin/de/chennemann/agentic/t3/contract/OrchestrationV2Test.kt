@@ -58,10 +58,32 @@ class OrchestrationV2Test {
             json("""{"kind":"thread.updated","sequence":43,"location":"active","thread":$thread}""")
         )
         assertTrue(update is OrchestrationShellStreamItem.ThreadUpserted)
-        assertTrue(
-            V2Orchestration.shellItem(
-                json("""{"kind":"todo-removed","sequence":44,"todoId":"todo-1"}""")
-            ) is OrchestrationShellStreamItem.Ignored
+    }
+
+    @Test
+    fun `shell no longer accepts the removed todo stream items`() {
+        assertThrows(kotlinx.serialization.SerializationException::class.java) {
+            V2Orchestration.shellItem(json("""{"kind":"todo-removed","sequence":44,"todoId":"todo-1"}"""))
+        }
+    }
+
+    @Test
+    fun `guest share updates replace the projected thread`() {
+        val shared = json(thread.replace("\"title\":\"Conversation\"", "\"title\":\"Shared\"")).toMutableMap().apply {
+            put(
+                "guestShare",
+                json(
+                    """{"id":"share-1","host":"connect.example","createdAt":"2026-10-19T10:00:00Z",
+                    "expiresAt":"2026-10-20T10:00:00Z","guestName":null,"messages":[]}"""
+                )
+            )
+        }
+        val projection = T3Json.decodeFromString<V2Projection>(projection())
+            .apply(V2EventPayload("thread.guest-share-updated", JsonObject(shared)))
+        assertEquals("Shared", projection.detail().title)
+        assertEquals(
+            "share-1",
+            projection.thread.getValue("guestShare").jsonObject.getValue("id").jsonPrimitive.content
         )
     }
 

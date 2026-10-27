@@ -121,7 +121,6 @@ object ShellProjectionReducer {
             )
 
             is OrchestrationShellStreamItem.Snapshot,
-            is OrchestrationShellStreamItem.Ignored,
             is OrchestrationShellStreamItem.ArchiveSnapshot,
             is OrchestrationShellStreamItem.ArchiveChange,
             OrchestrationShellStreamItem.Synchronized,
@@ -227,7 +226,6 @@ object ThreadProjectionReducer {
 private fun OrchestrationShellStreamItem.sequence(): Long = when (this) {
     is OrchestrationShellStreamItem.ArchiveSnapshot -> sequence
     is OrchestrationShellStreamItem.ArchiveChange -> sequence
-    is OrchestrationShellStreamItem.Ignored -> sequence
     is OrchestrationShellStreamItem.ProjectUpserted -> sequence
     is OrchestrationShellStreamItem.ProjectRemoved -> sequence
     is OrchestrationShellStreamItem.ThreadUpserted -> sequence
