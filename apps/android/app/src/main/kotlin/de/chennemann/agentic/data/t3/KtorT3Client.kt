@@ -18,6 +18,7 @@ import de.chennemann.agentic.t3.contract.V2Orchestration
 import de.chennemann.agentic.t3.contract.V2Commands
 import de.chennemann.agentic.t3.contract.V2Projection
 import de.chennemann.agentic.t3.contract.V2VisibleItem
+import de.chennemann.agentic.t3.contract.V2WireCompaction
 import de.chennemann.agentic.t3.contract.OrchestrationThreadDetailPage
 import de.chennemann.agentic.t3.contract.TokenExchangeResponse
 import de.chennemann.agentic.t3.contract.VcsListRefsResult
@@ -184,10 +185,16 @@ class KtorT3Client(
             header("x-t3-orchestration-protocol", ORCHESTRATION_PROTOCOL_VERSION.toString())
             url {
                 beforeCursor?.let { parameters.append("cursor", it) }
+                if (beforeCursor == null) {
+                    parameters.append("compactTurnItems", "1")
+                    parameters.append("dedupeBodies", "1")
+                }
+                parameters.append("compactIds", "1")
             }
         }
         response.checked()
-        val value = T3Json.parseToJsonElement(response.bodyAsText()).jsonObject
+        val wire = T3Json.parseToJsonElement(response.bodyAsText()).jsonObject
+        val value = if (beforeCursor == null) wire else V2WireCompaction.expandIds(wire, container = null)
         if (beforeCursor == null) V2Orchestration.snapshot(value) else {
             val loaded = requireNotNull(projection) { "Load the conversation before requesting older history." }
             val rows = T3Json.decodeFromJsonElement<List<V2VisibleItem>>(value.getValue("items"))
@@ -596,6 +603,9 @@ class KtorT3Client(
         payload = buildJsonObject {
             subscriptionPayload(afterSequence, requestCompletionMarker, threadId).forEach { (key, value) -> put(key, value) }
             put("acceptBoundedSnapshot", true)
+            put("acceptCompactTurnItems", true)
+            put("acceptDedupedBodies", true)
+            put("acceptCompactIds", true)
         },
         supportedKinds = ThreadStreamKinds,
     ).map(V2Orchestration::threadItem)

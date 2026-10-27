@@ -28,9 +28,12 @@ data class V2Projection(
     val checkpoints: List<JsonObject> = emptyList(),
     val updatedAt: String,
     val latestLocalTurnOrdinal: Long? = null,
-    val partialTimeline: Boolean = false
+    val partialTimeline: Boolean = false,
+    /** Subagent records; deduplicated turn items restore their prompt and result from them. */
+    val subagents: List<JsonObject> = emptyList()
 ) {
-    fun apply(event: V2EventPayload): V2Projection {
+    fun apply(wireEvent: V2EventPayload): V2Projection {
+        val event = V2WireCompaction.restoreLiveBodies(this, wireEvent)
         return when (event.type) {
             "thread.created", "thread.archived", "thread.unarchived", "thread.deleted",
             "thread.settled", "thread.unsettled", "thread.snoozed", "thread.unsnoozed",
@@ -82,6 +85,7 @@ data class V2Projection(
                 }
                 copy(turnItems = turnItems.upsert(event.payload), visibleTurnItems = rows)
             }
+            "subagent.updated" -> copy(subagents = subagents.upsert(event.payload))
             else -> this
         }
     }
@@ -310,7 +314,7 @@ object V2Orchestration {
     }
 
     fun snapshot(value: JsonObject): OrchestrationThreadDetailSnapshot {
-        val projection = T3Json.decodeFromJsonElement<V2Projection>(value.getValue("projection")).copy(
+        val projection = V2WireCompaction.snapshotProjection(value).copy(
             latestLocalTurnOrdinal = value.text("latestLocalTurnOrdinal")?.toLong(),
             partialTimeline = value.bool("hasMoreHistory")
         )
