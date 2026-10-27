@@ -137,7 +137,12 @@ data class V2Projection(
                 attachments = item["attachments"]?.let {
                     T3Json.decodeFromJsonElement<List<ChatAttachment>>(it)
                 }.orEmpty(),
-                context = item["context"] as? JsonObject
+                context = item["context"] as? JsonObject,
+                createdBy = item.text("createdBy"),
+                creationSource = item.text("creationSource"),
+                scheduledTaskId = item.text("scheduledTaskId"),
+                senderThreadId = item.text("senderThreadId"),
+                idleCompaction = item.text("idleCompaction")
             )
         }
         val plans = displayed.filter { it.text("type") == "proposed_plan" }.map { item ->

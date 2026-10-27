@@ -223,7 +223,21 @@ sealed interface ChatTimelineItemUi {
         override val id: String,
         val label: String,
         val items: List<ChatTimelineItemUi>,
+        val diffStat: TurnDiffStatUi? = null,
     ) : ChatTimelineItemUi
+}
+
+data class TurnDiffStatUi(
+    val files: Int,
+    val additions: Int,
+    val deletions: Int,
+)
+
+/** Who sent a user-role message when it was not the person using this client. */
+enum class ChatMessageOriginUi {
+    AUTOMATION,
+    AGENT,
+    T3CODE,
 }
 
 data class ChatMessageUi(
@@ -236,6 +250,7 @@ data class ChatMessageUi(
     val attachments: List<ChatImageAttachmentUi> = emptyList(),
     val files: List<ChatFileAttachmentUi> = emptyList(),
     val timestamp: String? = null,
+    val origin: ChatMessageOriginUi? = null,
 )
 
 data class ChatFileAttachmentUi(
@@ -325,6 +340,14 @@ sealed interface ChatActivityUi {
         val continuing: Boolean = false,
         val errorMessage: String? = null,
     ) : ChatActivityUi
+
+    /** A context compaction, drawn as a divider that stays out of folded work. */
+    data class Compaction(
+        override val id: String,
+        override val summary: String,
+        val active: Boolean = false,
+        val failed: Boolean = false,
+    ) : ChatActivityUi
 }
 
 enum class ActivityStatusUi {
@@ -343,6 +366,10 @@ data class PendingApprovalUi(
     val responseInFlight: Boolean = false,
     val optionLabels: Map<ApprovalDecisionUi, String> = emptyMap(),
     val warning: String? = null,
+    /** Why the provider asked, when it says more than the prompt. */
+    val reason: String? = null,
+    /** Why a full-access thread still asked; shown on request. */
+    val fullAccessExplanation: String? = null,
 )
 
 enum class ApprovalDecisionUi(
@@ -380,6 +407,8 @@ data class UserInputOptionUi(
     val id: String,
     val label: String,
     val description: String? = null,
+    /** Markdown the provider shows for this choice, such as a sketch of the result. */
+    val preview: String? = null,
 )
 
 data class ThreadPickerUiState(

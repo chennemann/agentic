@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Button
@@ -22,10 +23,12 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -39,6 +42,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextFieldValue
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
@@ -57,6 +62,7 @@ import de.chennemann.agentic.ui.chat.PendingApprovalUi
 import de.chennemann.agentic.ui.chat.PendingUserInputUi
 import de.chennemann.agentic.ui.chat.UserInputOptionUi
 import de.chennemann.agentic.ui.chat.UserInputQuestionUi
+import de.chennemann.agentic.ui.chat.previewOption
 import de.chennemann.agentic.ui.theme.MobileTheme
 
 @Composable
@@ -117,6 +123,8 @@ fun ChatActivityCard(
         )
 
         is ChatActivityUi.ProposedPlan -> ProposedPlanCard(activity, onEvent, modifier)
+
+        is ChatActivityUi.Compaction -> CompactionDivider(activity, modifier)
 
         else -> ExpandableActivityCard(
             activity = activity,
@@ -460,6 +468,16 @@ private fun ApprovalCard(
                     )
                 }
             }
+            request.reason?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            }
+            request.fullAccessExplanation?.let { explanation ->
+                FullAccessExplanation(explanation)
+            }
             request.warning?.let { Text(it, color = MaterialTheme.colorScheme.error) }
             request.decisions.forEach { decision ->
                 val emphasized = decision == ApprovalDecisionUi.ACCEPT ||
@@ -490,6 +508,57 @@ private fun ApprovalCard(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun FullAccessExplanation(explanation: String) {
+    var open by remember(explanation) { mutableStateOf(false) }
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.small)
+            .clickable(onClickLabel = if (open) "Hide explanation" else "Show explanation") { open = !open },
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Text(
+            text = "Why am I being asked this?",
+            style = MaterialTheme.typography.labelMedium.copy(textDecoration = TextDecoration.Underline),
+            color = MaterialTheme.colorScheme.onSecondaryContainer,
+        )
+        AnimatedVisibility(visible = open, enter = expandVertically() + fadeIn(), exit = shrinkVertically()) {
+            Text(
+                text = explanation,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompactionDivider(
+    compaction: ChatActivityUi.Compaction,
+    modifier: Modifier,
+) {
+    val color = if (compaction.failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        modifier = modifier.fillMaxWidth().padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
+        if (compaction.active) {
+            CircularProgressIndicator(modifier = Modifier.size(12.dp), strokeWidth = 1.5.dp)
+        }
+        Text(
+            text = compaction.summary,
+            style = MaterialTheme.typography.labelMedium,
+            color = color,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.widthIn(max = 280.dp),
+        )
+        HorizontalDivider(modifier = Modifier.weight(1f), color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
@@ -618,6 +687,37 @@ private fun UserInputQuestion(
                     color = MaterialTheme.colorScheme.onTertiaryContainer,
                 )
             }
+            question.previewOption()?.let { option ->
+                OptionPreview(option)
+            }
+        }
+    }
+}
+
+@Composable
+private fun OptionPreview(option: UserInputOptionUi) {
+    Surface(
+        shape = MaterialTheme.shapes.medium,
+        color = MaterialTheme.colorScheme.surface,
+        modifier = Modifier.fillMaxWidth(),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = "Preview · ${option.label}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            SelectionContainer {
+                StreamingMarkdownText(
+                    content = option.preview.orEmpty(),
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodySmall,
+                    streaming = false,
+                )
+            }
         }
     }
 }
@@ -646,7 +746,7 @@ private fun ChatActivityUi.detail(): String? = when (this) {
     is ChatActivityUi.Error -> detail
     is ChatActivityUi.Unknown -> formattedDetail
     is ChatActivityUi.ProposedPlan -> planMarkdown
-    is ChatActivityUi.Approval, is ChatActivityUi.UserInput -> null
+    is ChatActivityUi.Approval, is ChatActivityUi.UserInput, is ChatActivityUi.Compaction -> null
 }
 
 private fun ChatActivityUi.subtitle(): String? = when (this) {

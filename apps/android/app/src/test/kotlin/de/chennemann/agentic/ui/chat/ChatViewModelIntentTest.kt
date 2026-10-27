@@ -2503,23 +2503,22 @@ class ChatViewModelIntentTest {
         assertEquals(
             listOf(
                 "user-1",
-                "assistant-1",
                 "turn-1",
                 "assistant-final",
             ),
             viewModel.state.value.timeline.map { it.id },
         )
-        val summary = viewModel.state.value.timeline[2] as ChatTimelineItemUi.WorkSummary
-        assertEquals(2, (summary.items[0] as ChatTimelineItemUi.ToolGroup).activities.size)
-        assertEquals("assistant-2", summary.items[1].id)
-        assertEquals(2, (summary.items[2] as ChatTimelineItemUi.ToolGroup).activities.size)
+        val summary = viewModel.state.value.timeline[1] as ChatTimelineItemUi.WorkSummary
+        assertEquals("assistant-1", summary.items[0].id)
+        assertEquals(2, (summary.items[1] as ChatTimelineItemUi.ToolGroup).activities.size)
+        assertEquals("assistant-2", summary.items[2].id)
+        assertEquals(2, (summary.items[3] as ChatTimelineItemUi.ToolGroup).activities.size)
         val messageCopyState = viewModel.state.value.timeline
             .filterIsInstance<ChatTimelineItemUi.Message>()
             .associate { it.value.id to it.value.canCopy }
         assertEquals(
             mapOf(
                 "user-1" to false,
-                "assistant-1" to false,
                 "assistant-final" to true,
             ),
             messageCopyState,

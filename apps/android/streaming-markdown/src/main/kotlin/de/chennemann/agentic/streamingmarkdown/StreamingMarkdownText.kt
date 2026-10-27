@@ -194,6 +194,7 @@ private fun MarkdownBlocksColumn(
                     link = markdownLink,
                     blockCode = markdownBlockCode,
                 )
+                is MarkdownBlock.Math -> MarkdownMathBlock(block, style, color)
             }
         }
     }
@@ -284,6 +285,25 @@ private fun MarkdownCodeBlock(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f),
             )
         }
+    }
+}
+
+@Composable
+private fun MarkdownMathBlock(
+    block: MarkdownBlock.Math,
+    style: TextStyle,
+    color: Color,
+) {
+    val text = remember(block.content) { latexToUnicode(block.content) }
+    Box(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(vertical = 4.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = text,
+            style = style.copy(fontFamily = MathSpanStyle.fontFamily),
+            color = color,
+        )
     }
 }
 
@@ -491,6 +511,7 @@ fun toAnnotatedString(
     linkListener: LinkInteractionListener? = null,
     /** Names the destination of an inline code span, which then becomes an underlined link. */
     inlineCodeDestination: ((String) -> String?)? = null,
+    math: SpanStyle = MathSpanStyle,
 ): AnnotatedString = buildAnnotatedString {
     linkify(decorate(runs)).forEach { run ->
         val start = length
@@ -555,11 +576,20 @@ fun toAnnotatedString(
             pop()
             return@forEach
         }
+        if (run.kind == MarkdownKind.MATH) {
+            pushStyle(math)
+            append(run.value)
+            pop()
+            return@forEach
+        }
         pushStyle(link)
         append(run.value)
         pop()
     }
 }
+
+/** Math reads as typeset text rather than code; symbols come from [latexToUnicode]. */
+private val MathSpanStyle = SpanStyle(fontFamily = FontFamily.Serif)
 
 private fun decorate(runs: List<MarkdownRun>): List<MarkdownRun> {
     val out = mutableListOf<MarkdownRun>()
@@ -575,8 +605,19 @@ private fun decorate(runs: List<MarkdownRun>): List<MarkdownRun> {
         while (index < run.value.length) {
             val char = run.value[index]
             if (slash) {
-                append(out, kind(emphasis, strong), char.toString())
                 slash = false
+                val delimiter = when (char) {
+                    '(' -> "\\)"
+                    '[' -> "\\]"
+                    else -> null
+                }
+                val end = delimiter?.let { run.value.inlineMathEnd(index + 1, it) }
+                if (delimiter != null && end != null) {
+                    append(out, MarkdownKind.MATH, latexToUnicode(run.value.substring(index + 1, end)))
+                    index = end + delimiter.length
+                    continue
+                }
+                append(out, kind(emphasis, strong), char.toString())
                 index += 1
                 continue
             }
@@ -584,6 +625,15 @@ private fun decorate(runs: List<MarkdownRun>): List<MarkdownRun> {
                 slash = true
                 index += 1
                 continue
+            }
+            if (char == '$') {
+                val delimiter = if (run.value.startsWith("$$", index)) "$$" else "$"
+                val end = run.value.inlineMathEnd(index + delimiter.length, delimiter)
+                if (end != null) {
+                    append(out, MarkdownKind.MATH, latexToUnicode(run.value.substring(index + delimiter.length, end)))
+                    index = end + delimiter.length
+                    continue
+                }
             }
             if (char == '*') {
                 val pair = index + 1 < run.value.length && run.value[index + 1] == '*'

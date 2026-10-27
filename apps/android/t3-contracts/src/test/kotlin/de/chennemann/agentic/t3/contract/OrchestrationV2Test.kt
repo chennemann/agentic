@@ -144,6 +144,41 @@ class OrchestrationV2Test {
     }
 
     @Test
+    fun `user messages keep their sender and approvals keep why they were asked`() {
+        val automation = json(
+            item(
+                "user_message",
+                "user-item",
+                """"messageId":"message-2","text":"Run the nightly checks","attachments":[],
+                "inputIntent":"turn_start","createdBy":"agent","creationSource":"server",
+                "scheduledTaskId":"task-1","senderThreadId":"thread-0","idleCompaction":"onReturn""""
+            )
+        )
+        val approval = json(
+            item(
+                "approval_request",
+                "approval-1",
+                """"requestId":"request-1","requestKind":"command","prompt":"rm -rf build",
+                "reason":"Path could not be verified","fullAccessOverride":"provider_check""""
+            )
+        )
+        val detail = T3Json.decodeFromString<V2Projection>(projection())
+            .apply(V2EventPayload("turn-item.updated", automation))
+            .apply(V2EventPayload("turn-item.updated", approval))
+            .detail()
+        val message = detail.messages.single { it.id == "message-2" }
+        assertEquals("agent", message.createdBy)
+        assertEquals("server", message.creationSource)
+        assertEquals("task-1", message.scheduledTaskId)
+        assertEquals("thread-0", message.senderThreadId)
+        assertEquals("onReturn", message.idleCompaction)
+        val payload = detail.activities.single().payload
+        assertEquals("Path could not be verified", payload.getValue("reason").jsonPrimitive.content)
+        assertEquals("provider_check", payload.getValue("fullAccessOverride").jsonPrimitive.content)
+        assertEquals("rm -rf build", payload.getValue("detail").jsonPrimitive.content)
+    }
+
+    @Test
     fun `dispatch uses v2 message and runtime request commands`() {
         val start = start()
         val requests = V2Commands.requests(start, V2Commands.message(start, JsonArray(emptyList()), emptyMap()))

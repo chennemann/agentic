@@ -28,4 +28,20 @@ class ChatUserInputTest {
         assertEquals(JsonPrimitive("custom"), question.copy(textAnswer = " custom ", selectedOptionIds = setOf("a")).resolvedAnswer())
         assertEquals(JsonPrimitive("a"), question.copy(selectedOptionIds = setOf("a")).resolvedAnswer())
     }
+
+    @Test
+    fun `option previews show for the chosen option until a custom answer replaces it`() {
+        val payload = Json.parseToJsonElement(
+            """{"questions":[{"id":"q","header":"Layout","question":"Which layout?","options":[
+            {"label":"Grid","description":"Grid","preview":"| a | b |\n|---|---|"},
+            {"label":"List","description":"One column","preview":"   "}]}]}""",
+        ).jsonObject
+        val question = payload.inputQuestions(selectedOptions = { setOf("Grid") }).single()
+        assertNull(question.options[0].description)
+        assertEquals("One column", question.options[1].description)
+        assertNull(question.options[1].preview)
+        assertEquals("Grid", question.previewOption()?.label)
+        assertNull(question.copy(selectedOptionIds = setOf("List")).previewOption())
+        assertNull(question.copy(textAnswer = "Something else").previewOption())
+    }
 }

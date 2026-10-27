@@ -7,6 +7,9 @@ enum class MarkdownKind {
     STRONG,
     LINK,
     BLOCK_CODE,
+
+    /** TeX math already rendered to Unicode text. */
+    MATH,
 }
 
 data class MarkdownRun(

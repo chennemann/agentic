@@ -20,6 +20,12 @@ sealed interface MarkdownBlock {
         val header: List<List<MarkdownRun>>,
         val rows: List<List<List<MarkdownRun>>>,
     ) : MarkdownBlock
+
+    /** Display math between `$$` or `\[` delimiters, as TeX source. */
+    data class Math(
+        val content: String,
+        val closed: Boolean = true,
+    ) : MarkdownBlock
 }
 
 data class MarkdownListItem(
@@ -54,6 +60,30 @@ fun parseMarkdownBlocks(content: String): List<MarkdownBlock> {
             blocks += MarkdownBlock.Code(
                 language = fence.language,
                 content = code.joinToString("\n"),
+                closed = closed,
+            )
+            continue
+        }
+
+        mathStart(line)?.let { delimiters ->
+            val math = mutableListOf<String>()
+            var rest = line.trim().removePrefix(delimiters.first)
+            var closed = false
+            while (true) {
+                val end = rest.indexOf(delimiters.second)
+                if (end >= 0) {
+                    math += rest.substring(0, end)
+                    closed = true
+                    break
+                }
+                math += rest
+                index += 1
+                if (index >= lines.size) break
+                rest = lines[index]
+            }
+            index += 1
+            blocks += MarkdownBlock.Math(
+                content = math.joinToString("\n").trim(),
                 closed = closed,
             )
             continue
@@ -107,8 +137,22 @@ internal fun hasMarkdownBlockSyntax(content: String): Boolean {
     return lines.indices.any { index ->
         fenceStart(lines[index]) != null ||
             listItem(lines[index]) != null ||
+            mathStart(lines[index]) != null ||
             index + 1 < lines.size && isTableDelimiter(lines[index + 1])
     }
+}
+
+private val MathDelimiters = listOf("$$" to "$$", "\\[" to "\\]")
+
+/** Display math opens on a line of its own or fills one line; anything else stays a paragraph. */
+private fun mathStart(line: String): Pair<String, String>? {
+    val trimmed = line.trim()
+    val delimiters = MathDelimiters.firstOrNull { trimmed.startsWith(it.first) } ?: return null
+    val rest = trimmed.removePrefix(delimiters.first)
+    val end = rest.indexOf(delimiters.second)
+    val opensAlone = end < 0 && rest.isBlank()
+    val fillsLine = end > 0 && end + delimiters.second.length == rest.length
+    return delimiters.takeIf { opensAlone || fillsLine }
 }
 
 private data class Fence(
@@ -167,6 +211,7 @@ private fun listItem(line: String): ParsedListItem? {
 private fun startsBlock(lines: List<String>, index: Int): Boolean =
     fenceStart(lines[index]) != null ||
         listItem(lines[index]) != null ||
+        mathStart(lines[index]) != null ||
         index + 1 < lines.size && isTableDelimiter(lines[index + 1])
 
 private fun isTableDelimiter(line: String): Boolean {

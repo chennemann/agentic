@@ -502,7 +502,12 @@ data class OrchestrationMessage(
     val createdAt: String,
     val updatedAt: String,
     val attachments: List<ChatAttachment> = emptyList(),
-    val context: JsonObject? = null
+    val context: JsonObject? = null,
+    val createdBy: String? = null,
+    val creationSource: String? = null,
+    val scheduledTaskId: String? = null,
+    val senderThreadId: String? = null,
+    val idleCompaction: String? = null
 )
 
 @Serializable

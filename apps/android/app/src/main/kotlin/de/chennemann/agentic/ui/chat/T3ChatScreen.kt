@@ -172,6 +172,7 @@ fun T3ChatScreen(
     var messageIdWhenKeyboardOpened by remember(state.threadId) { mutableStateOf<String?>(null) }
     var historyDragActive by remember(state.threadId) { mutableStateOf(false) }
     var composerHeightPx by remember { mutableIntStateOf(0) }
+    var screenAreaHeightPx by remember { mutableIntStateOf(0) }
     var consumedImeHeightPx by remember(state.threadId) { mutableIntStateOf(0) }
     val density = LocalDensity.current
     val imeInsets = WindowInsets.ime
@@ -286,6 +287,7 @@ fun T3ChatScreen(
             modifier = modifier
                 .fillMaxSize()
                 .imePadding()
+                .onSizeChanged { screenAreaHeightPx = it.height }
                 .onKeyEvent { keyEvent ->
                     val stroke = keyEvent.toHardwareKeyStroke(KeyboardFocus.GLOBAL)
                         ?: return@onKeyEvent false
@@ -368,7 +370,7 @@ fun T3ChatScreen(
                             is ChatTimelineItemUi.WorkSummary -> TextButton(
                                 onClick = { expandedActivities[item.lazyKey] = expandedActivities[item.lazyKey] != true },
                             ) {
-                                Text(item.label + if (expandedActivities[item.lazyKey] == true) " - Hide work" else " - Show work")
+                                WorkSummaryLabel(item, expanded = expandedActivities[item.lazyKey] == true)
                             }
                             is ChatTimelineItemUi.Message -> MessageItem(
                                 message = item.value,
@@ -485,7 +487,7 @@ fun T3ChatScreen(
                                     if (state.isTurnRunning) TextButton(onClick = { onEvent(ChatUiEvent.TurnInterruptRequested) }) { Text("Stop") }
                                 }
                                 if (requestsExpanded) Column(
-                                    modifier = Modifier.heightIn(max = 360.dp).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                                    modifier = Modifier.heightIn(max = pendingRequestsMaxHeight(with(density) { screenAreaHeightPx.toDp() })).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp),
                                     verticalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     pendingRequests.forEach { request ->
@@ -951,6 +953,10 @@ private fun MessageItem(
     onRequestInlineImage: (String) -> Unit = {},
     onOpenImage: (ImageViewerRequest) -> Unit = {},
 ) {
+    if (message.origin?.foldsToRow == true) {
+        FoldedMessageRow(message)
+        return
+    }
     val segments = remember(message.content) { splitMessageImages(message.content) }
     // Every picture of this message, attachments first, so the viewer can swipe between them.
     val attachmentItems = message.attachments.map {
@@ -989,6 +995,9 @@ private fun MessageItem(
         when (message.author) {
             ChatMessageAuthorUi.USER -> {
                 Column(horizontalAlignment = Alignment.End) {
+                    if (message.origin == ChatMessageOriginUi.T3CODE) {
+                        Text("Sent by T3 Code", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         colors = CardDefaults.cardColors(

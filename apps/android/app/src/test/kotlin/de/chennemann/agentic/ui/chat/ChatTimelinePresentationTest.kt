@@ -59,13 +59,25 @@ class ChatTimelinePresentationTest {
     }
 
     @Test
-    fun `settled work folds with duration while first and last messages stay visible`() {
+    fun `settled work folds progress notes with duration and diffstat while the final answer stays visible`() {
         val items = listOf(message("user", ChatMessageAuthorUi.USER), message("first", ChatMessageAuthorUi.ASSISTANT), tool("tool", ActivityStatusUi.COMPLETED), message("middle", ChatMessageAuthorUi.ASSISTANT), message("last", ChatMessageAuthorUi.ASSISTANT))
-        val folded = foldSettledTurns(items, "turn", null, "2026-10-04T10:00:00Z", "2026-10-04T10:01:02Z", false)
-        assertEquals(listOf("user", "first", "turn", "last"), folded.map { it.id })
-        val summary = folded[2] as ChatTimelineItemUi.WorkSummary
+        val stat = TurnDiffStatUi(files = 2, additions = 12, deletions = 3)
+        val folded = foldSettledTurns(items, "turn", null, "2026-10-04T10:00:00Z", "2026-10-04T10:01:02Z", false, mapOf("turn" to stat))
+        assertEquals(listOf("user", "turn", "last"), folded.map { it.id })
+        val summary = folded[1] as ChatTimelineItemUi.WorkSummary
         assertEquals("Worked for 1m 2s", summary.label)
-        assertEquals(2, summary.items.size)
+        assertEquals(stat, summary.diffStat)
+        assertEquals(3, summary.items.size)
         assertFalse(foldSettledTurns(items, "turn", "turn", null, null, false).any { it is ChatTimelineItemUi.WorkSummary })
+    }
+
+    @Test
+    fun `compactions never fold into settled work`() {
+        val compaction = TimedItem(
+            at = "2026-10-04T10:00:02Z", turnId = "turn",
+            item = ChatTimelineItemUi.Activity(ChatActivityUi.Compaction("compaction", "Context compacted")),
+        )
+        val folded = foldSettledTurns(listOf(tool("tool", ActivityStatusUi.COMPLETED), compaction, message("last", ChatMessageAuthorUi.ASSISTANT)), "turn", null, null, null, false)
+        assertEquals(listOf("turn", "compaction", "last"), folded.map { it.id })
     }
 }

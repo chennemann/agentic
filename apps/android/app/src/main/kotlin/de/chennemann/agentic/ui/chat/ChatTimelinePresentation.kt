@@ -53,6 +53,7 @@ internal fun foldSettledTurns(
     startedAt: String?,
     completedAt: String?,
     interrupted: Boolean,
+    diffStats: Map<String, TurnDiffStatUi> = emptyMap(),
 ): List<ChatTimelineItemUi> {
     val hidden = mutableSetOf<String>()
     val summaries = mutableMapOf<String, ChatTimelineItemUi.WorkSummary>()
@@ -70,8 +71,8 @@ internal fun foldSettledTurns(
         if (turnId == runningTurnId) continue
         val messages = entries.mapNotNull { (it.item as? ChatTimelineItemUi.Message)?.value }
         if (messages.any { it.isStreaming && it.author != ChatMessageAuthorUi.REASONING }) continue
-        val assistants = messages.filter { it.author == ChatMessageAuthorUi.ASSISTANT }
-        val keptMessages = setOfNotNull(assistants.firstOrNull()?.id, assistants.lastOrNull()?.id)
+        // Settled progress notes fold with the work; the turn's final answer stays.
+        val keptMessages = setOfNotNull(messages.lastOrNull { it.author == ChatMessageAuthorUi.ASSISTANT }?.id)
         val folded = entries.filter { entry ->
             when (val item = entry.item) {
                 is ChatTimelineItemUi.Message -> item.id !in keptMessages &&
@@ -99,6 +100,7 @@ internal fun foldSettledTurns(
                     ChatTimelineItemUi.Activity(activity.copy(status = ActivityStatusUi.STOPPED))
                 } else entry.item
             }),
+            diffStat = diffStats[turnId],
         )
         hidden += folded.map { it.item.lazyKey }
     }

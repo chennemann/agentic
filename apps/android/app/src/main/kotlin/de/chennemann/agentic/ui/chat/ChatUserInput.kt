@@ -27,12 +27,20 @@ internal fun JsonObject.inputQuestions(
             UserInputOptionUi(
                 id = (fields["value"] as? JsonPrimitive)?.contentOrNull ?: label,
                 label = label,
-                description = (fields["description"] as? JsonPrimitive)?.contentOrNull,
+                // Providers without a description repeat the label there.
+                description = (fields["description"] as? JsonPrimitive)?.contentOrNull?.takeUnless { it == label },
+                preview = (fields["preview"] as? JsonPrimitive)?.contentOrNull?.takeIf(String::isNotBlank),
             )
         },
         textAnswer = textAnswer(id),
         selectedOptionIds = selectedOptions(id),
     )
+}
+
+/** The chosen option whose preview to show; a custom answer replaces any choice. */
+fun UserInputQuestionUi.previewOption(): UserInputOptionUi? {
+    if (allowsCustomAnswer && textAnswer.isNotBlank()) return null
+    return options.lastOrNull { it.id in selectedOptionIds && it.preview != null }
 }
 
 internal fun UserInputQuestionUi.resolvedAnswer(): JsonElement? {

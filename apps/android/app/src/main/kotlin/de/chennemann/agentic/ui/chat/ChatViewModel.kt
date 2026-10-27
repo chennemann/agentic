@@ -2200,7 +2200,8 @@ class ChatViewModel(
                 loading = orchestration.threadId != null && detail?.id != orchestration.threadId,
             ),
             latestTurnChanges = detail?.latestTurnChanges() ?: LatestTurnChangesUiState(),
-            latestTurnTiming = detail?.latestTurn?.let { turn ->
+            // A compaction turn's divider is its working row.
+            latestTurnTiming = detail?.latestTurn?.takeUnless { detail.isCompactionTurn(it.turnId) }?.let { turn ->
                 ChatTurnTimingUi(
                     startedAt = turn.startedAt ?: turn.requestedAt,
                     completedAt = turn.completedAt,
@@ -2322,6 +2323,7 @@ class ChatViewModel(
             }
             .toSet()
         val messages = detail.messages.map {
+            val presentation = it.presentation()
             TimedItem(
                 at = it.createdAt,
                 item = ChatTimelineItemUi.Message(
@@ -2333,7 +2335,8 @@ class ChatViewModel(
                             "reasoning" -> ChatMessageAuthorUi.REASONING
                             else -> ChatMessageAuthorUi.SYSTEM
                         },
-                        content = it.text,
+                        content = presentation.text,
+                        origin = presentation.origin,
                         isStreaming = it.streaming,
                         canCopy = it.id in copyableAssistantMessageIds,
                         timestamp = if (it.role == "user") it.createdAt else it.updatedAt,
@@ -2419,7 +2422,11 @@ class ChatViewModel(
                 turnPhase = TurnPhaseActivity,
             )
         }
-        val items = messages + activities + plans
+        val items = presentCompactions(
+            messages + activities + plans,
+            detail.messages.filter { it.isCompactionCommand() }.associate { it.id to it.idleCompactionReason() },
+            runningTurnId,
+        )
         val turnStartedAt = items
             .filter { it.turnId != null }
             .groupBy { requireNotNull(it.turnId) }
@@ -2437,7 +2444,7 @@ class ChatViewModel(
         val collapsed = publishHtmlRenders(collapseToolLifecycles(sorted))
         return foldSettledTurns(collapsed, detail.latestTurn?.turnId, runningTurnId,
             detail.latestTurn?.let { it.startedAt ?: it.requestedAt }, detail.latestTurn?.completedAt,
-            detail.latestTurn?.state == "interrupted")
+            detail.latestTurn?.state == "interrupted", detail.checkpoints.turnDiffStats())
     }
 
     private fun OrchestrationActivity.toUi(local: LocalState): ChatActivityUi {
@@ -2471,6 +2478,8 @@ class ChatViewModel(
                     }.toMap(),
                     warning = (payload["options"] as? JsonArray).orEmpty().firstNotNullOfOrNull { (it as? JsonObject)?.string("warning") },
                     responseInFlight = inFlight,
+                    reason = payload.string("reason")?.trim()?.takeIf(String::isNotEmpty),
+                    fullAccessExplanation = fullAccessOverrideExplanation(payload.string("fullAccessOverride")),
                 ),
             )
 
@@ -2492,6 +2501,8 @@ class ChatViewModel(
                     responseInFlight = inFlight,
                 ),
             )
+
+            "compaction" -> payload.toCompactionUi(id)
 
             else -> when {
                 summary.equals("Plan updated", ignoreCase = true) ->
