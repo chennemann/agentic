@@ -4,16 +4,13 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.doubleOrNull
 import kotlinx.serialization.json.intOrNull
 
 internal data class HtmlGalleryImage(val source: String, val name: String)
 internal data class HtmlGalleryRequest(val images: List<HtmlGalleryImage>, val index: Int)
 
 internal fun readHtmlGalleryRequest(message: JsonObject): HtmlGalleryRequest? {
-    if (message.text("jsonrpc") != "2.0" || message.text("method") != "t3/open-images") return null
-    val id = message["id"] as? JsonPrimitive ?: return null
-    if (!id.isString && id.doubleOrNull?.isFinite() != true) return null
+    if (message.text("jsonrpc") != "2.0" || message.text("method") != "t3/notifications/open-image") return null
     val params = message["params"] as? JsonObject ?: return null
     val images = (params["images"] as? JsonArray)?.takeIf { it.size in 1..200 } ?: return null
     val index = (params["index"] as? JsonPrimitive)?.takeUnless { it.isString }?.intOrNull?.takeIf { it in images.indices } ?: return null

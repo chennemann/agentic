@@ -26,6 +26,8 @@ import androidx.compose.material3.Text
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.swipeUp
 import de.chennemann.agentic.domain.attachments.HtmlRenderPage
@@ -158,6 +160,42 @@ class HtmlRenderViewTest {
         assertEquals(listOf("First.png", "Second.png", "Hidden.png"), request.get().items.map { (it as ImageViewerItem.Conversation).name })
     }
 
+    @Test fun tappingPublishedImageOpensViewerAndSavesAnnotationsToReply() {
+        val bitmap = Bitmap.createBitmap(40, 30, Bitmap.Config.ARGB_8888).apply { eraseColor(android.graphics.Color.GRAY) }
+        val bytes = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+        bitmap.recycle()
+        val document = fixture.replace(
+            Regex("(?<=base64,)[A-Za-z0-9+/=]+"),
+            Base64.encodeToString(bytes, Base64.NO_WRAP),
+        )
+        var request by mutableStateOf<ImageViewerRequest?>(null)
+        val events = mutableListOf<de.chennemann.agentic.ui.chat.ChatUiEvent>()
+        val state = de.chennemann.agentic.ui.chat.ChatUiState(
+            "Thread", "Environment", null, "thread", emptyList(),
+            connection = de.chennemann.agentic.ui.chat.ChatConnectionUi.Live,
+            composer = de.chennemann.agentic.ui.chat.ComposerUiState(),
+        )
+        compose.setContent {
+            MaterialTheme {
+                HtmlDocumentView(document, "Gallery", Modifier.fillMaxSize(), onOpenImages = { request = it })
+                request?.let { gallery ->
+                    de.chennemann.agentic.ui.chat.ImageViewerHost(gallery, state, events::add) { request = null }
+                }
+            }
+        }
+        awaitBridge()
+        tapElement("selected")
+        compose.onNodeWithContentDescription("Annotate Second.png").performClick()
+        compose.onNodeWithContentDescription("Annotation canvas").performClick()
+        compose.onNodeWithContentDescription("Close image").performClick()
+        compose.runOnIdle {
+            val feedback = events.filterIsInstance<de.chennemann.agentic.ui.chat.ChatUiEvent.ConversationImageAnnotated>().single()
+            assertEquals("Second.png", feedback.name)
+            assertEquals(1, feedback.annotations.size)
+            assertEquals(null, request)
+        }
+    }
+
     @Test fun explicitGalleryHandsOffEveryImageAndRejectsInvalidRequests() {
         val request = AtomicReference<ImageViewerRequest>()
         compose.setContent { MaterialTheme { HtmlDocumentView(fixture, "Gallery", Modifier.fillMaxSize(), onOpenImages = { request.set(it) }) } }
@@ -167,7 +205,7 @@ class HtmlRenderViewTest {
         val opened = request.get()
         assertEquals(1, opened.index)
         assertEquals(3, opened.items.size)
-        evaluate("window.ReactNativeWebView.postMessage(JSON.stringify({jsonrpc:'2.0',id:1,method:'t3/open-images',params:{images:[{src:'file:///private.png',name:'bad'}],index:0}}))")
+        evaluate("window.ReactNativeWebView.postMessage(JSON.stringify({jsonrpc:'2.0',method:'t3/notifications/open-image',params:{images:[{src:'file:///private.png',name:'bad'}],index:0}}))")
         compose.waitForIdle()
         assertEquals(opened, request.get())
     }
