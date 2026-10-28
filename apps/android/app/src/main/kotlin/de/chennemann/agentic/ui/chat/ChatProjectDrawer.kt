@@ -24,7 +24,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalDrawerSheet
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -54,12 +57,53 @@ import de.chennemann.agentic.icons.StarOutline
 import de.chennemann.agentic.icons.Terminal
 import de.chennemann.agentic.ui.search.ThreadSearchEntry
 
-/**
- * Left drawer: environment and settings on top, projects with their threads in the middle,
- * thread tools (files, terminal, changes, usage) pinned at the bottom.
- */
+/** Full-page project selector, to the right of the conversation. */
 @Composable
-fun ChatProjectDrawer(
+fun ChatProjectsPage(
+    state: ChatUiState,
+    onEvent: (ChatUiEvent) -> Unit,
+    onClose: () -> Unit,
+    onOpenSearch: () -> Unit = {},
+    focusSearch: Boolean = false,
+) {
+    var query by rememberSaveable { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+    LaunchedEffect(focusSearch) { if (focusSearch) focusRequester.requestFocus() }
+    Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text(state.environmentLabel, style = MaterialTheme.typography.titleMedium)
+                state.environmentPicker.environments
+                    .firstOrNull { it.id == state.environmentPicker.selectedEnvironmentId }
+                    ?.let { EnvironmentConnectionDot(it.connection, withLabel = true) }
+            }
+            IconButton(onClick = { onClose(); onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.NAVIGATION)) }) {
+                Icon(Icons.Settings, contentDescription = "Settings")
+            }
+        }
+        OutlinedTextField(
+            value = query,
+            onValueChange = { query = it },
+            label = { Text("Search projects") },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp).focusRequester(focusRequester),
+        )
+        ThreadSearchEntry(onClick = { onClose(); onOpenSearch() })
+        Box(Modifier.weight(1f)) {
+            ProjectThreadList(
+                state, onEvent,
+                onThreadChosen = { onClose(); onEvent(ChatUiEvent.ThreadSelected(it)) },
+                onNewThread = { onClose(); onEvent(ChatUiEvent.NewThreadRequested) },
+                onAddProject = { onClose(); onEvent(ChatUiEvent.ProjectCreationRequested) },
+                query = query,
+            )
+        }
+    }
+}
+
+/** Project tools occupy the full page to the left of the conversation. */
+@Composable
+fun ChatProjectToolsPage(
     state: ChatUiState,
     onEvent: (ChatUiEvent) -> Unit,
     onClose: () -> Unit,
@@ -69,39 +113,12 @@ fun ChatProjectDrawer(
     onOpenUsage: () -> Unit,
     onOpenChanges: (String) -> Unit = {},
     onOpenPullRequests: () -> Unit = {},
-    onOpenSearch: () -> Unit = {},
 ) {
-    ModalDrawerSheet {
-        Row(
-            Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Column(Modifier.weight(1f)) {
-                Text(state.environmentLabel, style = MaterialTheme.typography.titleMedium)
-                state.environmentPicker.environments
-                    .firstOrNull { it.id == state.environmentPicker.selectedEnvironmentId }
-                    ?.let { EnvironmentConnectionDot(it.connection, withLabel = true) }
-            }
-            IconButton(onClick = { onClose(); onEvent(ChatUiEvent.PickerRequested(ChatPickerUi.NAVIGATION)) }) {
-                Icon(Icons.Settings, contentDescription = "Settings", modifier = Modifier.size(22.dp))
-            }
-        }
-        HorizontalDivider(Modifier.padding(vertical = 8.dp))
-        ThreadSearchEntry(onClick = { onClose(); onOpenSearch() })
-        TextButton(onClick = { onClose(); onOpenPullRequests() }, modifier = Modifier.fillMaxWidth()) {
-            Text("Pull requests")
-        }
-        Box(Modifier.weight(1f)) {
-            ProjectThreadList(
-                state = state,
-                onEvent = onEvent,
-                onThreadChosen = { onClose(); onEvent(ChatUiEvent.ThreadSelected(it)) },
-                onNewThread = { onClose(); onEvent(ChatUiEvent.NewThreadRequested) },
-                onAddProject = { onClose(); onEvent(ChatUiEvent.ProjectCreationRequested) },
-            )
-        }
+    Column(Modifier.fillMaxSize().padding(12.dp)) {
+        Text(state.projectLabel ?: "Project tools", style = MaterialTheme.typography.titleLarge)
+        Spacer(Modifier.weight(1f))
+        TextButton(onClick = { onClose(); onOpenPullRequests() }) { Text("Pull requests") }
         state.threadId?.let { threadId ->
-            HorizontalDivider()
             DrawerTools(state, threadId, onEvent, onClose, onOpenFiles, onOpenTerminal, onRunProjectScript, onOpenUsage, onOpenChanges)
         }
     }
@@ -120,7 +137,7 @@ private fun ColumnScope.DrawerTools(
     onOpenChanges: (String) -> Unit = {},
 ) {
     var terminalMenuOpen by remember { mutableStateOf(false) }
-    Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(Modifier.fillMaxWidth().padding(8.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (state.canBrowseFiles) {
             TextButton(onClick = { onClose(); onOpenFiles(threadId) }) { Text("Files") }
         }
@@ -164,7 +181,6 @@ private fun ColumnScope.DrawerTools(
                 Text("Changes (${state.latestTurnChanges.files.size})")
             }
         }
-        Spacer(Modifier.weight(1f))
         TextButton(onClick = { onClose(); onOpenUsage() }) { Text("Usage") }
     }
 }
@@ -181,12 +197,14 @@ fun ProjectThreadList(
     onThreadChosen: (String) -> Unit,
     onNewThread: () -> Unit,
     onAddProject: () -> Unit,
+    query: String = "",
 ) {
     var showAll by rememberSaveable { mutableStateOf(false) }
     val currentProjectId = state.projectId
     val expandedId = state.threadPicker.selectedProjectId
     val projects = state.threadPicker.projects
-        .filter { showAll || it.unsettledThreadCount > 0 || it.favorite || it.id == currentProjectId }
+        .filter { it.label.contains(query, ignoreCase = true) }
+        .filter { query.isNotBlank() || showAll || it.unsettledThreadCount > 0 || it.favorite || it.id == currentProjectId }
         .sortedWith(
             compareByDescending<ProjectPickerItemUi> { it.id == currentProjectId }
                 .thenByDescending { it.favorite }

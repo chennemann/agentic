@@ -2,6 +2,8 @@ package de.chennemann.agentic.ui.chat
 
 import android.content.ClipData
 import android.content.ClipboardManager
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.gestures.scrollBy
@@ -40,9 +42,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material3.Card
-import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.ModalNavigationDrawer
-import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
@@ -80,6 +79,8 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -160,7 +161,7 @@ fun T3ChatScreen(
     val openFileLink = remember {
         FileLinkHandler { target -> currentThreadId?.let { currentOpenFileLink(it, target) } }
     }
-    val drawerState = rememberDrawerState(DrawerValue.Closed)
+    val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
     var imageViewer by remember { mutableStateOf<ImageViewerRequest?>(null) }
     val openImage = { request: ImageViewerRequest -> imageViewer = request }
     val scope = rememberCoroutineScope()
@@ -279,268 +280,285 @@ fun T3ChatScreen(
         consumedImeHeightPx = imeHeightPx
     }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            ChatProjectDrawer(
-                state = state,
-                onEvent = onEvent,
-                onClose = { scope.launch { drawerState.close() } },
-                onOpenFiles = onOpenFiles,
-                onOpenTerminal = onOpenTerminal,
-                onOpenChanges = onOpenChanges,
-                onRunProjectScript = onRunProjectScript,
-                onOpenUsage = onOpenUsage,
-                onOpenPullRequests = onOpenPullRequests,
-                onOpenSearch = onOpenSearch,
-            )
-        },
-    ) {
-        Box(
-            modifier = modifier
-                .fillMaxSize()
-                .imePadding()
-                .onSizeChanged { screenAreaHeightPx = it.height }
-                .onKeyEvent { keyEvent ->
-                    val stroke = keyEvent.toHardwareKeyStroke(KeyboardFocus.GLOBAL)
-                        ?: return@onKeyEvent false
-                    val action = HardwareKeyboardBindings.map(
-                        stroke,
-                        canSend = false,
-                        turnRunning = state.isTurnRunning,
-                    ) ?: return@onKeyEvent false
-                    action.toChatUiEvent()?.let(onEvent)
-                    true
-                },
-        ) {
-            Column(
-                modifier = Modifier.fillMaxSize(),
-            ) {
-                ConnectionStatusBanner(
-                    connection = state.connection,
-                    onRetry = { onEvent(ChatUiEvent.ConnectionRetryRequested) },
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    BackHandler(pagerState.currentPage != 1) { scope.launch { pagerState.animateScrollToPage(1) } }
+    LaunchedEffect(pagerState.settledPage) {
+        when (pagerState.settledPage) {
+            0 -> {
+                // The tools page has no editor. Clear both Compose and native editor focus so
+                // hardware typing cannot bring the offscreen conversation back into view.
+                inputFocusRequested = null
+                focusManager.clearFocus(force = true)
+                keyboardController?.hide()
+            }
+            1 -> inputFocusRequested = imeHeightPx > 0
+            else -> inputFocusRequested = null
+        }
+    }
+    Column(modifier.fillMaxSize().imePadding()) {
+        HorizontalPager(state = pagerState, beyondViewportPageCount = 1, modifier = Modifier.weight(1f)) { page ->
+            val closePanel = { scope.launch { pagerState.animateScrollToPage(1) }; Unit }
+            when (page) {
+                0 -> ChatProjectToolsPage(
+                    state, onEvent, closePanel, onOpenFiles, onOpenTerminal,
+                    onRunProjectScript, onOpenUsage, onOpenChanges, onOpenPullRequests,
                 )
-                connectionNotice()
-
-                if (state.history.hasMore) {
-                    TextButton(
-                        onClick = {
-                            followLatest = false
-                            onEvent(ChatUiEvent.OlderHistoryRequested)
-                        },
-                        enabled = !state.history.loading,
-                        modifier = Modifier.align(Alignment.CenterHorizontally),
-                    ) {
-                        Text(if (state.history.loading) "Loading history…" else "Load older messages")
-                    }
-                    state.history.errorMessage?.let {
-                        Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
-                    }
-                }
-
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                ) {
-                    LazyColumn(
-                        state = listState,
-                        flingBehavior = turnBoundaryFlingBehavior,
+                2 -> ChatProjectsPage(
+                    state = state,
+                    onEvent = onEvent,
+                    onClose = closePanel,
+                    onOpenSearch = onOpenSearch,
+                    focusSearch = pagerState.settledPage == 2 && imeHeightPx > 0,
+                )
+                else -> {
+                    Box(
                         modifier = Modifier
                             .fillMaxSize()
-                            .nestedScroll(historyScrollConnection)
-                            .testTag(ChatTimelineTestTag),
-                        contentPadding = PaddingValues(
-                            start = 16.dp,
-                            top = 12.dp,
-                            end = 16.dp,
-                            bottom = 12.dp + composerHeight,
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                    ) {
-                    if (timeline.isEmpty()) {
-                        item("empty-chat") {
-                            EmptyChatState(
-                                hasProject = state.projectLabel != null,
-                                onNewThread = { onEvent(ChatUiEvent.NewThreadRequested) },
-                            )
-                        }
-                    }
-
-                    items(
-                        items = timeline,
-                        key = { it.lazyKey },
-                    ) { item ->
-                        CompositionLocalProvider(LocalMarkdownLinkHandler provides openFileLink, LocalSharedFiles provides sharedFiles) {
-                        when (item) {
-                            is ChatTimelineItemUi.HtmlRender -> HtmlRenderView(
-                                page = item.page,
-                                content = state.htmlPages[item.page.attachmentId],
-                                onLoad = { onEvent(ChatUiEvent.HtmlPageRequested(item.page.attachmentId)) },
-                                onOpenImages = openImage,
-                            )
-                            is ChatTimelineItemUi.WorkSummary -> TextButton(
-                                onClick = { expandedActivities[item.lazyKey] = expandedActivities[item.lazyKey] != true },
-                            ) {
-                                WorkSummaryLabel(item, expanded = expandedActivities[item.lazyKey] == true)
-                            }
-                            is ChatTimelineItemUi.Message -> MessageItem(
-                                message = item.value,
-                                inlineImages = state.inlineImages,
-                                onRequestInlineImage = { onEvent(ChatUiEvent.InlineImageRequested(it)) },
-                                onOpenImage = openImage,
-                            )
-                            is ChatTimelineItemUi.Activity -> {
-                                ChatActivityCard(
-                                    activity = item.value,
-                                    expanded = expandedActivities[item.value.id] == true,
-                                    onEvent = {
-                                        if (it is ChatUiEvent.ActivityExpansionChanged) {
-                                            expandedActivities[it.activityId] = it.expanded
-                                        } else {
-                                            onEvent(it)
-                                        }
-                                    },
-                                )
-                            }
-                            is ChatTimelineItemUi.ToolGroup -> {
-                                ToolActivityGroup(
-                                    groupId = item.id,
-                                    activities = item.activities,
-                                    expanded = expandedActivities[item.id] == true,
-                                    activityExpanded = { expandedActivities[it] == true },
-                                    onEvent = {
-                                        if (it is ChatUiEvent.ActivityExpansionChanged) {
-                                            expandedActivities[it.activityId] = it.expanded
-                                        } else {
-                                            onEvent(it)
-                                        }
-                                    },
-                                )
-                            }
-                        }
-                        }
-                    }
-
-                        guestPendingMessages(threadGuestShare)
-
-                        state.latestTurnTiming?.let { timing ->
-                            item("latest-turn-timing:${timing.startedAt}") {
-                                TurnTimingRow(timing)
-                            }
-                        }
-
-                        item("bottom-spacer") {
-                            Spacer(modifier = Modifier.height(20.dp))
-                        }
-                    }
-
-                    if (!followLatest) {
-                        SmallFloatingActionButton(
-                            onClick = {
-                                followLatest = true
-                                scope.launch {
-                                    listState.scrollToLatest()
-                                }
+                            .onSizeChanged { screenAreaHeightPx = it.height }
+                            .onKeyEvent { keyEvent ->
+                                val stroke = keyEvent.toHardwareKeyStroke(KeyboardFocus.GLOBAL)
+                                    ?: return@onKeyEvent false
+                                val action = HardwareKeyboardBindings.map(
+                                    stroke,
+                                    canSend = false,
+                                    turnRunning = state.isTurnRunning,
+                                ) ?: return@onKeyEvent false
+                                action.toChatUiEvent()?.let(onEvent)
+                                true
                             },
-                            modifier = Modifier
-                                .align(Alignment.BottomEnd)
-                                .padding(
-                                    start = 16.dp,
-                                    top = 16.dp,
-                                    end = 16.dp,
-                                    bottom = 16.dp + composerHeight,
-                                )
-                                .testTag(FollowLatestTestTag),
+                    ) {
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
                         ) {
-                            Icon(
-                                imageVector = Icons.DoubleChevronDown,
-                                contentDescription = "Scroll to latest message",
-                                modifier = Modifier.size(28.dp),
+                            ConnectionStatusBanner(
+                                connection = state.connection,
+                                onRetry = { onEvent(ChatUiEvent.ConnectionRetryRequested) },
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
                             )
-                        }
-                    }
+                            connectionNotice()
 
-                }
-            }
-
-            val threadPanelVisible = state.activePicker == ChatPickerUi.PROJECT_THREAD
-            var threadPanelProgress by remember { mutableFloatStateOf(0f) }
-            ThreadPanelScrim(
-                visible = threadPanelVisible,
-                progress = threadPanelProgress,
-                onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
-            )
-            Column(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .zIndex(2f),
-                verticalArrangement = Arrangement.Bottom,
-            ) {
-                // Weighted slot: the composer below is measured first and keeps its size; the panel
-                // may only grow into what is left above it.
-                BoxWithConstraints(modifier = Modifier.weight(1f, fill = false)) {
-                    ThreadPanel(
-                        visible = threadPanelVisible,
-                        state = state,
-                        onEvent = onEvent,
-                        onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
-                        maxHeight = maxHeight,
-                        onRevealProgress = { threadPanelProgress = it },
-                    )
-                }
-                Column(modifier = Modifier.onSizeChanged { composerHeightPx = it.height }) {
-                    if (pendingRequests.isNotEmpty()) {
-                        Surface(color = MaterialTheme.colorScheme.surface) {
-                            Column {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    TextButton(onClick = { requestsExpanded = !requestsExpanded }, modifier = Modifier.weight(1f)) {
-                                        Text(if (requestsExpanded) "Hide pending requests" else "Response needed (${pendingRequests.size})")
-                                    }
-                                    if (state.isTurnRunning) TextButton(onClick = { onEvent(ChatUiEvent.TurnInterruptRequested) }) { Text("Stop") }
-                                }
-                                if (requestsExpanded) Column(
-                                    modifier = Modifier.heightIn(max = pendingRequestsMaxHeight(with(density) { screenAreaHeightPx.toDp() })).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                            if (state.history.hasMore) {
+                                TextButton(
+                                    onClick = {
+                                        followLatest = false
+                                        onEvent(ChatUiEvent.OlderHistoryRequested)
+                                    },
+                                    enabled = !state.history.loading,
+                                    modifier = Modifier.align(Alignment.CenterHorizontally),
                                 ) {
-                                    pendingRequests.forEach { request ->
-                                        ChatActivityCard(request.value, expanded = true, onEvent = onEvent)
+                                    Text(if (state.history.loading) "Loading history…" else "Load older messages")
+                                }
+                                state.history.errorMessage?.let {
+                                    Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(horizontal = 16.dp))
+                                }
+                            }
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxWidth(),
+                            ) {
+                                LazyColumn(
+                                    state = listState,
+                                    flingBehavior = turnBoundaryFlingBehavior,
+                                    modifier = Modifier
+                                        .fillMaxSize()
+                                        .nestedScroll(historyScrollConnection)
+                                        .testTag(ChatTimelineTestTag),
+                                    contentPadding = PaddingValues(
+                                        start = 16.dp,
+                                        top = 12.dp,
+                                        end = 16.dp,
+                                        bottom = 12.dp + composerHeight,
+                                    ),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                if (timeline.isEmpty()) {
+                                    item("empty-chat") {
+                                        EmptyChatState(
+                                            hasProject = state.projectLabel != null,
+                                            onNewThread = { onEvent(ChatUiEvent.NewThreadRequested) },
+                                        )
                                     }
                                 }
-                                state.composer.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
+
+                                items(
+                                    items = timeline,
+                                    key = { it.lazyKey },
+                                ) { item ->
+                                    CompositionLocalProvider(LocalMarkdownLinkHandler provides openFileLink, LocalSharedFiles provides sharedFiles) {
+                                    when (item) {
+                                        is ChatTimelineItemUi.HtmlRender -> HtmlRenderView(
+                                            page = item.page,
+                                            content = state.htmlPages[item.page.attachmentId],
+                                            onLoad = { onEvent(ChatUiEvent.HtmlPageRequested(item.page.attachmentId)) },
+                                            onOpenImages = openImage,
+                                        )
+                                        is ChatTimelineItemUi.WorkSummary -> TextButton(
+                                            onClick = { expandedActivities[item.lazyKey] = expandedActivities[item.lazyKey] != true },
+                                        ) {
+                                            WorkSummaryLabel(item, expanded = expandedActivities[item.lazyKey] == true)
+                                        }
+                                        is ChatTimelineItemUi.Message -> MessageItem(
+                                            message = item.value,
+                                            inlineImages = state.inlineImages,
+                                            onRequestInlineImage = { onEvent(ChatUiEvent.InlineImageRequested(it)) },
+                                            onOpenImage = openImage,
+                                        )
+                                        is ChatTimelineItemUi.Activity -> {
+                                            ChatActivityCard(
+                                                activity = item.value,
+                                                expanded = expandedActivities[item.value.id] == true,
+                                                onEvent = {
+                                                    if (it is ChatUiEvent.ActivityExpansionChanged) {
+                                                        expandedActivities[it.activityId] = it.expanded
+                                                    } else {
+                                                        onEvent(it)
+                                                    }
+                                                },
+                                            )
+                                        }
+                                        is ChatTimelineItemUi.ToolGroup -> {
+                                            ToolActivityGroup(
+                                                groupId = item.id,
+                                                activities = item.activities,
+                                                expanded = expandedActivities[item.id] == true,
+                                                activityExpanded = { expandedActivities[it] == true },
+                                                onEvent = {
+                                                    if (it is ChatUiEvent.ActivityExpansionChanged) {
+                                                        expandedActivities[it.activityId] = it.expanded
+                                                    } else {
+                                                        onEvent(it)
+                                                    }
+                                                },
+                                            )
+                                        }
+                                    }
+                                    }
+                                }
+
+                                    guestPendingMessages(threadGuestShare)
+
+                                    state.latestTurnTiming?.let { timing ->
+                                        item("latest-turn-timing:${timing.startedAt}") {
+                                            TurnTimingRow(timing)
+                                        }
+                                    }
+
+                                    item("bottom-spacer") {
+                                        Spacer(modifier = Modifier.height(20.dp))
+                                    }
+                                }
+
+                                if (!followLatest) {
+                                    SmallFloatingActionButton(
+                                        onClick = {
+                                            followLatest = true
+                                            scope.launch {
+                                                listState.scrollToLatest()
+                                            }
+                                        },
+                                        modifier = Modifier
+                                            .align(Alignment.BottomEnd)
+                                            .padding(
+                                                start = 16.dp,
+                                                top = 16.dp,
+                                                end = 16.dp,
+                                                bottom = 16.dp + composerHeight,
+                                            )
+                                            .testTag(FollowLatestTestTag),
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.DoubleChevronDown,
+                                            contentDescription = "Scroll to latest message",
+                                            modifier = Modifier.size(28.dp),
+                                        )
+                                    }
+                                }
+
+                            }
+                        }
+
+                        val threadPanelVisible = state.activePicker == ChatPickerUi.PROJECT_THREAD
+                        var threadPanelProgress by remember { mutableFloatStateOf(0f) }
+                        ThreadPanelScrim(
+                            visible = threadPanelVisible,
+                            progress = threadPanelProgress,
+                            onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
+                        )
+                        Column(
+                            modifier = Modifier
+                                .align(Alignment.BottomCenter)
+                                .fillMaxWidth()
+                                .zIndex(2f),
+                            verticalArrangement = Arrangement.Bottom,
+                        ) {
+                            // Weighted slot: the composer below is measured first and keeps its size; the panel
+                            // may only grow into what is left above it.
+                            BoxWithConstraints(modifier = Modifier.weight(1f, fill = false)) {
+                                ThreadPanel(
+                                    visible = threadPanelVisible,
+                                    state = state,
+                                    onEvent = onEvent,
+                                    onDismiss = { onEvent(ChatUiEvent.PickerDismissed) },
+                                    maxHeight = maxHeight,
+                                    onRevealProgress = { threadPanelProgress = it },
+                                )
+                            }
+                            Column(modifier = Modifier.onSizeChanged { composerHeightPx = it.height }) {
+                                if (pendingRequests.isNotEmpty()) {
+                                    Surface(color = MaterialTheme.colorScheme.surface) {
+                                        Column {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                TextButton(onClick = { requestsExpanded = !requestsExpanded }, modifier = Modifier.weight(1f)) {
+                                                    Text(if (requestsExpanded) "Hide pending requests" else "Response needed (${pendingRequests.size})")
+                                                }
+                                                if (state.isTurnRunning) TextButton(onClick = { onEvent(ChatUiEvent.TurnInterruptRequested) }) { Text("Stop") }
+                                            }
+                                            if (requestsExpanded) Column(
+                                                modifier = Modifier.heightIn(max = pendingRequestsMaxHeight(with(density) { screenAreaHeightPx.toDp() })).verticalScroll(rememberScrollState()).padding(horizontal = 12.dp),
+                                                verticalArrangement = Arrangement.spacedBy(8.dp),
+                                            ) {
+                                                pendingRequests.forEach { request ->
+                                                    ChatActivityCard(request.value, expanded = true, onEvent = onEvent)
+                                                }
+                                            }
+                                            state.composer.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error, modifier = Modifier.padding(12.dp)) }
+                                        }
+                                    }
+                                }
+                                threadGuestShare?.let { GuestShareBar(it) }
+                                IsolatedDraftComposer(
+                                    onOpenImage = { opened ->
+                                        val drafts = state.composer.imageAttachments.map { ImageViewerItem.Draft(it.id) }
+                                        openImage(ImageViewerRequest(drafts, drafts.indexOfFirst { it.imageId == opened.id }))
+                                    },
+                                    state = state.composer,
+                                    draft = composerDraft,
+                                    turnRunning = state.isTurnRunning,
+                                    onEvent = onEvent,
+                                    projectLabel = state.projectLabel,
+                                    threadTitle = state.title.takeIf { state.threadId != null },
+                                    onOpenProjectPicker = { scope.launch { pagerState.animateScrollToPage(2) } },
+                                threadsOpen = threadPanelVisible,
+                                onOpenThreads = {
+                                    onEvent(
+                                        if (threadPanelVisible) ChatUiEvent.PickerDismissed else ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD),
+                                    )
+                                },
+                                    modelsOpen = state.activePicker == ChatPickerUi.PROVIDER_MODEL,
+                                    modifier = Modifier,
+                                    inputFocusRequested = inputFocusRequested,
+                                    onInputFocusedManually = {
+                                        inputFocusedManually = true
+                                        messageIdWhenKeyboardOpened = latestMessageId
+                                        inputFocusRequested = true
+                                    },
+                                )
                             }
                         }
                     }
-                    threadGuestShare?.let { GuestShareBar(it) }
-                    IsolatedDraftComposer(
-                        onOpenImage = { opened ->
-                            val drafts = state.composer.imageAttachments.map { ImageViewerItem.Draft(it.id) }
-                            openImage(ImageViewerRequest(drafts, drafts.indexOfFirst { it.imageId == opened.id }))
-                        },
-                        state = state.composer,
-                        draft = composerDraft,
-                        turnRunning = state.isTurnRunning,
-                        onEvent = onEvent,
-                        projectLabel = state.projectLabel,
-                        threadTitle = state.title.takeIf { state.threadId != null },
-                        onOpenProjectPicker = { scope.launch { drawerState.open() } },
-                    threadsOpen = threadPanelVisible,
-                    onOpenThreads = {
-                        onEvent(
-                            if (threadPanelVisible) ChatUiEvent.PickerDismissed else ChatUiEvent.PickerRequested(ChatPickerUi.PROJECT_THREAD),
-                        )
-                    },
-                        modelsOpen = state.activePicker == ChatPickerUi.PROVIDER_MODEL,
-                        modifier = Modifier,
-                        inputFocusRequested = inputFocusRequested,
-                        onInputFocusedManually = {
-                            inputFocusedManually = true
-                            messageIdWhenKeyboardOpened = latestMessageId
-                            inputFocusRequested = true
-                        },
-                    )
                 }
             }
         }
