@@ -32,6 +32,7 @@ import org.junit.jupiter.api.io.TempDir
 
 class KtorT3ClientSharedFileTest {
     private val server = MockWebServer()
+    private val webSockets = MockWebSockets()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val httpClient = HttpClient(OkHttp) {
         install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
@@ -43,6 +44,7 @@ class KtorT3ClientSharedFileTest {
 
     @AfterEach
     fun tearDown() {
+        webSockets.close()
         scope.cancel()
         httpClient.close()
         server.close()
@@ -111,7 +113,7 @@ class KtorT3ClientSharedFileTest {
         val requests = LinkedBlockingQueue<JsonObject>()
         server.enqueue(MockResponse().setHeader("content-type", "application/json").setBody("""{"ticket":"ticket","expiresAt":"2099-01-01T00:00:00Z"}"""))
         server.enqueue(
-            MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+            webSockets.upgrade(object : WebSocketListener() {
                 override fun onMessage(webSocket: WebSocket, text: String) {
                     val message = Json.parseToJsonElement(text).jsonObject
                     if (message["_tag"]?.jsonPrimitive?.content != "Request") return

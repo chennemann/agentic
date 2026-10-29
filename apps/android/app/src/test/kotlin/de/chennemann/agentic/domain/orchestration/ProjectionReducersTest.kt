@@ -17,28 +17,18 @@ import org.junit.jupiter.api.Test
 
 class ProjectionReducersTest {
     @Test
-    fun `archived subscription has an independent cursor and survives active snapshots and removals`() {
-        val archived = de.chennemann.agentic.t3.contract.V2Orchestration.archiveItem(
-            T3Json.parseToJsonElement("""{"kind":"snapshot","snapshot":{"schemaVersion":2,"snapshotSequence":100,"projects":[],"threads":[{"id":"thread","projectId":"project","title":"Archived","createdAt":"now","updatedAt":"now","archivedAt":"now"}]}}"""),
-        )
-        val early = (ShellProjectionReducer.reduce(ProjectionState(), archived) as Reduction.Applied).state
-        assertEquals(null, early.sequence)
-        val active = (shellItems().first() as OrchestrationShellStreamItem.Snapshot)
-        val loaded = (ShellProjectionReducer.reduce(early, active) as Reduction.Applied).state
-        assertEquals(active.snapshot.snapshotSequence, loaded.sequence)
-        assertEquals(100, loaded.value!!.archivedSequence)
-        assertTrue(loaded.value!!.threads.any { it.id == "thread" && it.archivedAt != null })
+    fun `unified shell removes archived threads and replaces them on reconnect`() {
+        val active = shellItems().first() as OrchestrationShellStreamItem.Snapshot
+        val archived = active.snapshot.threads.first().copy(archivedAt = "now")
+        val initial = active.copy(snapshot = active.snapshot.copy(threads = listOf(archived)))
+        val loaded = (ShellProjectionReducer.reduce(ProjectionState(), initial) as Reduction.Applied).state
         val removed = (ShellProjectionReducer.reduce(loaded,
-            OrchestrationShellStreamItem.ThreadRemoved(active.snapshot.snapshotSequence + 1, "thread")) as Reduction.Applied).state
-        assertTrue(removed.value!!.threads.any { it.id == "thread" })
-        val unarchivedThread = removed.value!!.threads.single { it.id == "thread" }.copy(archivedAt = null)
-        val unarchived = (ShellProjectionReducer.reduce(removed,
-            OrchestrationShellStreamItem.ThreadUpserted(active.snapshot.snapshotSequence + 2, unarchivedThread)) as Reduction.Applied).state
-        val archiveRemoval = OrchestrationShellStreamItem.ArchiveChange(101, "thread")
-        val final = (ShellProjectionReducer.reduce(unarchived, archiveRemoval) as Reduction.Applied).state
-        assertEquals(unarchived.sequence, final.sequence)
-        assertEquals(null, final.value!!.threads.single { it.id == "thread" }.archivedAt)
-        assertInstanceOf(Reduction.Ignored::class.java, ShellProjectionReducer.reduce(final, archiveRemoval))
+            OrchestrationShellStreamItem.ThreadRemoved(initial.snapshot.snapshotSequence + 1, archived.id)) as Reduction.Applied).state
+        assertTrue(removed.value!!.threads.isEmpty())
+        val replacement = initial.copy(snapshot = initial.snapshot.copy(threads = emptyList(), snapshotSequence = initial.snapshot.snapshotSequence + 2))
+        val refreshed = (ShellProjectionReducer.reduce(loaded, replacement) as Reduction.Applied).state
+        assertTrue(refreshed.value!!.threads.isEmpty())
+        assertEquals(replacement.snapshot.snapshotSequence, refreshed.sequence)
     }
 
     @Test

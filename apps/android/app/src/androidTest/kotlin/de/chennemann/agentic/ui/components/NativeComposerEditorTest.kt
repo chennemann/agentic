@@ -230,10 +230,36 @@ class NativeComposerEditorTest {
         }
     }
 
+    @Test
+    fun blurRequestOnAnUnfocusedEditorDoesNotMoveFocusIntoIt() {
+        mount(mutableStateOf(ComposerUiState(draft = "idle")), focusRequested = false)
+        compose.runOnIdle {
+            val focused = compose.activity.window.decorView.findFocus()
+            assertTrue("Unexpected focus on $focused", generateSequence(focused) { it.parent as? View }.none { it is EditText || it.javaClass.simpleName == "T3ComposerEditorView" })
+        }
+    }
+
+    @Test
+    fun switchingDraftsResetsNativeUndoHistory() {
+        val state = mutableStateOf(ComposerUiState(draft = "private previous draft", draftIdentity = "first"))
+        mount(state)
+        compose.runOnIdle {
+            editor().requestFocus()
+            editor().text.append(" edited")
+        }
+        compose.runOnIdle { state.value = ComposerUiState(draft = "private previous draft edited", draftIdentity = "second") }
+        compose.runOnIdle {
+            assertEquals("private previous draft edited", editor().text.toString())
+            editor().onTextContextMenuItem(android.R.id.undo)
+            assertEquals("private previous draft edited", editor().text.toString())
+        }
+    }
+
     private fun mount(
         state: androidx.compose.runtime.MutableState<ComposerUiState>,
         events: MutableList<ChatUiEvent> = mutableListOf(),
-        mirrorEdits: Boolean = true
+        mirrorEdits: Boolean = true,
+        focusRequested: Boolean? = null
     ) {
         compose.activityRule.scenario.onActivity { activity ->
             activity.setContent {
@@ -247,7 +273,7 @@ class NativeComposerEditorTest {
                                 else -> Unit
                             }
                         }
-                    }, {}, null, Modifier.fillMaxWidth())
+                    }, {}, focusRequested, Modifier.fillMaxWidth())
                 }
             }
         }

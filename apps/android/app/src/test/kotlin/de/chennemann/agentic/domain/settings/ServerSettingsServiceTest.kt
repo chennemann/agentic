@@ -96,7 +96,7 @@ class ServerSettingsServiceTest {
             if (method == "server.updateSettings") {
                 stored = JsonObject(stored + ("projectSettingsOverrides" to input.getValue("patch").jsonObject.getValue("projectSettingsOverrides")))
             }
-            stored
+            if (method == "server.getConfig") JsonObject(mapOf("settings" to stored)) else stored
         }
         val service = ServerSettingsService(Environments, Credentials, rpc, auth(grants = true), ServerSettingsRepository())
 
@@ -104,7 +104,7 @@ class ServerSettingsServiceTest {
         assertTrue(service.repository.state.value.snapshot!!.canWrite)
         assertTrue(service.updateProject("project-1", ThreadTitleInstructionsKey, JsonPrimitive("Short")))
 
-        assertEquals(listOf("server.getSettings", "server.updateSettings"), calls.map { it.first })
+        assertEquals(listOf("server.getConfig", "server.updateSettings"), calls.map { it.first })
         assertEquals(
             "Short",
             service.repository.state.value.snapshot!!.settings.scopedText(ThreadTitleInstructionsKey, "project-1").projectOverride
@@ -115,13 +115,13 @@ class ServerSettingsServiceTest {
         val calls = mutableListOf<String>()
         val rpc = ServerSettingsRpcClient { _, _, method, _ ->
             calls += method
-            settings
+            JsonObject(mapOf("settings" to settings))
         }
         val service = ServerSettingsService(Environments, Credentials, rpc, auth(grants = false), ServerSettingsRepository())
 
         service.load()
         assertFalse(service.updateGlobal(ThreadTitleInstructionsKey, JsonPrimitive("x")))
-        assertEquals(listOf("server.getSettings"), calls)
+        assertEquals(listOf("server.getConfig"), calls)
     }
 
     private fun auth(grants: Boolean) = object : EnvironmentAuthClient {

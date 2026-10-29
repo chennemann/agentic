@@ -66,32 +66,11 @@ object ShellProjectionReducer {
         current: ProjectionState<OrchestrationShellSnapshot>,
         item: OrchestrationShellStreamItem,
     ): Reduction<ProjectionState<OrchestrationShellSnapshot>> {
-        if (item is OrchestrationShellStreamItem.ArchiveSnapshot || item is OrchestrationShellStreamItem.ArchiveChange) {
-            val value = current.value ?: OrchestrationShellSnapshot(emptyList(), emptyList(), 0)
-            val sequence = item.sequence()
-            if (item is OrchestrationShellStreamItem.ArchiveChange && sequence <= (value.archivedSequence ?: -1)) {
-                return Reduction.Ignored(current)
-            }
-            val threads = when (item) {
-                is OrchestrationShellStreamItem.ArchiveSnapshot ->
-                    item.threads + value.threads.filter { it.archivedAt == null && it.id !in item.threads.map { thread -> thread.id } }
-                is OrchestrationShellStreamItem.ArchiveChange -> {
-                    val retained = value.threads.filterNot { it.id == item.threadId && it.archivedAt != null }
-                    val thread = item.thread
-                    if (thread == null) retained else retained.filterNot { it.id == item.threadId } + thread
-                }
-            }
-            return Reduction.Applied(current.copy(value = value.copy(threads = threads, archivedSequence = sequence)))
-        }
         if (item is OrchestrationShellStreamItem.Snapshot) {
             // Enrichment frames contain only repository identities, not a replacement shell.
             // Agentic does not project repositoryIdentity yet; never advance the resume cursor here.
             if (item.repositoryIdentityRefresh) return Reduction.Ignored(current)
-            val incoming = item.snapshot.copy(
-                threads = (item.snapshot.threads + current.value?.threads.orEmpty().filter { it.archivedAt != null }).distinctBy { it.id },
-                archivedSequence = current.value?.archivedSequence,
-            )
-            return Reduction.Applied(snapshot(current, incoming, ProjectionSource.LIVE))
+            return Reduction.Applied(snapshot(current, item.snapshot, ProjectionSource.LIVE))
         }
         if (item is OrchestrationShellStreamItem.Synchronized) {
             return Reduction.Applied(current.copy(synchronized = true, source = ProjectionSource.LIVE))
@@ -117,12 +96,10 @@ object ShellProjectionReducer {
             )
 
             is OrchestrationShellStreamItem.ThreadRemoved -> value.copy(
-                threads = value.threads.filterNot { it.id == item.threadId && it.archivedAt == null },
+                threads = value.threads.filterNot { it.id == item.threadId },
             )
 
             is OrchestrationShellStreamItem.Snapshot,
-            is OrchestrationShellStreamItem.ArchiveSnapshot,
-            is OrchestrationShellStreamItem.ArchiveChange,
             OrchestrationShellStreamItem.Synchronized,
             -> value
         }
@@ -224,8 +201,6 @@ object ThreadProjectionReducer {
 }
 
 private fun OrchestrationShellStreamItem.sequence(): Long = when (this) {
-    is OrchestrationShellStreamItem.ArchiveSnapshot -> sequence
-    is OrchestrationShellStreamItem.ArchiveChange -> sequence
     is OrchestrationShellStreamItem.ProjectUpserted -> sequence
     is OrchestrationShellStreamItem.ProjectRemoved -> sequence
     is OrchestrationShellStreamItem.ThreadUpserted -> sequence

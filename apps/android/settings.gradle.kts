@@ -10,6 +10,19 @@ pluginManagement {
         }
         mavenCentral()
         gradlePluginPortal()
+        maven {
+            url = uri("https://maven.pkg.github.com/chennemann/stor")
+            content {
+                includeGroup("dev.stor")
+                includeGroup("dev.stor.publisher")
+            }
+            credentials {
+                username = providers.environmentVariable("GITHUB_ACTOR").orNull
+                    ?: providers.gradleProperty("gpr.user").orNull
+                password = providers.environmentVariable("GITHUB_TOKEN").orNull
+                    ?: providers.gradleProperty("gpr.token").orNull
+            }
+        }
     }
 }
 dependencyResolutionManagement {

@@ -47,6 +47,7 @@ import org.json.JSONObject
 
 /** The Android editor owns live IME edits; controlled echoes must never replace newer typing. */
 private class ComposerBridge {
+    private var draftIdentity: String? = null
     var view: T3ComposerEditorView? = null
     var eventCount = 0
     var value = ""
@@ -57,6 +58,17 @@ private class ComposerBridge {
     var appliedTheme: String? = null
     var appliedFontSize = -1f
     var appliedLineHeight = -1f
+
+    fun beginDraft(identity: String): Boolean {
+        if (draftIdentity == identity) return false
+        draftIdentity = identity
+        lastControlled = null
+        lastSelectionRequest = null
+        confirmedTokens = emptyList()
+        lastRenderedValue = null
+        // Event counts belong to the retained native view, even when its document changes.
+        return true
+    }
 
     fun accept(payload: Map<String, Any>): Pair<Int, Int> {
         eventCount = (payload["eventCount"] as? Number)?.toInt() ?: eventCount
@@ -76,7 +88,7 @@ fun NativeComposerEditor(
     modifier: Modifier = Modifier,
     turnRunning: Boolean = false
 ) {
-    val bridge = remember(state.draftIdentity) { ComposerBridge() }
+    val bridge = remember { ComposerBridge() }
     val events by rememberUpdatedState(onEvent)
     val focusedCallback by rememberUpdatedState(onFocus)
     var height by remember(state.draftIdentity) { mutableStateOf(48f) }
@@ -117,7 +129,8 @@ fun NativeComposerEditor(
     LaunchedEffect(focusRequested, bridge.view, state.enabled) {
         if (focusRequested == true && state.enabled) bridge.view?.focusEditor()
         if (focusRequested == false) {
-            bridge.view?.let { view ->
+            // Moving focus into an unfocused editor during layout corrupts Compose's layout state.
+            bridge.view?.takeIf { it.hasFocus() }?.let { view ->
                 // Give the Android container focus so clearing EditText cannot immediately refocus it.
                 view.descendantFocusability = android.view.ViewGroup.FOCUS_BLOCK_DESCENDANTS
                 view.isFocusableInTouchMode = true
@@ -249,6 +262,7 @@ fun NativeComposerEditor(
             }
         },
         update = { view ->
+            val newDraft = bridge.beginDraft(state.draftIdentity)
             if (bridge.appliedTheme != theme) {
                 view.setThemeJson(theme)
                 bridge.appliedTheme = theme
@@ -302,7 +316,8 @@ fun NativeComposerEditor(
                 it.requestId != bridge.lastSelectionRequest && !awaitingEcho
             }
             val document = JSONObject().put("value", value).put("tokensJson", tokens.toString())
-                .put("mostRecentEventCount", bridge.eventCount).put("isNativeEcho", value == bridge.value)
+                .put("resetDocument", newDraft)
+                .put("mostRecentEventCount", bridge.eventCount).put("isNativeEcho", !newDraft && value == bridge.value)
             if (request !=
                 null
             ) {

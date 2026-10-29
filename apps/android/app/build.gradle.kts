@@ -1,5 +1,5 @@
 plugins {
-    id("dev.stor.publisher") version "0.1.0-SNAPSHOT"
+    id("dev.stor.publisher") version "0.4.1"
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
@@ -127,8 +127,8 @@ dependencies {
     debugImplementation(libs.androidx.compose.ui.tooling)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     "uitestImplementation"(libs.androidx.compose.ui.test.manifest)
-    debugImplementation("dev.stor:kmp-sdk:0.1.0-SNAPSHOT")
-    "uitestImplementation"("dev.stor:kmp-sdk:0.1.0-SNAPSHOT")
+    debugImplementation("dev.stor:kmp-sdk:0.4.1")
+    "uitestImplementation"("dev.stor:kmp-sdk:0.4.1")
 }
 
 ktlint {

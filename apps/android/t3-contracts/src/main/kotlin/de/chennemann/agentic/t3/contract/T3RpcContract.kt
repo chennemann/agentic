@@ -416,8 +416,7 @@ data class OrchestrationShellSnapshot(
     val projects: List<OrchestrationProject>,
     val threads: List<OrchestrationThreadShell>,
     val snapshotSequence: Long,
-    val updatedAt: String = "",
-    val archivedSequence: Long? = null
+    val updatedAt: String = ""
 )
 
 @OptIn(ExperimentalSerializationApi::class)
@@ -427,16 +426,6 @@ sealed interface OrchestrationShellStreamItem {
     @Serializable
     @SerialName("snapshot")
     data class Snapshot(val snapshot: OrchestrationShellSnapshot, val repositoryIdentityRefresh: Boolean = false) :
-        OrchestrationShellStreamItem
-
-    @Serializable
-    @SerialName("archive-snapshot")
-    data class ArchiveSnapshot(val sequence: Long, val threads: List<OrchestrationThreadShell>) :
-        OrchestrationShellStreamItem
-
-    @Serializable
-    @SerialName("archive-change")
-    data class ArchiveChange(val sequence: Long, val threadId: String, val thread: OrchestrationThreadShell? = null) :
         OrchestrationShellStreamItem
 
     @Serializable

@@ -78,6 +78,7 @@ class KtorT3ClientCompactThreadTest {
     @Test
     fun `thread subscriptions opt in and restore compact snapshots and deduped live bodies`() = runBlocking {
         val server = MockWebServer()
+        val webSockets = MockWebSockets()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val httpClient = HttpClient(OkHttp) {
             install(ContentNegotiation) { json(Json { ignoreUnknownKeys = true }) }
@@ -86,7 +87,7 @@ class KtorT3ClientCompactThreadTest {
         val requests = LinkedBlockingQueue<JsonObject>()
         server.enqueue(MockResponse().setHeader("content-type", "application/json").setBody("""{"ticket":"ticket","expiresAt":"2099-01-01T00:00:00Z"}"""))
         server.enqueue(
-            MockResponse().withWebSocketUpgrade(
+            webSockets.upgrade(
                 object : WebSocketListener() {
                     override fun onMessage(webSocket: WebSocket, text: String) {
                         val message = Json.parseToJsonElement(text).jsonObject
@@ -122,6 +123,7 @@ class KtorT3ClientCompactThreadTest {
             assertEquals(listOf("Done.", "Second reply."), projection.detail().messages.map { it.text })
             assertFalse(projection.turnItems.any { "textOmitted" in it })
         } finally {
+            webSockets.close()
             scope.cancel()
             httpClient.close()
             server.close()

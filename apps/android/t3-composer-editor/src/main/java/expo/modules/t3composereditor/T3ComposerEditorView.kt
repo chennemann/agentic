@@ -198,7 +198,8 @@ class T3ComposerEditorView(context: Context) : FrameLayout(context) {
 
     applyingNativeValue = true
     try {
-      if (valueChanged) {
+      // A new draft must also clear platform undo history when its text is identical.
+      if (valueChanged || document.optBoolean("resetDocument")) {
         editor.setText(value)
       }
       tokensJson = nextTokensJson

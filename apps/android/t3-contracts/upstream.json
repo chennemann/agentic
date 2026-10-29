@@ -1,0 +1,10 @@
+{
+  "repository": "https://github.com/chennemann/t3code",
+  "release": "v0.1.4-fork.1",
+  "revision": "8713aafc319ae42b6b8ea5ca5a21bc0a9ae0611d",
+  "upstreamRelease": "v0.1.4",
+  "upstreamRevision": "783581d461dc72cdd8f78fc8abb4ad536dfc4547",
+  "orchestrationProtocol": 2,
+  "compatibilityRun": "https://github.com/chennemann/t3code/actions/runs/40860404986",
+  "releaseRun": "https://github.com/chennemann/t3code/actions/runs/40871570967"
+}

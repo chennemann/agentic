@@ -67,7 +67,7 @@ internal class GuestShareFixture {
         override suspend fun guestShareCall(baseUrl: String, bearerToken: String, method: String, input: JsonObject): JsonElement {
             calls += method to input
             return when (method) {
-                "server.getSettings" -> T3Json.parseToJsonElement(settings)
+                "server.getConfig" -> T3Json.parseToJsonElement("""{"settings":$settings}""")
                 "guestShare.create" -> T3Json.parseToJsonElement(
                     """{"url":"https://abc.t3.example/guest#share-1.sig","share":$GuestShareJson}"""
                 )

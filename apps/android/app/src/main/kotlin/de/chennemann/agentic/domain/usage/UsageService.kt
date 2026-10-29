@@ -141,10 +141,10 @@ class UsageService(
                     val settings = T3Json.decodeFromJsonElement<ServerSettings>(
                         rpcCall(
                             environment,
-                            "server.getSettings",
+                            "server.getConfig",
                             buildJsonObject {
                             }
-                        )
+                        ).jsonObject.getValue("settings")
                     )
                     repository.update(environment) { it.copy(settings = settings) }
                 } catch (cancelled: CancellationException) {

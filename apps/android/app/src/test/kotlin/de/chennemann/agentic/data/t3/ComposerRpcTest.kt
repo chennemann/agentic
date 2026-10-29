@@ -29,6 +29,7 @@ import org.junit.jupiter.api.Test
 class ComposerRpcTest {
     @Test fun `composer search and file uploads follow the upstream RPC and HTTP contracts`() = runBlocking {
         val server = MockWebServer()
+        val webSockets = MockWebSockets()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val http = HttpClient(OkHttp) {
             install(ContentNegotiation) { json(T3Json) }
@@ -43,7 +44,7 @@ class ComposerRpcTest {
                 ).setBody("""{"ticket":"test-ticket","expiresAt":"2099-01-01T00:00:00Z"}""")
             )
             server.enqueue(
-                MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+                webSockets.upgrade(object : WebSocketListener() {
                     override fun onMessage(webSocket: WebSocket, text: String) {
                         val message = T3Json.parseToJsonElement(text).jsonObject
                         if (message["_tag"]?.jsonPrimitive?.content != "Request") return
@@ -129,6 +130,7 @@ class ComposerRpcTest {
             org.junit.jupiter.api.Assertions.assertFalse(encoded.contains("dataUrl"))
             org.junit.jupiter.api.Assertions.assertTrue(encoded.contains("pasted-text"))
         } finally {
+            webSockets.close()
             scope.cancel()
             http.close()
             server.close()

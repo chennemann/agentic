@@ -34,6 +34,7 @@ import org.junit.jupiter.api.Test
 
 class KtorT3ClientWebSocketTest {
     private val server = MockWebServer()
+    private val webSockets = MockWebSockets()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val httpClient = HttpClient(OkHttp) {
         install(ContentNegotiation) {
@@ -44,6 +45,7 @@ class KtorT3ClientWebSocketTest {
 
     @AfterEach
     fun tearDown() {
+        webSockets.close()
         scope.cancel()
         httpClient.close()
         server.close()
@@ -53,7 +55,7 @@ class KtorT3ClientWebSocketTest {
     fun `HTML uses an authenticated inline asset request and a credential free download`() = runBlocking {
         val requests = LinkedBlockingQueue<JsonObject>()
         server.enqueue(MockResponse().setHeader("content-type", "application/json").setBody("""{"ticket":"ticket","expiresAt":"2099-01-01T00:00:00Z"}"""))
-        server.enqueue(MockResponse().withWebSocketUpgrade(object : WebSocketListener() {
+        server.enqueue(webSockets.upgrade(object : WebSocketListener() {
             override fun onMessage(webSocket: WebSocket, text: String) {
                 val message = Json.parseToJsonElement(text).jsonObject
                 if (message["_tag"]?.jsonPrimitive?.content != "Request") return
@@ -90,7 +92,7 @@ class KtorT3ClientWebSocketTest {
                 .setBody("""{"ticket":"ticket-value","expiresAt":"2099-01-01T00:00:00Z"}"""),
         )
         server.enqueue(
-            MockResponse().withWebSocketUpgrade(
+            webSockets.upgrade(
                 object : WebSocketListener() {
                     override fun onMessage(webSocket: WebSocket, text: String) {
                         val message = Json.parseToJsonElement(text).jsonObject
@@ -157,6 +159,7 @@ class KtorT3ClientWebSocketTest {
         }
         withTimeout(5_000) {
             client.resizeTerminal(server.url("/").toString(), "access-token", "thread-1", "term-2", 93, 17)
+            client.restartTerminal(server.url("/").toString(), "access-token", "thread-1", "term-2", "/workspace/worktree", "/workspace/worktree", mapOf("T3CODE_PROJECT_ROOT" to "/workspace", "T3CODE_WORKTREE_PATH" to "/workspace/worktree"))
             client.writeTerminal(server.url("/").toString(), "access-token", "thread-1", "term-2", "\u0003\u001b[A\t")
         }
         val item = withTimeout(5_000) {
@@ -178,9 +181,9 @@ class KtorT3ClientWebSocketTest {
         assertEquals("Bearer access-token", ticketRequest?.getHeader("authorization"))
         assertEquals("/ws?wsTicket=ticket-value&orchestrationProtocol=2", webSocketRequest?.path)
         val rpcRequests = buildList {
-            while (size < 7) {
+            while (size < 9) {
                 val request = requireNotNull(requests.poll(1, TimeUnit.SECONDS))
-                if (request["tag"]?.jsonPrimitive?.content != "orchestration.subscribeArchivedShell") add(request)
+                add(request)
             }
         }
         assertEquals(
@@ -190,6 +193,8 @@ class KtorT3ClientWebSocketTest {
                 "server.reportClientActivity",
                 "terminal.open",
                 "terminal.resize",
+                "terminal.close",
+                "terminal.open",
                 "terminal.write",
                 "orchestration.subscribeShell",
             ),
@@ -205,11 +210,12 @@ class KtorT3ClientWebSocketTest {
             },
         )
         val terminalPayload = rpcRequests[3]?.get("payload")?.jsonObject
+        assertEquals(terminalPayload, rpcRequests[6]?.get("payload")?.jsonObject)
         val resizePayload = rpcRequests[4]?.get("payload")?.jsonObject
         assertEquals("93", resizePayload?.get("cols")?.jsonPrimitive?.content)
         assertEquals("17", resizePayload?.get("rows")?.jsonPrimitive?.content)
         assertEquals("term-2", resizePayload?.get("terminalId")?.jsonPrimitive?.content)
-        assertEquals("\u0003\u001b[A\t", rpcRequests[5]?.get("payload")?.jsonObject?.get("data")?.jsonPrimitive?.content)
+        assertEquals("\u0003\u001b[A\t", rpcRequests[7]?.get("payload")?.jsonObject?.get("data")?.jsonPrimitive?.content)
         assertEquals("/workspace/worktree", terminalPayload?.get("cwd")?.jsonPrimitive?.content)
         assertEquals(
             "/workspace",
@@ -257,7 +263,7 @@ class KtorT3ClientWebSocketTest {
                 """{"_tag":"Exit","requestId":"$requestId","exit":{"_tag":"Success","value":{"sequence":8}}}""",
             )
 
-            "server.reportClientActivity", "terminal.resize", "terminal.write" -> webSocket.send(
+            "server.reportClientActivity", "terminal.resize", "terminal.write", "terminal.close" -> webSocket.send(
                 """{"_tag":"Exit","requestId":"$requestId","exit":{"_tag":"Success","value":null}}""",
             )
 

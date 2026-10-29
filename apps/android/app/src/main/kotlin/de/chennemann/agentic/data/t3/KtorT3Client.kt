@@ -71,7 +71,6 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.flow.merge
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -477,16 +476,10 @@ class KtorT3Client(
         })
     }
 
-    override suspend fun restartTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cwd: String, worktreePath: String?, env: Map<String, String>) =
-        rpcCall<de.chennemann.agentic.t3.contract.TerminalSessionSnapshot>(
-            baseUrl, bearerToken, "terminal.restart", terminalPayload(threadId, terminalId) {
-                put("cwd", cwd)
-                worktreePath?.let { put("worktreePath", it) }
-                put("cols", 80)
-                put("rows", 24)
-                put("env", buildJsonObject { env.forEach { (key, value) -> put(key, value) } })
-            },
-        )
+    override suspend fun restartTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String, cwd: String, worktreePath: String?, env: Map<String, String>): de.chennemann.agentic.t3.contract.TerminalSessionSnapshot {
+        closeTerminal(baseUrl, bearerToken, threadId, terminalId)
+        return openTerminal(baseUrl, bearerToken, threadId, terminalId, cwd, worktreePath, env)
+    }
 
     override suspend fun closeTerminal(baseUrl: String, bearerToken: String, threadId: String, terminalId: String) {
         rpcCall<JsonElement>(baseUrl, bearerToken, "terminal.close", terminalPayload(threadId, terminalId))
@@ -646,16 +639,13 @@ class KtorT3Client(
         bearerToken: String,
         afterSequence: Long?,
         requestCompletionMarker: Boolean,
-    ): Flow<OrchestrationShellStreamItem> = merge(rpcStream<JsonElement>(
+    ): Flow<OrchestrationShellStreamItem> = rpcStream<JsonElement>(
         baseUrl = baseUrl,
         bearerToken = bearerToken,
         tag = "orchestration.subscribeShell",
         payload = subscriptionPayload(afterSequence, requestCompletionMarker),
         supportedKinds = ShellStreamKinds,
-    ).map(V2Orchestration::shellItem), rpcStream<JsonElement>(
-        baseUrl, bearerToken, "orchestration.subscribeArchivedShell", buildJsonObject {},
-        supportedKinds = setOf("snapshot", "thread.updated", "thread.removed"),
-    ).map(V2Orchestration::archiveItem))
+    ).map(V2Orchestration::shellItem)
 
     override fun threadStream(
         baseUrl: String,

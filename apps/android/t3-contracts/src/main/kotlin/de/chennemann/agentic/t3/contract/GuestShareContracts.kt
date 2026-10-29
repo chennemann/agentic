@@ -38,7 +38,7 @@ data class GuestShareCreateResult(val url: String, val share: ThreadGuestShare)
 object GuestShareContracts {
     const val CREATE_METHOD = "guestShare.create"
     const val DISPATCH_METHOD = "orchestration.dispatchCommand"
-    const val SETTINGS_METHOD = "server.getSettings"
+    const val CONFIG_METHOD = "server.getConfig"
     const val UPDATE_SETTINGS_METHOD = "server.updateSettings"
     const val SETTING_KEY = "guestSharingEnabled"
 

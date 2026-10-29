@@ -217,7 +217,6 @@ fun T3MessageComposer(
                 modifier = Modifier.fillMaxWidth().padding(end = 12.dp),
                 verticalAlignment = Alignment.Bottom,
             ) {
-                androidx.compose.runtime.key(state.draftIdentity) {
                     NativeComposerEditor(
                         state = state,
                         turnRunning = turnRunning,
@@ -237,7 +236,6 @@ fun T3MessageComposer(
                         focusRequested = if (controlsOpen) false else inputFocusRequested,
                         modifier = Modifier.weight(1f).testTag(ComposerInputTestTag),
                     )
-                }
                 Row(
                     modifier = Modifier.padding(bottom = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,

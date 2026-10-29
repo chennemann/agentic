@@ -14,8 +14,9 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonObject
 
-/** Generic settings RPC transport: `server.getSettings` and `server.updateSettings`. */
+/** Generic settings RPC transport: `server.getConfig` and `server.updateSettings`. */
 fun interface ServerSettingsRpcClient {
     suspend fun settingsCall(baseUrl: String, bearerToken: String, method: String, input: JsonObject): JsonElement
 }
@@ -71,7 +72,7 @@ class ServerSettingsService(
             val token = token(environment)
             val canWrite = runCatching { auth.session(environment.baseUrl, token).grants(SettingsWritePermission) }
                 .getOrElse { if (it is CancellationException) throw it else false }
-            val settings = rpc.settingsCall(environment.baseUrl, token, "server.getSettings", buildJsonObject {})
+            val settings = rpc.settingsCall(environment.baseUrl, token, "server.getConfig", buildJsonObject {}).jsonObject.getValue("settings")
             repository.update {
                 it.copy(
                     snapshot = ServerSettingsSnapshot(environment.id, environment.label, settings as JsonObject, canWrite),

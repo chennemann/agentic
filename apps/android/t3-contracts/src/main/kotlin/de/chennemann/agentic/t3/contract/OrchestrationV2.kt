@@ -247,28 +247,6 @@ data class V2EventPayload(val type: String, val payload: JsonObject = JsonObject
 
 /** Decodes only the current wire protocol; normalized models are also used for the local cache. */
 object V2Orchestration {
-    fun archiveItem(value: JsonElement): OrchestrationShellStreamItem {
-        val item = value.jsonObject
-        return when (item.requiredText("kind")) {
-            "snapshot" -> {
-                val snapshot = item.getValue("snapshot").jsonObject
-                OrchestrationShellStreamItem.ArchiveSnapshot(
-                    snapshot.number("snapshotSequence"),
-                    snapshot.objects("threads").map(::shellThread)
-                )
-            }
-            "thread.updated" -> {
-                val thread = shellThread(item.getValue("thread").jsonObject)
-                OrchestrationShellStreamItem.ArchiveChange(item.number("sequence"), thread.id, thread)
-            }
-            "thread.removed" -> OrchestrationShellStreamItem.ArchiveChange(
-                item.number("sequence"),
-                item.requiredText("threadId")
-            )
-            else -> error("Unsupported T3 archive stream item")
-        }
-    }
-
     fun shellItem(value: JsonElement): OrchestrationShellStreamItem {
         val item = value.jsonObject
         return when (item.requiredText("kind")) {

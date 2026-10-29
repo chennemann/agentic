@@ -100,8 +100,8 @@ class GuestShareService(
         val token = token(environment)
         val session = auth.session(environment.baseUrl, token)
         if (!session.grants(GuestShareContracts.CREATE_PERMISSION)) return GuestShareAvailability.MissingPermission
-        val settings = rpc.guestShareCall(environment.baseUrl, token, GuestShareContracts.SETTINGS_METHOD, buildJsonObject {})
-        if (!GuestShareContracts.sharingEnabled(settings.jsonObject)) {
+        val settings = rpc.guestShareCall(environment.baseUrl, token, GuestShareContracts.CONFIG_METHOD, buildJsonObject {})
+        if (!GuestShareContracts.sharingEnabled(settings.jsonObject.getValue("settings").jsonObject)) {
             return GuestShareAvailability.Disabled(session.grants(GuestShareContracts.SETTINGS_PERMISSION))
         }
         return GuestShareAvailability.Available
