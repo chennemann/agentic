@@ -1,10 +1,10 @@
 # T3 Code compatibility
 
-Agentic targets [T3 Code v0.1.4-fork.1](https://github.com/chennemann/t3code/releases/tag/v0.1.4-fork.1),
-commit `8713aafc319ae42b6b8ea5ca5a21bc0a9ae0611d`, based on upstream v0.1.4
-(`783581d461dc72cdd8f78fc8abb4ad536dfc4547`). The machine-readable reference is
+Agentic targets [T3 Code v0.1.5-fork.1](https://github.com/chennemann/t3code/releases/tag/v0.1.5-fork.1),
+commit `0161bb6f5c57c623fc4f2a77f69e45fbfd70b8f6`, based on upstream v0.1.5
+(`6d450a4284852af137b2f3407fddd89eb76e7644`). The machine-readable reference is
 [`t3-contracts/upstream.json`](../apps/android/t3-contracts/upstream.json).
-The annotated release tag resolves to that fork commit; both the recorded compatibility and
+The release tag resolves to that fork commit; both the recorded compatibility and
 release workflows succeeded at that commit.
 
 Agentic consumes the authenticated HTTP and WebSocket APIs, using orchestration protocol 2.
@@ -33,6 +33,10 @@ This update preserves the existing client behavior for shell selection, image co
 galleries, client certificates, and unknown additive activities. It does not reinstate removed
 fork JJ, to-do, recency, or managed Workspace features. New upstream product features are not
 implied by protocol compatibility.
+
+Upstream v0.1.5 adds an optional project-from-thread RPC, thread-detail display settings, and
+optional update-track fields. Existing Agentic RPC payloads remain valid and additive fields
+remain tolerated. This compatibility pin does not add those new controls to the Android UI.
 
 ## Validation and delivery
 
