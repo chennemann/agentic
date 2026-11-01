@@ -68,6 +68,8 @@ class ThreadSearchTest {
             thread("archived", "p1", "Search archive", "2026-10-24T00:00:00Z").copy(archivedAt = "2026-10-24T00:00:00Z"),
             thread("child", "p1", "Search subagent", "2026-10-24T00:00:00Z")
                 .copy(lineage = OrchestrationThreadLineage("exact", "subagent", "exact")),
+            thread("side", "p1", "Search side chat", "2026-10-24T00:00:00Z")
+                .copy(lineage = OrchestrationThreadLineage("exact", "fork", "exact", sideChat = true)),
             thread("message", "p2", "Deploy pipeline", "2026-10-24T00:00:00Z"),
         ),
         snapshotSequence = 1,

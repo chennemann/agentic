@@ -16,7 +16,9 @@ class OrchestrationV2Test {
         val child = json(thread).toMutableMap().apply {
             put(
                 "lineage",
-                json("""{"parentThreadId":"parent","relationshipToParent":"subagent","rootThreadId":"root"}""")
+                json(
+                    """{"parentThreadId":"parent","relationshipToParent":"subagent","rootThreadId":"root","sideChat":true}"""
+                )
             )
             put("creationSource", kotlinx.serialization.json.JsonPrimitive("provider"))
         }
@@ -27,6 +29,12 @@ class OrchestrationV2Test {
         assertEquals("subagent", item.thread.lineage?.relationshipToParent)
         assertEquals("root", item.thread.lineage?.rootThreadId)
         assertEquals("provider", item.thread.creationSource)
+        assertTrue(
+            T3Json.encodeToJsonElement(
+                OrchestrationThreadShell.serializer(),
+                item.thread
+            ).toString().contains("\"sideChat\":true")
+        )
     }
 
     @Test

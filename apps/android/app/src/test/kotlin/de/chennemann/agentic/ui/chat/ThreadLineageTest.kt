@@ -15,9 +15,12 @@ class ThreadLineageTest {
         val child = thread("child", "root")
         val nested = thread("nested", "child").copy(hasPendingApprovals = true)
         val fork = thread("fork", "root", "fork")
-        val model = ThreadLineage(listOf(root, child, nested, fork))
+        val side = thread("side", "root", "fork").copy(
+            lineage = OrchestrationThreadLineage("root", "fork", "root", sideChat = true),
+        )
+        val model = ThreadLineage(listOf(root, child, nested, fork, side))
         assertEquals(listOf("root", "fork"), model.conversations.map { it.id })
-        assertEquals(listOf("child", "nested"), model.subagents["root"]?.map { it.id })
+        assertEquals(listOf("child", "nested", "side"), model.subagents["root"]?.map { it.id })
         assertTrue(model.hasAttention("root"))
         assertTrue(nested.toPickerItem().needsAttention)
     }

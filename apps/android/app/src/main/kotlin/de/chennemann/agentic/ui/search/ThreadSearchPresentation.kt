@@ -29,7 +29,7 @@ data class ThreadSearchResultUi(
 internal const val TitleResultLimit = 30
 
 private fun OrchestrationThreadShell.searchable(): Boolean =
-    archivedAt == null && lineage?.relationshipToParent != "subagent"
+    archivedAt == null && lineage?.isNested != true
 
 /**
  * Title and project matches from the local shell, ranked as T3's palette ranks them in spirit: the

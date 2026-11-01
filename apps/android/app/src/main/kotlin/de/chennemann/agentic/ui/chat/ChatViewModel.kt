@@ -1415,7 +1415,7 @@ class ChatViewModel(
                 .filter {
                     it.projectId == projectId &&
                         it.archivedAt == null &&
-                        !it.isSettled() && it.lineage?.relationshipToParent != "subagent"
+                        !it.isSettled() && it.lineage?.isNested != true
                 }
                 .sortedWith(compareByDescending<de.chennemann.agentic.t3.contract.OrchestrationThreadShell> {
                     it.updatedAt
@@ -1447,7 +1447,7 @@ class ChatViewModel(
                 val projectId = shell?.threads?.firstOrNull { it.id == threadId }?.projectId
                     ?: repository.selectedProjectId.value
                 val fallback = shell?.threads.orEmpty()
-                    .filter { it.id != threadId && it.projectId == projectId && it.archivedAt == null && !it.isSettled() && it.lineage?.relationshipToParent != "subagent" }
+                    .filter { it.id != threadId && it.projectId == projectId && it.archivedAt == null && !it.isSettled() && it.lineage?.isNested != true }
                     .maxWithOrNull(compareBy<de.chennemann.agentic.t3.contract.OrchestrationThreadShell> { it.updatedAt }.thenBy { it.id })
                 if (fallback != null) {
                     threads.selectThread(fallback.id)
@@ -2901,7 +2901,7 @@ private fun quickSwitchProjects(
 ): List<ProjectQuickSwitchUi> {
     val snapshot = shell ?: return emptyList()
     val activeThreadsByProject = snapshot.threads
-        .filter { it.archivedAt == null && !it.isSettled() && it.lineage?.relationshipToParent != "subagent" && it.snoozedUntil == null }
+        .filter { it.archivedAt == null && !it.isSettled() && it.lineage?.isNested != true && it.snoozedUntil == null }
         .groupBy { it.projectId }
     return snapshot.projects
         .mapNotNull { project ->

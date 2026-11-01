@@ -297,7 +297,7 @@ private fun ThreadWithSubagents(
                 modifier = Modifier.size(18.dp),
             )
             val working = children.count { it.active }
-            val label = if (children.size == 1) "sub-agent" else "sub-agents"
+            val label = if (children.size == 1) "related chat" else "related chats"
             Text("${children.size} $label" + if (working > 0) " · $working working" else "")
         }
         if (expanded) {

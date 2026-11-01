@@ -352,8 +352,11 @@ data class OrchestrationProject(
 data class OrchestrationThreadLineage(
     val parentThreadId: String? = null,
     val relationshipToParent: String? = null,
-    val rootThreadId: String? = null
-)
+    val rootThreadId: String? = null,
+    val sideChat: Boolean = false
+) {
+    val isNested: Boolean get() = relationshipToParent == "subagent" || sideChat
+}
 
 @Serializable
 data class OrchestrationThreadShell(

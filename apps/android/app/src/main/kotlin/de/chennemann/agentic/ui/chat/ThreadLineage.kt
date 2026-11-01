@@ -2,7 +2,7 @@ package de.chennemann.agentic.ui.chat
 
 import de.chennemann.agentic.t3.contract.OrchestrationThreadShell
 
-/** Resolve only sub-agent edges. Forks remain independent picker conversations. */
+/** Nested chats stay under their parent; ordinary forks remain independent conversations. */
 internal class ThreadLineage(threads: List<OrchestrationThreadShell>) {
     private val byId = threads.associateBy { it.id }
     private val owners = threads.associate { it.id to owner(it) }
@@ -16,7 +16,7 @@ internal class ThreadLineage(threads: List<OrchestrationThreadShell>) {
     private fun owner(thread: OrchestrationThreadShell): String {
         var current = thread
         val seen = mutableSetOf(thread.id)
-        while (current.lineage?.relationshipToParent == "subagent") {
+        while (current.lineage?.isNested == true) {
             val parent = byId[current.lineage?.parentThreadId] ?: return thread.id
             if (!seen.add(parent.id)) return thread.id
             current = parent

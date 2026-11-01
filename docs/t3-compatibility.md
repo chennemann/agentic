@@ -1,8 +1,8 @@
 # T3 Code compatibility
 
-Agentic targets [T3 Code v0.1.5-fork.1](https://github.com/chennemann/t3code/releases/tag/v0.1.5-fork.1),
-commit `0161bb6f5c57c623fc4f2a77f69e45fbfd70b8f6`, based on upstream v0.1.5
-(`6d450a4284852af137b2f3407fddd89eb76e7644`). The machine-readable reference is
+Agentic targets [T3 Code v0.1.6-fork.1](https://github.com/chennemann/t3code/releases/tag/v0.1.6-fork.1),
+commit `b80e54841131be71185eb75e0a61c7f61c00d229`, based on upstream v0.1.6
+(`2359643cffa6ba9ee84d6f2694b935de54a8013e`). The machine-readable reference is
 [`t3-contracts/upstream.json`](../apps/android/t3-contracts/upstream.json).
 The release tag resolves to that fork commit; both the recorded compatibility and
 release workflows succeeded at that commit.
@@ -37,6 +37,14 @@ implied by protocol compatibility.
 Upstream v0.1.5 adds an optional project-from-thread RPC, thread-detail display settings, and
 optional update-track fields. Existing Agentic RPC payloads remain valid and additive fields
 remain tolerated. This compatibility pin does not add those new controls to the Android UI.
+
+## v0.1.6 changes
+
+Side-chat lineage survives decoding and the local cache. Side chats stay beneath their parent
+in the drawer and are excluded from top-level navigation and search, like delegated children.
+Ordinary forks remain independent. This compatibility update does not add side-chat creation,
+project pin/archive controls, 1Password configuration, or upstream mobile UI features.
+The new RPCs and remaining wire fields are additive; the existing protocol-2 methods remain.
 
 ## Validation and delivery
 
