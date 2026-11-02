@@ -349,7 +349,7 @@ private fun rows(snapshot: PullRequestsSnapshot): List<PrRowUi> {
     return snapshot.stats.fill(list.entries).filter { entry ->
         val hostSearch = list.providers.firstOrNull { it.host == entry.host }?.searchesOnHost == true
         (hostSearch || snapshot.query.isBlank() || "${entry.title} ${entry.repository} ${entry.author?.login}".contains(snapshot.query.trim(), ignoreCase = true)) &&
-            entry.matches(snapshot.filters, list.viewers[entry.host])
+            entry.matches(snapshot.filters, entry.profileViewer ?: list.viewers[entry.host])
     }.map { entry ->
         PrRowUi(entry.ref().key, entry.title,
             "${entry.repository} #${entry.number} - ${entry.author?.login ?: "Unknown author"}",

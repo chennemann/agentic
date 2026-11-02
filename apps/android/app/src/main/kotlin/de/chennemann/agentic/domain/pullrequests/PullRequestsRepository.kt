@@ -317,6 +317,7 @@ internal fun PullRequestRef.payload(fields: JsonObjectBuilder.() -> Unit = {}): 
     put("number", number)
     put("host", host)
     expectedAccountId?.let { put("expectedAccountId", it) }
+    profileId?.let { put("profileId", it) }
     fields()
 }
 

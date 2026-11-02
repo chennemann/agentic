@@ -1,7 +1,7 @@
 # T3 Code compatibility
 
-Agentic targets [T3 Code v0.1.6-fork.1](https://github.com/chennemann/t3code/releases/tag/v0.1.6-fork.1),
-commit `b80e54841131be71185eb75e0a61c7f61c00d229`, based on upstream v0.1.6
+Agentic targets [T3 Code v0.1.6-fork.5](https://github.com/chennemann/t3code/releases/tag/v0.1.6-fork.5),
+commit `9c540789f7cc64eac2fb192e9734ca349cfb55c9`, based on upstream v0.1.6
 (`2359643cffa6ba9ee84d6f2694b935de54a8013e`). The machine-readable reference is
 [`t3-contracts/upstream.json`](../apps/android/t3-contracts/upstream.json).
 The release tag resolves to that fork commit; both the recorded compatibility and
@@ -45,6 +45,9 @@ in the drawer and are excluded from top-level navigation and search, like delega
 Ordinary forks remain independent. This compatibility update does not add side-chat creation,
 project pin/archive controls, 1Password configuration, or upstream mobile UI features.
 The new RPCs and remaining wire fields are additive; the existing protocol-2 methods remain.
+
+The fork.5 release aggregates GitHub profiles. Pull request rows retain their profile through
+pagination, detail reads, and writes; viewer-based filters use that profile’s login.
 
 ## Validation and delivery
 

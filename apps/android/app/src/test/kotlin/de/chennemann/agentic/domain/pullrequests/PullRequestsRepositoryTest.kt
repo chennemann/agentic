@@ -26,6 +26,28 @@ class PullRequestsRepositoryTest {
     }
 
     @Test
+    fun `profile identity survives pagination routing and writes`() = runTest {
+        fun page(profile: String) = JsonObject(listJson("github.com", "page-two").jsonObject.toMutableMap().apply {
+            val entry = getValue("entries").jsonArray.single().jsonObject
+            put("entries", JsonArray(listOf(JsonObject(entry + mapOf("profileId" to JsonPrimitive(profile), "profileViewer" to JsonPrimitive(profile))))))
+        })
+        val rpc = FakePullRequestsRpc().apply { list = page("work") }
+        val repository = repository(rpc)
+        repository.list("open", "all", "")
+        rpc.list = page("personal")
+        repository.list("open", "all", "", more = true)
+        val entries = requireNotNull(repository.state.value.list).entries
+        assertEquals(2, entries.size)
+        assertEquals(2, entries.map { it.ref().key }.distinct().size)
+        repository.open(entries.first().ref())
+        assertTrue(PullRequestsService(repository).comment("Reviewed"))
+        for (method in listOf("pullRequests.routing", "pullRequests.detail", "pullRequests.comment")) {
+            assertEquals("work", rpc.calls.first { it.first == method }.second["profileId"]?.jsonPrimitive?.content, method)
+        }
+        assertEquals("account-42", rpc.calls.first { it.first == "pullRequests.comment" }.second["expectedAccountId"]?.jsonPrimitive?.content)
+    }
+
+    @Test
     fun `switching environments discards a late response from the previous environment`() = runTest {
         val rpc = FakePullRequestsRpc()
         val repository = repository(rpc)

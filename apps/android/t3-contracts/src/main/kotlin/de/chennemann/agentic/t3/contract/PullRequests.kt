@@ -8,9 +8,10 @@ data class PullRequestRef(
     val repository: String,
     val number: Int,
     val host: String,
-    val expectedAccountId: String? = null
+    val expectedAccountId: String? = null,
+    val profileId: String? = null
 ) {
-    val key: String get() = "$host/$repository/$number"
+    val key: String get() = profileId?.let { "$it/$host/$repository/$number" } ?: "$host/$repository/$number"
 }
 
 @Serializable
@@ -41,9 +42,11 @@ data class PullRequestEntry(
     val reviewDecision: String? = null,
     val checksState: String? = null,
     val provider: String? = null,
-    val viewerReviewRequested: Boolean = false
+    val viewerReviewRequested: Boolean = false,
+    val profileId: String? = null,
+    val profileViewer: String? = null
 ) {
-    fun ref() = PullRequestRef(projectId, repository, number, host)
+    fun ref() = PullRequestRef(projectId, repository, number, host, profileId = profileId)
 }
 
 @Serializable
