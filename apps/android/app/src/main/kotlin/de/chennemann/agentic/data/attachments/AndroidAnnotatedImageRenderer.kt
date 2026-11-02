@@ -92,7 +92,7 @@ fun drawAnnotations(canvas: Canvas, width: Float, height: Float, annotations: Li
     annotations.forEachIndexed { index, mark ->
         val label = annotationLabel(mark, width, height)
         stroke.strokeWidth = maxOf(3f, label.radius / 5f)
-        canvas.drawOval(
+        canvas.drawRect(
             RectF(mark.x * width, mark.y * height, (mark.x + mark.width) * width, (mark.y + mark.height) * height),
             stroke,
         )

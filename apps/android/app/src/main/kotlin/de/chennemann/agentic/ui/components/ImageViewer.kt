@@ -85,6 +85,7 @@ import de.chennemann.agentic.data.attachments.AnnotationColor
 import de.chennemann.agentic.data.attachments.drawAnnotations
 import de.chennemann.agentic.domain.attachments.AnnotationPoint
 import de.chennemann.agentic.domain.attachments.ImageAnnotation
+import de.chennemann.agentic.domain.attachments.ImageAnnotationSize
 import de.chennemann.agentic.domain.attachments.MaxImageAnnotations
 import de.chennemann.agentic.domain.attachments.annotationLabel
 import de.chennemann.agentic.domain.attachments.annotationRect
@@ -127,7 +128,7 @@ data class ViewerImage(
 /**
  * Full-screen gallery over [images], starting at [initialIndex]. Swiping moves between images;
  * double-tap and pinch zoom. The overlay Annotate button switches the current image to placing
- * numbered ellipses with comments, where one finger draws and two fingers still zoom. Closing
+ * numbered rectangles with comments, where one finger draws and two fingers still zoom. Closing
  * (button, back, or system dismiss) reports every image's marks by [ViewerImage.key].
  */
 @Composable
@@ -315,8 +316,8 @@ private fun ImagePage(
     }
     val decoded by produceState<DecodedImage>(DecodedImage.Loading, image.dataUrl) {
         value = image.dataUrl?.let { dataUrl ->
-            withContext(Dispatchers.Default) { decodeDataUrlBitmap(dataUrl, MaxPreviewDimension) }
-                ?.let { DecodedImage.Ready(it.asImageBitmap()) }
+            withContext(Dispatchers.Default) { decodeDataUrlImage(dataUrl, MaxPreviewDimension) }
+                ?.let { DecodedImage.Ready(it.bitmap.asImageBitmap(), it.imageSize) }
                 ?: DecodedImage.Failed
         } ?: DecodedImage.Loading
     }
@@ -332,7 +333,7 @@ private fun ImagePage(
                 Image(state.image, contentDescription = null, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.FillBounds)
                 AnnotationOverlay(marks.drop(image.readOnlyCount), image.readOnlyCount, selectedId.takeIf { annotating })
                 if (annotating) {
-                    AnnotationInput(width, height, marks, image.readOnlyCount, selectedId, onSelect, onPreview, onCommit)
+                    AnnotationInput(width, height, state.imageSize, marks, image.readOnlyCount, selectedId, onSelect, onPreview, onCommit)
                 }
             }
         }
@@ -468,6 +469,7 @@ private sealed interface MarkTarget {
 private fun AnnotationInput(
     width: Float,
     height: Float,
+    imageSize: ImageAnnotationSize,
     marks: List<ImageAnnotation>,
     readOnlyCount: Int,
     selectedId: String?,
@@ -482,7 +484,7 @@ private fun AnnotationInput(
             Modifier
                 .fillMaxSize()
                 .semantics { contentDescription = "Annotation canvas" }
-                .pointerInput(width, height, readOnlyCount) {
+                .pointerInput(width, height, imageSize, readOnlyCount) {
                     fun normalized(position: Offset) = AnnotationPoint(
                         (position.x / width).coerceIn(0f, 1f),
                         (position.y / height).coerceIn(0f, 1f),
@@ -498,9 +500,7 @@ private fun AnnotationInput(
                         }?.let { return MarkTarget.Resize(it.id) }
                         val point = normalized(position)
                         return editable.firstOrNull { mark ->
-                            val dx = (point.x - (mark.x + mark.width / 2)) / (mark.width / 2)
-                            val dy = (point.y - (mark.y + mark.height / 2)) / (mark.height / 2)
-                            dx * dx + dy * dy <= 1f
+                            point.x in mark.x..(mark.x + mark.width) && point.y in mark.y..(mark.y + mark.height)
                         }?.let { MarkTarget.Move(it.id) }
                     }
                     awaitEachGesture {
@@ -533,7 +533,7 @@ private fun AnnotationInput(
                                 null -> if (!canAdd) {
                                     before
                                 } else {
-                                    val mark = (drawn ?: newImageAnnotation(annotationRect(start, point)))
+                                    val mark = (drawn ?: newImageAnnotation(annotationRect(start, point), imageSize))
                                         .withBounds(annotationRect(start, point))
                                     drawn = mark
                                     before + mark
@@ -544,7 +544,7 @@ private fun AnnotationInput(
                         when {
                             !dragged && target != null -> onSelect(target.id)
                             !dragged && canAdd -> {
-                                val mark = newImageAnnotation(tapAnnotationBounds(start))
+                                val mark = newImageAnnotation(tapAnnotationBounds(start), imageSize)
                                 onCommit(before, before + mark)
                                 onSelect(mark.id)
                             }
@@ -675,15 +675,21 @@ private const val DismissVelocity = 2_000f
 private sealed interface DecodedImage {
     data object Loading : DecodedImage
     data object Failed : DecodedImage
-    data class Ready(val image: ImageBitmap) : DecodedImage
+    data class Ready(val image: ImageBitmap, val imageSize: ImageAnnotationSize) : DecodedImage
 }
 
 /** Decodes a data URL, downsampling large images so they stay within [maxDimension]. */
-fun decodeDataUrlBitmap(dataUrl: String, maxDimension: Int): Bitmap? = runCatching {
+fun decodeDataUrlBitmap(dataUrl: String, maxDimension: Int): Bitmap? = decodeDataUrlImage(dataUrl, maxDimension)?.bitmap
+
+private data class DecodedBitmap(val bitmap: Bitmap, val imageSize: ImageAnnotationSize)
+
+private fun decodeDataUrlImage(dataUrl: String, maxDimension: Int): DecodedBitmap? = runCatching {
     val bytes = Base64.decode(dataUrl.substringAfter(','), Base64.DEFAULT)
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+    if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return@runCatching null
     var sample = 1
     while (maxOf(bounds.outWidth, bounds.outHeight) / sample > maxDimension) sample *= 2
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
+        ?.let { DecodedBitmap(it, ImageAnnotationSize(bounds.outWidth, bounds.outHeight)) }
 }.getOrNull()

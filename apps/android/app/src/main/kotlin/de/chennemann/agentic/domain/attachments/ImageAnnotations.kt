@@ -17,7 +17,7 @@ import kotlinx.serialization.json.put
 import java.util.UUID
 
 /**
- * An ellipse drawn on an image with a comment. Bounds are fractions of the original image
+ * A rectangle drawn on an image with a comment. Bounds are fractions of the original image
  * (origin top-left), independent of display size. Mirrors T3 `ImageAnnotation`.
  */
 @Serializable
@@ -28,7 +28,11 @@ data class ImageAnnotation(
     val width: Float,
     val height: Float,
     val comment: String = "",
+    val imageSize: ImageAnnotationSize? = null,
 )
+
+@Serializable
+data class ImageAnnotationSize(val width: Int, val height: Int)
 
 data class AnnotationPoint(val x: Float, val y: Float)
 
@@ -57,7 +61,7 @@ data class AnnotationBounds(val x: Float, val y: Float, val width: Float, val he
 fun ImageAnnotation.withBounds(bounds: AnnotationBounds) =
     copy(x = bounds.x, y = bounds.y, width = bounds.width, height = bounds.height)
 
-/** A tap places a default-sized ellipse centred on the touch point. */
+/** A tap places a default-sized rectangle centred on the touch point. */
 fun tapAnnotationBounds(point: AnnotationPoint): AnnotationBounds = annotationRect(
     AnnotationPoint((point.x - 0.1f).clamp(), (point.y - 0.04f).clamp()),
     AnnotationPoint((point.x + 0.1f).clamp(), (point.y + 0.04f).clamp()),
@@ -83,12 +87,13 @@ fun annotationLabel(mark: ImageAnnotation, imageWidth: Float, imageHeight: Float
     )
 }
 
-fun newImageAnnotation(bounds: AnnotationBounds) = ImageAnnotation(
+fun newImageAnnotation(bounds: AnnotationBounds, imageSize: ImageAnnotationSize? = null) = ImageAnnotation(
     id = UUID.randomUUID().toString(),
     x = bounds.x,
     y = bounds.y,
     width = bounds.width,
     height = bounds.height,
+    imageSize = imageSize,
 )
 
 /** Adds saved comments to the outgoing text, grouped by image name, without changing the draft. */

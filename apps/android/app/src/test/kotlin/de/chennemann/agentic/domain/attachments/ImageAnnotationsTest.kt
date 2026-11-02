@@ -66,6 +66,20 @@ class ImageAnnotationsTest {
     }
 
     @Test
+    fun `reopening and resending preserves source screenshot dimensions`() = runBlocking {
+        val context = de.chennemann.agentic.t3.contract.T3Json.parseToJsonElement("""{
+          "version":1,"records":[{"kind":"image","attachmentId":"img-1","burnedAnnotationCount":1,
+          "annotations":[{"id":"a","x":0.1,"y":0.2,"width":0.3,"height":0.4,"comment":"note",
+          "imageSize":{"width":7680,"height":4320}}]}]}
+        """).jsonObject
+        val saved = messageImageAnnotations(context).getValue("img-1")
+        val prepared = prepareTurnMessage("", listOf(DraftImageAttachment("img-1", upload, saved.annotations, saved.burnedAnnotationCount))) { _, _, _ -> error("already burned") }
+        val source = context["records"]!!.jsonArray.single().jsonObject["annotations"]!!.jsonArray.single().jsonObject
+        val resent = prepared.context!!["records"]!!.jsonArray.single().jsonObject["annotations"]!!.jsonArray.single().jsonObject
+        assertEquals(source["imageSize"], resent["imageSize"])
+    }
+
+    @Test
     fun `sent message context yields annotations by attachment`() = runBlocking {
         val image = DraftImageAttachment("img-1", upload, listOf(mark("a", "note")))
         val context = prepareTurnMessage("", listOf(image)) { source, _, _ -> source }.context

@@ -1,7 +1,7 @@
 # T3 Code compatibility
 
-Agentic targets [T3 Code v0.1.6-fork.5](https://github.com/chennemann/t3code/releases/tag/v0.1.6-fork.5),
-commit `9c540789f7cc64eac2fb192e9734ca349cfb55c9`, based on upstream v0.1.6
+Agentic targets [T3 Code v0.1.6-fork.6](https://github.com/chennemann/t3code/releases/tag/v0.1.6-fork.6),
+commit `b7cde2cae562f6054fc962724b6e30aa335e3181`, based on upstream v0.1.6
 (`2359643cffa6ba9ee84d6f2694b935de54a8013e`). The machine-readable reference is
 [`t3-contracts/upstream.json`](../apps/android/t3-contracts/upstream.json).
 The release tag resolves to that fork commit; both the recorded compatibility and
@@ -48,6 +48,12 @@ The new RPCs and remaining wire fields are additive; the existing protocol-2 met
 
 The fork.5 release aggregates GitHub profiles. Pull request rows retain their profile through
 pagination, detail reads, and writes; viewer-based filters use that profile’s login.
+
+Fork.6 uses rectangle annotations. Agentic draws matching rectangles, preserves optional source
+image dimensions when reopening saved marks, and records original dimensions for new marks even
+when its preview is downsampled. Older marks without dimensions remain readable. Android retains
+one-finger drawing and two-finger zoom; the desktop Ctrl action switch does not change touch controls.
+Gallery size-cap removal does not remove attachment upload limits.
 
 ## Validation and delivery
 
