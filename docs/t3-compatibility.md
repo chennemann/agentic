@@ -1,8 +1,8 @@
 # T3 Code compatibility
 
-Agentic targets [T3 Code v0.1.6-fork.6](https://github.com/chennemann/t3code/releases/tag/v0.1.6-fork.6),
-commit `b7cde2cae562f6054fc962724b6e30aa335e3181`, based on upstream v0.1.6
-(`2359643cffa6ba9ee84d6f2694b935de54a8013e`). The machine-readable reference is
+Agentic targets [T3 Code v0.1.7-fork.1](https://github.com/chennemann/t3code/releases/tag/v0.1.7-fork.1),
+commit `3c11d2d3cf3fad864b485287b159ad1304b3fdc5`, based on upstream v0.1.7
+(`322f6544dfad0a3c8a0c8cbecf2c7f7874b14268`). The machine-readable reference is
 [`t3-contracts/upstream.json`](../apps/android/t3-contracts/upstream.json).
 The release tag resolves to that fork commit; both the recorded compatibility and
 release workflows succeeded at that commit.
@@ -54,6 +54,15 @@ image dimensions when reopening saved marks, and records original dimensions for
 when its preview is downsampled. Older marks without dimensions remain readable. Android retains
 one-finger drawing and two-finger zoom; the desktop Ctrl action switch does not change touch controls.
 Gallery size-cap removal does not remove attachment upload limits.
+
+## v0.1.7 changes
+
+Tag updates replace the cached protocol-2 thread without advancing its activity timestamp,
+including removal of the final tag. New optional model-switch metadata, steering capability
+fields, managed-policy metadata and RPC methods are additive; the existing client RPCs remain
+valid. The server handles attachment steering restarts for providers that take text-only steers.
+This compatibility update does not add upstream mobile dictation, tag controls, Kiro-specific
+UI, shareable-link handling or parent-thread child-approval controls to Agentic.
 
 ## Validation and delivery
 

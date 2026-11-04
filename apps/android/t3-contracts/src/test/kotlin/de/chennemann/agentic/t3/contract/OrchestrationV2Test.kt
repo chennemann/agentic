@@ -76,7 +76,7 @@ class OrchestrationV2Test {
     }
 
     @Test
-    fun `guest share updates replace the projected thread`() {
+    fun `guest share and tag updates replace the projected thread`() {
         val shared = json(thread.replace("\"title\":\"Conversation\"", "\"title\":\"Shared\"")).toMutableMap().apply {
             put(
                 "guestShare",
@@ -93,6 +93,14 @@ class OrchestrationV2Test {
             "share-1",
             projection.thread.getValue("guestShare").jsonObject.getValue("id").jsonPrimitive.content
         )
+        val taggedThread = JsonObject(shared + ("tags" to T3Json.parseToJsonElement("[\"private\"]")))
+        val tagged = projection.apply(V2EventPayload("thread.tags-updated", taggedThread))
+        assertEquals(taggedThread, tagged.thread)
+        assertEquals(projection.updatedAt, tagged.updatedAt)
+        val untaggedThread = JsonObject(shared + ("tags" to JsonArray(emptyList())))
+        val untagged = tagged.apply(V2EventPayload("thread.tags-updated", untaggedThread))
+        assertEquals(untaggedThread, untagged.thread)
+        assertEquals(projection.updatedAt, untagged.updatedAt)
     }
 
     @Test

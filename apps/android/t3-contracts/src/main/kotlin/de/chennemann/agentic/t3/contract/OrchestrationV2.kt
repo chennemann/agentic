@@ -38,7 +38,8 @@ data class V2Projection(
             "thread.created", "thread.archived", "thread.unarchived", "thread.deleted",
             "thread.settled", "thread.unsettled", "thread.snoozed", "thread.unsnoozed",
             "thread.metadata-updated", "thread.runtime-mode-updated", "thread.interaction-mode-updated",
-            "thread.model-selection-updated", "thread.provider-switched", "thread.guest-share-updated"
+            "thread.model-selection-updated", "thread.provider-switched", "thread.guest-share-updated",
+            "thread.tags-updated"
             -> copy(thread = event.payload)
             "run.created", "run.updated" -> copy(runs = runs.upsert(event.payload))
             "run-attempt.created", "run-attempt.updated" -> copy(attempts = attempts.upsert(event.payload))
