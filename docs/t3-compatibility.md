@@ -1,7 +1,7 @@
 # T3 Code compatibility
 
-Agentic targets [T3 Code v0.1.7-fork.1](https://github.com/chennemann/t3code/releases/tag/v0.1.7-fork.1),
-commit `3c11d2d3cf3fad864b485287b159ad1304b3fdc5`, based on upstream v0.1.7
+Agentic targets [T3 Code v0.1.7-fork.2](https://github.com/chennemann/t3code/releases/tag/v0.1.7-fork.2),
+commit `f9d4ac357898433b7e25e98d424f09994422fc77`, based on upstream v0.1.7
 (`322f6544dfad0a3c8a0c8cbecf2c7f7874b14268`). The machine-readable reference is
 [`t3-contracts/upstream.json`](../apps/android/t3-contracts/upstream.json).
 The release tag resolves to that fork commit; both the recorded compatibility and
@@ -63,6 +63,10 @@ fields, managed-policy metadata and RPC methods are additive; the existing clien
 valid. The server handles attachment steering restarts for providers that take text-only steers.
 This compatibility update does not add upstream mobile dictation, tag controls, Kiro-specific
 UI, shareable-link handling or parent-thread child-approval controls to Agentic.
+
+Fork.2 adds configurable PR-linking instructions in the server web/desktop Settings > Labs.
+The new server setting is additive; Agentic preserves unknown settings when updating
+project overrides. This pin does not add a native editor for that setting.
 
 ## Validation and delivery
 
