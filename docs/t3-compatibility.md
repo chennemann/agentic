@@ -1,8 +1,8 @@
 # T3 Code compatibility
 
-Agentic targets [T3 Code v0.1.7-fork.5](https://github.com/chennemann/t3code/releases/tag/v0.1.7-fork.5),
-commit `ecaa39a96c59b3dbd0bbb92c33ab4fce610c587b`, based on upstream v0.1.7
-(`322f6544dfad0a3c8a0c8cbecf2c7f7874b14268`). The machine-readable reference is
+Agentic targets [T3 Code v0.1.8-fork.1](https://github.com/chennemann/t3code/releases/tag/v0.1.8-fork.1),
+commit `9e5fa5de1fd9bb68d35ee665729f06d6d56e7f9a`, based on upstream v0.1.8
+(`bf469bb19669671d0df2efda74ed73867a7137c0`). The machine-readable reference is
 [`t3-contracts/upstream.json`](../apps/android/t3-contracts/upstream.json).
 The release tag resolves to that fork commit; both the recorded compatibility and
 release workflows succeeded at that commit.
@@ -71,6 +71,20 @@ project overrides. This pin does not add a native editor for that setting.
 Fork.3 through fork.5 update the web/desktop project sidebar: bottom shelves, pinned-project
 labels, and dragging thread references from project folders. These changes leave the server
 contracts unchanged; Agentic keeps its existing native navigation.
+
+## v0.1.8 changes
+
+Protocol 2 remains supported. Existing Agentic subscriptions do not request the new
+`httpSnapshotFallback` option, so the server continues to send socket snapshots after
+an unreplayable gap. Fresh-context runs, prompt suggestions, text generators, model
+mentions and transcription configuration add optional fields or methods; they do not
+require a legacy fallback or a provider-specific Android branch. All production RPC
+method names were checked against the exact release contract.
+
+This pin preserves the existing Android image annotations, galleries, client certificate
+selection, GitHub profile identity, tag projection updates and provider-neutral payloads.
+It does not add upstream React Native layout, dictation, fresh-session controls or MCP
+setup screens to Agentic. No local projection schema migration is required.
 
 ## Validation and delivery
 
