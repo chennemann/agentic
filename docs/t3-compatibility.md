@@ -1,8 +1,8 @@
 # T3 Code compatibility
 
-Agentic targets [T3 Code v0.1.9-fork.1](https://github.com/chennemann/t3code/releases/tag/v0.1.9-fork.1),
-commit `9892b94f9cbbee825cff97c8a23705e575fb2d5b`, based on upstream v0.1.9
-(`24e77473ecf41bc1f7142529c7911c1c1aae1d76`). The machine-readable reference is
+Agentic targets [T3 Code v0.1.10-fork.1](https://github.com/chennemann/t3code/releases/tag/v0.1.10-fork.1),
+commit `727fc04788df5a33dcc75aecf45db14067eb98b8`, based on upstream v0.1.10
+(`7d32075e3757ded707914e2450c3e392a9665765`). The machine-readable reference is
 [`t3-contracts/upstream.json`](../apps/android/t3-contracts/upstream.json).
 The release tag resolves to that fork commit; both the recorded compatibility and
 release workflows succeeded at that commit.
@@ -100,6 +100,22 @@ selection, GitHub profile identity, tag projection updates and provider-neutral 
 It does not add upstream React Native layout, voice-environment controls, native-goal
 editing or hosted MCP approval screens to Agentic. Those are separate product UI
 features, not requirements for continuing to use the authenticated protocol-2 API.
+
+## v0.1.10 changes
+
+Protocol 2 remains supported. Existing Agentic RPC names were audited against the
+exact release contract. Assistant-response context, terminal viewer identity,
+provider capability additions and source-control conversation metadata are additive.
+Agentic preserves its provider-neutral decoding and unknown activity payloads; no
+cache migration, provider-specific branch or legacy transport fallback is required.
+
+The server retains editable image annotations, complete galleries, client certificate
+selection, GitHub profile identity and the planning-fork database upgrade path. The
+fork also keeps distinct profile rows while deduplicating the same PR across servers.
+This pin does not port upstream React Native language controls, iOS image viewing,
+web response-reply controls or theme background images into Agentic's native UI.
+Agentic's direct token-based pairing remains unchanged. This pin does not add
+the separate T3 Connect account/device approval flow.
 
 ## Validation and delivery
 
